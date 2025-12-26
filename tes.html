@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+<body>
+    <div class="image-container" style="width: 519px; height: 185px; cursor: url(&quot;data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAYAAADgdz34AAAACXBIWXMAAA7DAAAOwwHHb6hkAAAAGXRFWHRTb2Z0d2FyZQB3d3cuaW5rc2NhcGUub3Jnm+48GgAAAstJREFUSImtlV2IVVUYhp9vnW1HknGYJPEnCbVgCJrJn3Gg8CJInLwwvdCyggymEO9CC69kEC+UfpggwaBImyjyh0iR8Y+QJCqYLlLBfr2QcJQodZzIM3uv7/Vi5nDOqZk9M6de2LDXXu/3vd/7rb3WMklbgHYmjhJwFfgF6DWzy7lsSQdVP9xd30haOVb+BIgA84sZ6dD45TdMh1lzjeaHYeWaYE+utWXFqRx3V68Zz5vZn9V8k/QxsOGBuzNu/z2+wD8x+z54bWeBdS8Y7lwKgQ4z+7k8HwAHKBQmnxyg/zd4ZWPk1U7HI/PdOS7pnmqBCBBCfQJlfPK+s7UzWggsAHqqBRwg1OmgGoc+FD17HWBVeeEn1aLu/QW2dOVbfWO789cgLtFVFphwi1qWGEsfs1zOH7/DgX0ezGiXNO9/bVEZJz8XgAGrKgL/cZGr8X2fyq8LkrJAkvybuOPtwKJllZY0zRDTGoyjXw/bLSTwwTvOwf2qiRu4AaXbeHEqcxJgAGBagwG1xJvXYXCwMo4RPFa+hQIM3hrdhQ3XVUqAfoBZc+DHC7WkN7u8ZvzFhYRr/WLDijh61hE0NsFdRQJwJQA/AbQszf87JoPWSq6LATgjcatjTVBOzKSwYrUhkQG9wcxKZnzW2oa1L893ce470fdVfh0z7oWnX7RoxjEzu2EAkhZKXDzXp+SpR6NlWf3V73438OxLwc14xMzOBwAz+9WMt1rbzLq6698Q6zcGnns5YMYeMztfMympIOmEJL3XHXV/kmouE3+2dkalqaKkM5KmjFqBpMayyLdnPXYszsZN3DYv1eGPPI5coaclNeXaHHGyy11D7tKXpzzdtinqiZZMrTNTNTemevyhTJufyXTkU8/SIWXuSiW9LmmU82BsoYWS9km6OfaNrwFJPZIeHCvPuLtLUhFYDjQDsxk+T64CPwBnzayUF38H/abEdJrmV6IAAAAASUVORK5CYII=&quot;), copy !important;">
+        <img class="test-click"  src="https://media.markup.io/green/project-images/33d10cd1-8ec7-43ea-ac1c-88a5b56a9e20/b6b412b9-64cc-46b9-ad26-5e51314644d3/824102d7-8040-409c-99cb-f6d818f4987b.png" alt="Annotated Image" draggable="false"/>
+        <div class="pin" style="transform-origin: center center !important; transform: translate(-50%, -50%) scale(1, 1) !important; touch-action: none !important; position: absolute !important; left: 27.9472% !important; top: 12.8176% !important;">
+            <div class="pin-icon new-pin" title="New Comment"></div>
+    </div>
+</body>
+<script>
+    const container = document.getElementsByClassName("test-click");
+
+container.addEventListener("click", function (e) {
+  const rect = this.getBoundingClientRect();
+  const x = ((e.clientX - rect.left) / rect.width) * 100;
+  const y = ((e.clientY - rect.top) / rect.height) * 100;
+  alert(`this are the pin cordinates x: ${x.toFixed(4)}%, y: ${y.toFixed(4)}%`);
+
+  // Create pin
+  const pin = document.createElement("div");
+  pin.classList.add("pin");
+  pin.style.top = `${y}%`;
+  pin.style.left = `${x}%`;
+  pin.setAttribute("data-label", `Pin at ${Math.round(x)}%, ${Math.round(y)}%`);
+
+  this.appendChild(pin);
+  console.log("Pinned at:", x.toFixed(2), y.toFixed(2));
+});
+    
+</script>
+</html>
+

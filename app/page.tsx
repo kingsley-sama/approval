@@ -1,103 +1,176 @@
-import Image from "next/image";
+'use client'
+
+import { useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { supabase } from '@/lib/supabase'
+import Sidebar from '@/components/sidebar'
+import ProjectGrid from '@/components/project-grid'
+import ProjectDuplicator from '@/components/project-duplicator'
+import { Folder, FolderPlus } from 'lucide-react'
+
+interface Project {
+  id: string
+  title: string
+  subtitle: string
+  image: string
+  updatedAt: string
+  isNew: boolean
+  stats: {
+    likes: number
+    comments: number
+    shares: number
+  }
+}
 
 export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm/6 text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-[family-name:var(--font-geist-mono)] font-semibold">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  const router = useRouter()
+  const [duplicatingProject, setDuplicatingProject] = useState<Project | null>(null)
+  const [projects, setProjects] = useState<Project[]>([
+    {
+      id: '1',
+      title: '14500-36 Revision 1 Innen',
+      subtitle: 'Updated an hour ago',
+      image: '/interior-design-bedroom.jpg',
+      updatedAt: 'an hour ago',
+      isNew: false,
+      stats: { likes: 0, comments: 0, shares: 4 }
+    },
+    {
+      id: '2',
+      title: '18540-02 Revision 1',
+      subtitle: 'Updated 3 hours ago',
+      image: '/modern-house-exterior.jpg',
+      updatedAt: '3 hours ago',
+      isNew: true,
+      stats: { likes: 0, comments: 0, shares: 2 }
+    },
+    {
+      id: '3',
+      title: '18540-02b Revision 0 Internal',
+      subtitle: 'Updated 7 hours ago',
+      image: '/interior-office-space.jpg',
+      updatedAt: '7 hours ago',
+      isNew: false,
+      stats: { likes: 0, comments: 0, shares: 3 }
+    },
+    {
+      id: '4',
+      title: '18230-01a Revision 1 Internal',
+      subtitle: 'Updated 7 hours ago',
+      image: '/exterior-modern-building.jpg',
+      updatedAt: '7 hours ago',
+      isNew: true,
+      stats: { likes: 0, comments: 0, shares: 5 }
+    },
+    {
+      id: '5',
+      title: '18230-01b Revision 1 Internal',
+      subtitle: 'Updated 7 hours ago',
+      image: '/living-room-interior.jpg',
+      updatedAt: '7 hours ago',
+      isNew: true,
+      stats: { likes: 0, comments: 0, shares: 13 }
+    },
+    {
+      id: '6',
+      title: '17880-02b Pre-Renderings WHG1',
+      subtitle: 'Updated 13 hours ago',
+      image: '/glass-doors-patio.jpg',
+      updatedAt: '13 hours ago',
+      isNew: true,
+      stats: { likes: 0, comments: 3, shares: 10 }
+    },
+    {
+      id: '7',
+      title: '17880-02b Pre-Renderings WHG5',
+      subtitle: 'Updated 13 hours ago',
+      image: '/outdoor-living-space.jpg',
+      updatedAt: '13 hours ago',
+      isNew: true,
+      stats: { likes: 0, comments: 7, shares: 9 }
+    },
+    {
+      id: '8',
+      title: '17880-02a Pre-Renderings',
+      subtitle: 'Updated 13 hours ago',
+      image: '/red-building-design.jpg',
+      updatedAt: '13 hours ago',
+      isNew: true,
+      stats: { likes: 0, comments: 5, shares: 12 }
+    },
+    {
+      id: '9',
+      title: '11890-44 Revision 0 Internal',
+      subtitle: 'Updated 18 hours ago',
+      image: '/house-exterior-modern.jpg',
+      updatedAt: '18 hours ago',
+      isNew: true,
+      stats: { likes: 0, comments: 3, shares: 3 }
+    },
+    {
+      id: '10',
+      title: '18540-02 Revision 1',
+      subtitle: 'Updated 19 hours ago',
+      image: '/building-exterior-view.jpg',
+      updatedAt: '19 hours ago',
+      isNew: true,
+      stats: { likes: 0, comments: 0, shares: 2 }
+    },
+  ])
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+  const handleDuplicateFolder = (project: Project) => {
+    setDuplicatingProject(project)
+  }
+
+  const handleOpenFolder = (project: Project) => {
+    // Navigate to project page with project ID and name
+    const encodedTitle = encodeURIComponent(project.title)
+    router.push(`/project/${project.id}?name=${encodedTitle}`)
+  }
+  const hanldDeleteFolder = (projectId: string) => {
+    setProjects(projects.filter(project => project.id !== projectId))
+  }
+
+  return (
+    <div className="flex h-screen bg-background">
+      <Sidebar />
+      <main className="flex-1 overflow-auto">
+        <div className="p-8">
+          <div className="mb-8 flex items-center justify-between">
+            <div>
+              <h1 className="text-4xl font-bold text-foreground mb-2">Projects</h1>
+              <p className="text-muted-foreground">Manage and organize your architectural projects</p>
+            </div>
+            <button className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity">
+              <FolderPlus size={20} />
+              New Project
+            </button>
+          </div>
+
+          <ProjectGrid 
+            projects={projects}
+            onDuplicate={handleDuplicateFolder}
+            onOpen={handleOpenFolder}
+            onDelete={hanldDeleteFolder}
+          />
         </div>
       </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+
+      {duplicatingProject && (
+        <ProjectDuplicator
+          projectId={duplicatingProject.id}
+          projectName={duplicatingProject.title}
+          createdBy="user-id-placeholder"
+          isOpen={!!duplicatingProject}
+          onOpenChange={(open) => !open && setDuplicatingProject(null)}
+          onSuccess={(newId) => {
+            console.log('Duplicated project:', newId)
+            // In a real app, we would refresh the project list here
+            setDuplicatingProject(null)
+          }}
+        />
+      )}
     </div>
-  );
+  )
 }
+ 
