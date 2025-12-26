@@ -1,12 +1,15 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import Sidebar from '@/components/sidebar'
 import ProjectGrid from '@/components/project-grid'
 import ProjectDuplicator from '@/components/project-duplicator'
+import CreateProjectModal from '@/components/create-project-modal'
+import { getProjects, deleteProject } from '@/app/actions/projects'
 import { Folder, FolderPlus } from 'lucide-react'
+import { formatDistanceToNow } from 'date-fns'
 
 interface Project {
   id: string
@@ -25,98 +28,37 @@ interface Project {
 export default function Home() {
   const router = useRouter()
   const [duplicatingProject, setDuplicatingProject] = useState<Project | null>(null)
-  const [projects, setProjects] = useState<Project[]>([
-    {
-      id: '1',
-      title: '14500-36 Revision 1 Innen',
-      subtitle: 'Updated an hour ago',
-      image: '/interior-design-bedroom.jpg',
-      updatedAt: 'an hour ago',
-      isNew: false,
-      stats: { likes: 0, comments: 0, shares: 4 }
-    },
-    {
-      id: '2',
-      title: '18540-02 Revision 1',
-      subtitle: 'Updated 3 hours ago',
-      image: '/modern-house-exterior.jpg',
-      updatedAt: '3 hours ago',
-      isNew: true,
-      stats: { likes: 0, comments: 0, shares: 2 }
-    },
-    {
-      id: '3',
-      title: '18540-02b Revision 0 Internal',
-      subtitle: 'Updated 7 hours ago',
-      image: '/interior-office-space.jpg',
-      updatedAt: '7 hours ago',
-      isNew: false,
-      stats: { likes: 0, comments: 0, shares: 3 }
-    },
-    {
-      id: '4',
-      title: '18230-01a Revision 1 Internal',
-      subtitle: 'Updated 7 hours ago',
-      image: '/exterior-modern-building.jpg',
-      updatedAt: '7 hours ago',
-      isNew: true,
-      stats: { likes: 0, comments: 0, shares: 5 }
-    },
-    {
-      id: '5',
-      title: '18230-01b Revision 1 Internal',
-      subtitle: 'Updated 7 hours ago',
-      image: '/living-room-interior.jpg',
-      updatedAt: '7 hours ago',
-      isNew: true,
-      stats: { likes: 0, comments: 0, shares: 13 }
-    },
-    {
-      id: '6',
-      title: '17880-02b Pre-Renderings WHG1',
-      subtitle: 'Updated 13 hours ago',
-      image: '/glass-doors-patio.jpg',
-      updatedAt: '13 hours ago',
-      isNew: true,
-      stats: { likes: 0, comments: 3, shares: 10 }
-    },
-    {
-      id: '7',
-      title: '17880-02b Pre-Renderings WHG5',
-      subtitle: 'Updated 13 hours ago',
-      image: '/outdoor-living-space.jpg',
-      updatedAt: '13 hours ago',
-      isNew: true,
-      stats: { likes: 0, comments: 7, shares: 9 }
-    },
-    {
-      id: '8',
-      title: '17880-02a Pre-Renderings',
-      subtitle: 'Updated 13 hours ago',
-      image: '/red-building-design.jpg',
-      updatedAt: '13 hours ago',
-      isNew: true,
-      stats: { likes: 0, comments: 5, shares: 12 }
-    },
-    {
-      id: '9',
-      title: '11890-44 Revision 0 Internal',
-      subtitle: 'Updated 18 hours ago',
-      image: '/house-exterior-modern.jpg',
-      updatedAt: '18 hours ago',
-      isNew: true,
-      stats: { likes: 0, comments: 3, shares: 3 }
-    },
-    {
-      id: '10',
-      title: '18540-02 Revision 1',
-      subtitle: 'Updated 19 hours ago',
-      image: '/building-exterior-view.jpg',
-      updatedAt: '19 hours ago',
-      isNew: true,
-      stats: { likes: 0, comments: 0, shares: 2 }
-    },
-  ])
+  const [projects, setProjects] = useState<Project[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+
+  const fetchProjects = async () => {
+    setIsLoading(true)
+    try {
+      const data = await getProjects()
+      const mappedProjects: Project[] = data.map((p: any) => ({
+        id: p.id,
+        title: p.project_name,
+        subtitle: p.updated_at ? `Updated ${formatDistanceToNow(new Date(p.updated_at))} ago` : 'Recently updated',
+        image: p.markup_url || '/placeholder.svg',
+        updatedAt: p.updated_at ? formatDistanceToNow(new Date(p.updated_at)) + ' ago' : 'Just now',
+        isNew: false, // Logic for isNew can be added later
+        stats: { 
+          likes: 0, 
+          comments: p.total_threads || 0, 
+          shares: 0 
+        }
+      }))
+      setProjects(mappedProjects)
+    } catch (error) {
+      console.error('Failed to fetch projects', error)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchProjects()
+  }, [])
 
   const handleDuplicateFolder = (project: Project) => {
     setDuplicatingProject(project)
@@ -127,8 +69,15 @@ export default function Home() {
     const encodedTitle = encodeURIComponent(project.title)
     router.push(`/project/${project.id}?name=${encodedTitle}`)
   }
-  const hanldDeleteFolder = (projectId: string) => {
-    setProjects(projects.filter(project => project.id !== projectId))
+  const hanldDeleteFolder = async (projectId: string) => {
+    if (confirm('Are you sure you want to delete this project?')) {
+      const result = await deleteProject(projectId)
+      if (result.success) {
+        fetchProjects()
+      } else {
+        alert('Failed to delete project')
+      }
+    }
   }
 
   return (
@@ -141,18 +90,26 @@ export default function Home() {
               <h1 className="text-4xl font-bold text-foreground mb-2">Projects</h1>
               <p className="text-muted-foreground">Manage and organize your architectural projects</p>
             </div>
-            <button className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity">
-              <FolderPlus size={20} />
-              New Project
-            </button>
+            <CreateProjectModal onProjectCreated={fetchProjects} />
           </div>
 
-          <ProjectGrid 
-            projects={projects}
-            onDuplicate={handleDuplicateFolder}
-            onOpen={handleOpenFolder}
-            onDelete={hanldDeleteFolder}
-          />
+          {isLoading ? (
+            <div className="flex items-center justify-center h-64">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+            </div>
+          ) : projects.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
+              <Folder size={48} className="mb-4 opacity-50" />
+              <p>No projects found. Create one to get started!</p>
+            </div>
+          ) : (
+            <ProjectGrid 
+              projects={projects}
+              onDuplicate={handleDuplicateFolder}
+              onOpen={handleOpenFolder}
+              onDelete={hanldDeleteFolder}
+            />
+          )}
         </div>
       </main>
 
@@ -165,8 +122,8 @@ export default function Home() {
           onOpenChange={(open) => !open && setDuplicatingProject(null)}
           onSuccess={(newId) => {
             console.log('Duplicated project:', newId)
-            // In a real app, we would refresh the project list here
             setDuplicatingProject(null)
+            fetchProjects()
           }}
         />
       )}
