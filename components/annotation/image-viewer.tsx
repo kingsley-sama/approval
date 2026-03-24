@@ -2,10 +2,9 @@
 
 import { useRef, useState, useEffect } from 'react';
 import { Maximize2, Minimize2, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
-import { url } from 'inspector';
 import Image from 'next/image';
 import dynamic from 'next/dynamic';
-import DrawingToolbar from '@/components/drawing-toolbar';
+import DrawingToolbar, { DRAWING_COLOR, STROKE_WIDTH } from '@/components/drawing-toolbar';
 import { DrawingTool, Shape } from '@/types/drawing';
 
 // Dynamic import for DrawingCanvas to avoid SSR issues with Konva
@@ -14,27 +13,36 @@ const DrawingCanvas = dynamic(() => import('@/components/drawing-canvas'), {
 });
 
 interface Pin {
-  id: number;
+  id: string;
+  number: number;
   x: number;
   y: number;
-  comment: string;
+  content: string;
   author: string;
   timestamp: string;
-  isNew?: boolean;
+  status: 'active' | 'resolved';
 }
 
 interface ImageViewerProps {
   pins: Pin[];
-  selectedPin: number | null;
-  onPinClick: (x: number, y: number, pinId?: number) => void;
+  selectedPin: string | null;
+  onPinClick: (x: number, y: number, pinId?: string) => void;
   isFullscreen: boolean;
   onToggleFullscreen: () => void;
-  hoveredPin: number | null;
-  onPinHover: (pinId: number | null) => void;
+  hoveredPin: string | null;
+  onPinHover: (pinId: string | null) => void;
   currentImageIndex: number;
   totalImages: number;
   onNavigate: (direction: 'prev' | 'next') => void;
   currentImageUrl: string;
+  /** All committed drawing shapes (from saved comments). */
+  drawnShapes: Shape[];
+  /** Shape just drawn, awaiting comment confirmation. */
+  pendingShape: Shape | null;
+  /** Called after the user finishes drawing; parent opens comment modal then either keeps or discards the shape. */
+  onShapeComplete: (shape: Shape, center: { x: number; y: number }) => void;
+  /** Whether the drawing toolbar is visible. Defaults to true. */
+  showDrawingTools?: boolean;
 }
 
 type ZoomMode = 'fit-window' | 'fit-horizontal' | number;
@@ -51,6 +59,10 @@ export default function ImageViewer({
   totalImages,
   onNavigate,
   currentImageUrl,
+  drawnShapes,
+  pendingShape,
+  onShapeComplete,
+  showDrawingTools = true,
 }: ImageViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
@@ -58,31 +70,45 @@ export default function ImageViewer({
   const [zoom, setZoom] = useState<ZoomMode>('fit-window');
   const [showZoomMenu, setShowZoomMenu] = useState(false);
 
-  // Drawing state
-  const [drawingEnabled, setDrawingEnabled] = useState(false);
-  const [currentTool, setCurrentTool] = useState<DrawingTool>('pen');
-  const [currentColor, setCurrentColor] = useState('#ef4444'); // red-500
-  const [strokeWidth, setStrokeWidth] = useState(3);
+  // Drawing state — single active tool; null means pin/comment mode
+  const [activeTool, setActiveTool] = useState<DrawingTool | null>(null);
   const [renderedDimensions, setRenderedDimensions] = useState({ width: 0, height: 0 });
-  const [shapes, setShapes] = useState<Shape[]>([]);
+
+  /** Compute the center of a completed shape in percentage coordinates. */
+  const getShapeCenter = (shape: Shape, rw: number, rh: number) => {
+    let px = 0, py = 0;
+    if (shape.type === 'pen') {
+      const xs = shape.points.filter((_, i) => i % 2 === 0);
+      const ys = shape.points.filter((_, i) => i % 2 === 1);
+      px = xs.reduce((a, b) => a + b, 0) / xs.length;
+      py = ys.reduce((a, b) => a + b, 0) / ys.length;
+    } else if (shape.type === 'rectangle' || shape.type === 'highlight') {
+      px = shape.x + shape.width / 2;
+      py = shape.y + shape.height / 2;
+    } else if (shape.type === 'arrow') {
+      px = (shape.points[0] + shape.points[2]) / 2;
+      py = (shape.points[1] + shape.points[3]) / 2;
+    }
+    return { x: (px / rw) * 100, y: (py / rh) * 100 };
+  };
 
   useEffect(() => {
+    // Reset to defaults when image changes so we don't flash stale dimensions
+    setImageDimensions({ width: 1600, height: 1600 });
     const img = imageRef.current;
-    if (img && img.complete) {
+    if (!img) return;
+
+    if (img.complete && img.naturalWidth) {
       setImageDimensions({ width: img.naturalWidth, height: img.naturalHeight });
     }
 
     const handleLoad = () => {
-      if (img) {
-        setImageDimensions({ width: img.naturalWidth, height: img.naturalHeight });
-      }
+      setImageDimensions({ width: img.naturalWidth, height: img.naturalHeight });
     };
 
-    if (img) {
-      img.addEventListener('load', handleLoad);
-      return () => img.removeEventListener('load', handleLoad);
-    }
-  }, []);
+    img.addEventListener('load', handleLoad);
+    return () => img.removeEventListener('load', handleLoad);
+  }, [currentImageUrl]);
 
   // Track rendered dimensions for drawing overlay
   useEffect(() => {
@@ -107,7 +133,7 @@ export default function ImageViewer({
   }, [zoom, isFullscreen, currentImageUrl, imageDimensions]);
 
   const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (drawingEnabled) return; // Disable pin creation when drawing
+    if (activeTool !== null) return; // drawing mode — don't place pins
     if (!imageRef.current || !containerRef.current) return;
     
     const target = e.target as HTMLElement;
@@ -166,21 +192,61 @@ export default function ImageViewer({
   return (
     <div 
       ref={containerRef}
-      className={`flex-1 relative overflow-auto transition-colors ${'bg-gray-100'}`} 
+      className={`flex-1 relative overflow-auto transition-colors ${isFullscreen ? 'bg-black' : 'bg-gray-100'}`}
     >
-      {/* Drawing Toolbar */}
-      <div className="sticky top-4 left-0 right-0 flex justify-center z-30 pointer-events-none">
-        <div className="pointer-events-auto shadow-md rounded-lg overflow-hidden bg-white">
-          <DrawingToolbar 
-            currentTool={currentTool}
-            currentColor={currentColor}
-            strokeWidth={strokeWidth}
-            isEnabled={drawingEnabled}
-            onToolChange={setCurrentTool}
-            onColorChange={setCurrentColor}
-            onStrokeWidthChange={setStrokeWidth}
-            onToggleDrawing={() => setDrawingEnabled(!drawingEnabled)}
-          />
+      {/* Top bar: drawing toolbar (center) + zoom/fullscreen controls (right) */}
+      <div className="sticky top-4 left-0 right-0 flex items-center justify-center z-30 pointer-events-none px-4">
+        {/* Spacer left — same width as the right controls so toolbar stays truly centered */}
+        <div className="flex-1" />
+        {showDrawingTools ? (
+          <div className="pointer-events-auto shadow-lg rounded-lg overflow-hidden">
+            <DrawingToolbar
+              activeTool={activeTool}
+              onToolSelect={setActiveTool}
+            />
+          </div>
+        ) : (
+          <div />
+        )}
+        <div className="flex-1 flex justify-end">
+          <div className="pointer-events-auto flex items-center gap-2">
+            <div className="relative">
+              <button
+                onClick={() => setShowZoomMenu(!showZoomMenu)}
+                className="px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-medium transition-colors bg-gray-900/80 hover:bg-gray-900 text-white backdrop-blur-sm shadow-lg"
+              >
+                {getZoomLabel()}
+                <ChevronDown size={16} />
+              </button>
+              {showZoomMenu && (
+                <div
+                  onClick={(e) => e.stopPropagation()}
+                  className="absolute top-full right-0 mt-1 w-48 rounded-lg shadow-xl z-20 bg-gray-900 border border-gray-700"
+                >
+                  {zoomOptions.map((option) => (
+                    <button
+                      key={option.label}
+                      onClick={() => { setZoom(option.value); setShowZoomMenu(false); }}
+                      className={`w-full px-4 py-2 text-left text-sm transition-colors ${
+                        zoom === option.value
+                          ? 'bg-blue-600 text-white'
+                          : 'text-gray-200 hover:bg-gray-800'
+                      }`}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <button
+              onClick={onToggleFullscreen}
+              className="p-2 rounded-lg transition-colors bg-gray-900/80 hover:bg-gray-900 text-white backdrop-blur-sm shadow-lg"
+              title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+            >
+              {isFullscreen ? <Minimize2 size={20} /> : <Maximize2 size={20} />}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -195,35 +261,40 @@ export default function ImageViewer({
             height={imageDimensions.height}
             alt="Annotation image"
             className="block"
-            style={{ ...getImageStyle(), cursor: "url(/sample_cursors/cursor.svg), auto" }}
+            style={{ ...getImageStyle(), cursor: activeTool ? 'crosshair' : "url(/sample_cursors/cursor.svg), auto" }}
             crossOrigin="anonymous"
 
           />
           
-          {/* Drawing Canvas Overlay */}
+          {/* Drawing Canvas Overlay — sized to match the rendered image exactly */}
           {renderedDimensions.width > 0 && (
              <div 
                style={{
                  position: 'absolute',
                  top: 0,
                  left: 0,
-                 width: imageDimensions.width,
-                 height: imageDimensions.height,
-                 transform: `scale(${renderedDimensions.width / imageDimensions.width})`,
-                 transformOrigin: 'top left',
-                 pointerEvents: drawingEnabled ? 'auto' : 'none',
+                 width: `${renderedDimensions.width}px`,
+                 height: `${renderedDimensions.height}px`,
+                 pointerEvents: activeTool !== null ? 'auto' : 'none',
                  zIndex: 10
                }}
              >
                <DrawingCanvas
-                 imageWidth={imageDimensions.width}
-                 imageHeight={imageDimensions.height}
-                 currentTool={currentTool}
-                 currentColor={currentColor}
-                 strokeWidth={strokeWidth}
-                 isEnabled={drawingEnabled}
-                 initialShapes={shapes}
-                 onShapesChange={setShapes}
+                 imageWidth={renderedDimensions.width}
+                 imageHeight={renderedDimensions.height}
+                 shapes={[
+                   ...drawnShapes,
+                   ...(pendingShape ? [pendingShape] : []),
+                 ]}
+                 currentTool={activeTool ?? 'pen'}
+                 currentColor={DRAWING_COLOR}
+                 strokeWidth={STROKE_WIDTH}
+                 isEnabled={activeTool !== null}
+                 onShapeComplete={(shape) => {
+                   const center = getShapeCenter(shape, renderedDimensions.width, renderedDimensions.height);
+                   onShapeComplete(shape, center);
+                   setActiveTool(null); // return to pin mode after drawing
+                 }}
                />
              </div>
           )}
@@ -246,19 +317,21 @@ export default function ImageViewer({
             >
               <div
                 className={`flex items-center justify-center w-8 h-8 rounded-full text-white text-sm font-semibold transition-all ${
-                  selectedPin === pin.id
+                  pin.status === 'resolved'
+                    ? 'bg-green-600 opacity-70'
+                    : selectedPin === pin.id
                     ? 'bg-blue-700 ring-2 ring-blue-300 scale-110 shadow-lg'
                     : hoveredPin === pin.id
                     ? 'bg-blue-700 scale-110 shadow-lg'
                     : 'bg-blue-600 hover:bg-blue-700'
                 }`}
               >
-                {pin.id}
+                {pin.number}
               </div>
               
-              {hoveredPin === pin.id && pin.comment && (
+              {hoveredPin === pin.id && pin.content && (
                 <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 bg-gray-900 text-white text-xs rounded px-2 py-1 whitespace-nowrap shadow-lg pointer-events-none z-10">
-                  {pin.comment}
+                  {pin.content}
                 </div>
               )}
             </div>
@@ -300,59 +373,6 @@ export default function ImageViewer({
         </div>
       )}
 
-      <div className={`fixed top-4 right-4 flex items-center gap-2 z-10`}>
-        <div className="relative">
-          <button
-            onClick={() => setShowZoomMenu(!showZoomMenu)}
-            className={`px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-medium transition-colors ${
-              isFullscreen
-                ? 'bg-white/10 hover:bg-white/20 text-white'
-                : 'bg-white hover:bg-gray-100 text-gray-700 border border-gray-300'
-            }`}
-          >
-            {getZoomLabel()}
-            <ChevronDown size={16} />
-          </button>
-
-          {showZoomMenu && (
-            <div 
-              onClick={(e) => e.stopPropagation()}
-              className={`absolute top-full right-0 mt-1 w-48 rounded-lg shadow-lg z-20 ${
-                isFullscreen ? 'bg-gray-900 border border-gray-700' : 'bg-white border border-gray-300'
-              }`}
-            >
-              {zoomOptions.map((option) => (
-                <button
-                  key={option.label}
-                  onClick={() => {
-                    setZoom(option.value);
-                    setShowZoomMenu(false);
-                  }}
-                  className={`w-full px-4 py-2 text-left text-sm transition-colors ${
-                    zoom === option.value
-                      ? isFullscreen ? 'bg-blue-600 text-white' : 'bg-blue-100 text-blue-700'
-                      : isFullscreen ? 'text-white hover:bg-gray-800' : 'text-gray-700 hover:bg-gray-100'
-                  }`}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-
-        <button
-          onClick={onToggleFullscreen}
-          className={`p-2 rounded-lg transition-colors ${
-            isFullscreen
-              ? 'bg-white/10 hover:bg-white/20 text-white'
-              : 'bg-white hover:bg-gray-100 text-gray-700 border border-gray-300'
-          }`}
-          title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
-        >
-          {isFullscreen ? <Minimize2 size={20} /> : <Maximize2 size={20} />}
-        </button>
-      </div>
     </div>
   );
 }

@@ -1,0 +1,338 @@
+{
+  "name": "Annotation App Design System",
+  "version": "1.0.0",
+  "description": "Design system for annotation and image collaboration application",
+  "tokens": {
+    "colors": {
+      "brand": {
+        "primary": {
+          "value": "#ff6137",
+          "description": "Primary brand color for CTAs and important actions"
+        },
+        "primaryLight": {
+          "value": "#dfd3e833",
+          "description": "Light variant of primary color"
+        },
+        "secondary": {
+          "value": "#ffa67c",
+          "description": "Secondary orange accent color"
+        }
+      },
+      "semantic": {
+        "textDark": {
+          "value": "#0c3133",
+          "description": "Primary text color"
+        },
+        "paragraphText": {
+          "value": "#565969",
+          "description": "Body text and paragraphs"
+        },
+        "destructive": {
+          "value": "#f05d5e",
+          "description": "Error states and destructive actions"
+        },
+        "success": {
+          "value": "#649256",
+          "description": "Success states and positive feedback"
+        }
+      },
+      "neutrals": {
+        "white": {
+          "value": "#ffffff",
+          "description": "Pure white"
+        },
+        "snow": {
+          "value": "#fffbf0",
+          "description": "Off-white warm background"
+        },
+        "lightGray": {
+          "value": "#f9f9fa",
+          "description": "Light gray for subtle backgrounds"
+        },
+        "gray": {
+          "value": "#e9e9e9",
+          "description": "Medium gray for borders and dividers"
+        },
+        "darkGray": {
+          "value": "#a2a3a7",
+          "description": "Dark gray for disabled states"
+        },
+        "darkGray50": {
+          "value": "#afafaf80",
+          "description": "Semi-transparent dark gray"
+        },
+        "dropdownText": {
+          "value": "#999999",
+          "description": "Placeholder and secondary text"
+        }
+      },
+      "blues": {
+        "midnightBlue": {
+          "value": "#012e64",
+          "description": "Primary dark blue for headers and emphasis"
+        },
+        "midnightBlue2": {
+          "value": "#022e64",
+          "description": "Alternative midnight blue shade"
+        },
+        "steelBlue": {
+          "value": "#4c87a2",
+          "description": "Medium blue for interactive elements"
+        },
+        "steelBlue2": {
+          "value": "#013e60",
+          "description": "Dark steel blue for dark mode cards"
+        },
+        "blueLight": {
+          "value": "#012e6466",
+          "description": "Transparent blue overlay"
+        }
+      },
+      "greens": {
+        "darkGreen": {
+          "value": "#10393b",
+          "description": "Dark teal green"
+        },
+        "lightGreen": {
+          "value": "#16474a",
+          "description": "Medium teal green"
+        }
+      },
+      "transparent": {
+        "bgTransparent": {
+          "value": "transparent",
+          "description": "Transparent background"
+        },
+        "pinkTransparent": {
+          "value": "#fbf0f07d",
+          "description": "Semi-transparent pink"
+        },
+        "greyTransparent": {
+          "value": "#afafaf80",
+          "description": "Semi-transparent grey"
+        },
+        "greyTransparentLight": {
+          "value": "#a3afafc2e",
+          "description": "Light semi-transparent grey"
+        }
+      }
+    },
+    "spacing": {
+      "xs": {
+        "value": "0.25rem",
+        "description": "4px"
+      },
+      "sm": {
+        "value": "0.5rem",
+        "description": "8px"
+      },
+      "md": {
+        "value": "1rem",
+        "description": "16px"
+      },
+      "lg": {
+        "value": "1.5rem",
+        "description": "24px"
+      },
+      "xl": {
+        "value": "2rem",
+        "description": "32px"
+      },
+      "2xl": {
+        "value": "3rem",
+        "description": "48px"
+      }
+    },
+    "borderRadius": {
+      "base": {
+        "value": "0.625rem",
+        "description": "10px - Default border radius"
+      },
+      "sm": {
+        "value": "0.375rem",
+        "description": "6px - Small border radius"
+      },
+      "md": {
+        "value": "0.4375rem",
+        "description": "8px - Medium border radius"
+      },
+      "lg": {
+        "value": "0.625rem",
+        "description": "10px - Large border radius"
+      },
+      "xl": {
+        "value": "0.875rem",
+        "description": "14px - Extra large border radius"
+      },
+      "full": {
+        "value": "9999px",
+        "description": "Full rounded"
+      }
+    },
+    "typography": {
+      "fontFamily": {
+        "sans": {
+          "value": "Geist, Geist Fallback, system-ui, sans-serif",
+          "description": "Primary sans-serif font"
+        },
+        "mono": {
+          "value": "Geist Mono, Geist Mono Fallback, monospace",
+          "description": "Monospace font for code"
+        }
+      },
+      "fontSize": {
+        "xs": {
+          "value": "0.75rem",
+          "description": "12px"
+        },
+        "sm": {
+          "value": "0.875rem",
+          "description": "14px"
+        },
+        "base": {
+          "value": "1rem",
+          "description": "16px"
+        },
+        "lg": {
+          "value": "1.125rem",
+          "description": "18px"
+        },
+        "xl": {
+          "value": "1.25rem",
+          "description": "20px"
+        },
+        "2xl": {
+          "value": "1.5rem",
+          "description": "24px"
+        },
+        "3xl": {
+          "value": "1.875rem",
+          "description": "30px"
+        },
+        "4xl": {
+          "value": "2.25rem",
+          "description": "36px"
+        }
+      }
+    }
+  },
+  "themes": {
+    "light": {
+      "background": "#ffffff",
+      "foreground": "#0c3133",
+      "card": "#ffffff",
+      "cardForeground": "#0c3133",
+      "popover": "#ffffff",
+      "popoverForeground": "#0c3133",
+      "primary": "#012e64",
+      "primaryForeground": "#ffffff",
+      "secondary": "#ffa67c",
+      "secondaryForeground": "#0c3133",
+      "muted": "#f9f9fa",
+      "mutedForeground": "#565969",
+      "accent": "#ff6137",
+      "accentForeground": "#ffffff",
+      "destructive": "#f05d5e",
+      "destructiveForeground": "#ffffff",
+      "border": "#e9e9e9",
+      "input": "#f9f9fa",
+      "ring": "#012e64",
+      "chart1": "#012e64",
+      "chart2": "#ff6137",
+      "chart3": "#4c87a2",
+      "chart4": "#10393b",
+      "chart5": "#ffa67c"
+    },
+    "dark": {
+      "background": "#012e64",
+      "foreground": "#fdfdf9f1",
+      "card": "#013e60",
+      "cardForeground": "#fdfdf9f1",
+      "popover": "#013e60",
+      "popoverForeground": "#fdfdf9f1",
+      "primary": "#022e64",
+      "primaryForeground": "#ffffff",
+      "secondary": "#ffa67c",
+      "secondaryForeground": "#012e64",
+      "muted": "#afafaf80",
+      "mutedForeground": "#a2a3a7",
+      "accent": "#ff6137",
+      "accentForeground": "#ffffff",
+      "destructive": "#f05d5e",
+      "destructiveForeground": "#ffffff",
+      "border": "#afafaf80",
+      "input": "#013e60",
+      "ring": "#022e64",
+      "chart1": "#022e64",
+      "chart2": "#ff6137",
+      "chart3": "#ffa67c",
+      "chart4": "#16474a",
+      "chart5": "#649256"
+    }
+  },
+  "components": {
+    "button": {
+      "variants": {
+        "default": {
+          "background": "primary",
+          "foreground": "primaryForeground",
+          "hover": "primary/90"
+        },
+        "destructive": {
+          "background": "destructive",
+          "foreground": "destructiveForeground",
+          "hover": "destructive/90"
+        },
+        "outline": {
+          "border": "border",
+          "background": "background",
+          "hover": "accent/10"
+        },
+        "secondary": {
+          "background": "secondary",
+          "foreground": "secondaryForeground",
+          "hover": "secondary/80"
+        },
+        "ghost": {
+          "background": "transparent",
+          "hover": "accent/10"
+        }
+      },
+      "sizes": {
+        "default": {
+          "height": "2.5rem",
+          "padding": "0.5rem 1rem"
+        },
+        "sm": {
+          "height": "2rem",
+          "padding": "0.25rem 0.75rem"
+        },
+        "lg": {
+          "height": "3rem",
+          "padding": "0.5rem 2rem"
+        }
+      }
+    },
+    "card": {
+      "background": "card",
+      "foreground": "cardForeground",
+      "border": "border",
+      "borderRadius": "lg"
+    },
+    "input": {
+      "background": "input",
+      "foreground": "foreground",
+      "border": "border",
+      "borderRadius": "md",
+      "ring": "ring"
+    }
+  },
+  "metadata": {
+    "framework": "Next.js",
+    "uiLibrary": "shadcn/ui",
+    "cssFramework": "Tailwind CSS",
+    "themeProvider": "next-themes",
+    "style": "new-york",
+    "baseColor": "neutral"
+  }
+}

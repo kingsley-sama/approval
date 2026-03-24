@@ -5,7 +5,7 @@
 
 'use server';
 
-import { supabase } from '@/lib/supabase';
+import { supabaseAdmin as supabase } from '@/lib/supabase';
 import { z } from 'zod';
 
 // Validation schema for duplication request

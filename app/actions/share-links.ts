@@ -5,7 +5,7 @@
 
 'use server';
 
-import { supabase } from '@/lib/supabase';
+import { supabaseAdmin as supabase } from '@/lib/supabase';
 import { z } from 'zod';
 import { nanoid } from 'nanoid';
 
@@ -142,58 +142,61 @@ export async function createShareLink(
 }
 
 /**
- * Validates a share token and returns link details
+ * Validates a share token and returns link details.
+ * Performs all checks with direct queries — no database RPCs required.
  */
 export async function validateShareToken(
   token: string
 ): Promise<{ success: boolean; shareLink?: ShareLink; error?: string }> {
   try {
-    // Use database function to check validity
-    const { data: isValid, error: validError } = await supabase
-      .rpc('is_share_link_valid', { p_token: token });
-
-    if (validError || !isValid) {
-      return {
-        success: false,
-        error: 'Invalid or expired share link',
-      };
-    }
-
-    // Get full share link details
-    const { data, error } = await supabase
+    const { data, error } = await (supabase as any)
       .from('share_links')
       .select('*')
       .eq('token', token)
       .single();
 
     if (error || !data) {
-      return {
-        success: false,
-        error: 'Share link not found',
-      };
+      return { success: false, error: 'Share link not found' };
     }
 
-    // Increment access count
-    await supabase.rpc('increment_share_link_access', { p_token: token });
+    const row = data as any;
+
+    // Check active status
+    if (!row.is_active) {
+      return { success: false, error: 'This share link has been revoked' };
+    }
+
+    // Check expiry
+    if (row.expires_at && new Date(row.expires_at) < new Date()) {
+      return { success: false, error: 'This share link has expired' };
+    }
+
+    // Increment access count (fire-and-forget — don't block on failure)
+    (supabase as any)
+      .from('share_links')
+      .update({
+        access_count: (row.access_count ?? 0) + 1,
+        last_accessed_at: new Date().toISOString(),
+      })
+      .eq('token', token)
+      .then(() => {/* ignore */})
+      .catch(() => {/* ignore */});
 
     const shareLink: ShareLink = {
-      id: data.id,
-      token: data.token,
-      resourceType: data.resource_type,
-      resourceId: data.resource_id,
-      permissions: data.permissions,
-      createdBy: data.created_by,
-      createdAt: data.created_at,
-      expiresAt: data.expires_at,
-      isActive: data.is_active,
-      accessCount: data.access_count,
-      lastAccessedAt: data.last_accessed_at,
+      id: String(row.id),
+      token: row.token,
+      resourceType: row.resource_type,
+      resourceId: row.resource_id,
+      permissions: row.permissions,
+      createdBy: row.created_by,
+      createdAt: row.created_at,
+      expiresAt: row.expires_at,
+      isActive: row.is_active,
+      accessCount: row.access_count ?? 0,
+      lastAccessedAt: row.last_accessed_at,
     };
 
-    return {
-      success: true,
-      shareLink,
-    };
+    return { success: true, shareLink };
   } catch (error) {
     console.error('Unexpected error validating token:', error);
     return {
@@ -232,6 +235,92 @@ export async function revokeShareLink(
     };
   }
 }
+
+// ─── Guest Dashboard ─────────────────────────────────────────────────────────
+
+export interface SharedProjectSummary {
+  token: string;
+  projectName: string;
+  thumbnailUrl: string | null;
+  permissions: SharePermission;
+  resourceType: ShareResourceType;
+  resourceId: string;
+}
+
+/**
+ * Given a list of tokens (from localStorage), returns project summaries for
+ * each valid, active, non-expired share link — used by the guest dashboard.
+ */
+export async function getSharedProjectSummaries(
+  tokens: string[]
+): Promise<SharedProjectSummary[]> {
+  if (!tokens.length) return [];
+
+  const results = await Promise.all(
+    tokens.map(async (token): Promise<SharedProjectSummary | null> => {
+      try {
+        const { data, error } = await (supabase as any)
+          .from('share_links')
+          .select('*')
+          .eq('token', token)
+          .eq('is_active', true)
+          .single();
+
+        if (error || !data) return null;
+        const row = data as any;
+        if (row.expires_at && new Date(row.expires_at) < new Date()) return null;
+
+        let projectName = 'Shared Project';
+        let thumbnailUrl: string | null = null;
+
+        if (row.resource_type === 'project') {
+          const { data: project } = await supabase
+            .from('markup_projects')
+            .select('project_name, markup_url, markup_threads(image_path, created_at)')
+            .eq('id', row.resource_id)
+            .single();
+
+          if (project) {
+            projectName = (project as any).project_name;
+            const threads: any[] = ((project as any).markup_threads || []).sort(
+              (a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+            );
+            thumbnailUrl = threads[0]?.image_path || (project as any).markup_url || null;
+          }
+        } else {
+          const { data: thread } = await supabase
+            .from('markup_threads')
+            .select('*, markup_projects(project_name)')
+            .eq('id', row.resource_id)
+            .single();
+
+          if (thread) {
+            projectName =
+              (thread as any).markup_projects?.project_name ||
+              (thread as any).thread_name ||
+              'Shared Image';
+            thumbnailUrl = (thread as any).image_path || null;
+          }
+        }
+
+        return {
+          token,
+          projectName,
+          thumbnailUrl,
+          permissions: row.permissions as SharePermission,
+          resourceType: row.resource_type as ShareResourceType,
+          resourceId: row.resource_id,
+        };
+      } catch {
+        return null;
+      }
+    })
+  );
+
+  return results.filter((r): r is SharedProjectSummary => r !== null);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * Lists all share links for a resource

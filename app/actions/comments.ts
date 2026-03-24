@@ -1,0 +1,156 @@
+'use server';
+
+import { createClient } from '@/lib/supabase/server';
+import { getUser } from '@/lib/db/queries';
+import { revalidatePath } from 'next/cache';
+import { nanoid } from 'nanoid';
+
+export interface DbComment {
+  id: string;
+  thread_id: string;
+  user_name: string;
+  content: string;
+  pin_number: number;
+  comment_index: number;
+  display_number: number | null;
+  x_position: number;
+  y_position: number;
+  status: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+  drawing_data?: any; // null = plain pin; non-null = drawing annotation
+}
+
+export interface CreateCommentResult {
+  success: boolean;
+  comment?: DbComment;
+  error?: string;
+}
+
+/** Get the currently logged-in user from the JWT session */
+export async function getCurrentUser() {
+  const user = await getUser();
+  if (!user) return null;
+  return { id: user.id, name: user.name || user.email, email: user.email };
+}
+
+/** Load all comments (pins) for a thread, ordered by creation time */
+export async function getThreadComments(threadId: string): Promise<DbComment[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from('markup_comments')
+    .select('*')
+    .eq('thread_id', threadId)
+    .order('created_at', { ascending: true });
+
+  if (error) {
+    console.error('Error loading comments:', error);
+    return [];
+  }
+  return (data as DbComment[]) || [];
+}
+
+/**
+ * Create a new pin + comment on an image.
+ * x and y are percentages (0–100) of the image dimensions.
+ */
+export async function createComment(
+  threadId: string,
+  content: string,
+  userName: string,
+  x: number,
+  y: number,
+  drawingData?: any,
+): Promise<CreateCommentResult> {
+  const supabase = await createClient();
+
+  // Count existing comments in this thread to derive sequential numbers
+  const { count } = await supabase
+    .from('markup_comments')
+    .select('*', { count: 'exact', head: true })
+    .eq('thread_id', threadId);
+
+  const nextNumber = (count ?? 0) + 1;
+
+  // id is TEXT PRIMARY KEY with no DB default — must be supplied by app layer
+  const newComment = {
+    id: nanoid(),
+    thread_id: threadId,
+    user_name: userName,
+    content,
+    pin_number: nextNumber,
+    comment_index: nextNumber,
+    display_number: nextNumber,
+    x_position: x,
+    y_position: y,
+    status: 'active',
+    ...(drawingData != null ? { drawing_data: drawingData } : {}),
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  } as any;
+
+  const { data, error } = await supabase
+    .from('markup_comments')
+    .insert(newComment)
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Error creating comment:', error);
+    return { success: false, error: error.message };
+  }
+
+  revalidatePath('/project');
+  return { success: true, comment: data as DbComment };
+}
+
+/** Toggle resolved / active status for a pin */
+export async function resolveComment(
+  commentId: string,
+  projectId?: string
+): Promise<{ success: boolean; error?: string }> {
+  const supabase = await createClient();
+
+  // Fetch current status first
+  const { data: existing, error: fetchErr } = await supabase
+    .from('markup_comments')
+    .select('status')
+    .eq('id', commentId)
+    .single();
+
+  if (fetchErr || !existing) {
+    return { success: false, error: 'Comment not found' };
+  }
+
+  const newStatus = existing.status === 'resolved' ? 'active' : 'resolved';
+
+  const { error } = await supabase
+    .from('markup_comments')
+    .update({ status: newStatus, updated_at: new Date().toISOString() })
+    .eq('id', commentId);
+
+  if (error) {
+    console.error('Error resolving comment:', error);
+    return { success: false, error: error.message };
+  }
+
+  if (projectId) revalidatePath(`/project/${projectId}`);
+  return { success: true };
+}
+
+/** Delete a comment */
+export async function deleteComment(
+  commentId: string
+): Promise<{ success: boolean; error?: string }> {
+  const supabase = await createClient();
+
+  const { error } = await supabase
+    .from('markup_comments')
+    .delete()
+    .eq('id', commentId);
+
+  if (error) {
+    return { success: false, error: error.message };
+  }
+  return { success: true };
+}

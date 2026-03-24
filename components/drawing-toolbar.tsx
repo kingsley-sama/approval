@@ -1,144 +1,89 @@
-/**
- * DrawingToolbar Component
- * Toolbar for selecting drawing tools, colors, and stroke widths
- */
-
 'use client';
 
 import React from 'react';
 import type { DrawingTool } from '@/types/drawing';
-import { DEFAULT_COLORS, DEFAULT_STROKE_WIDTHS } from '@/types/drawing';
-import { Button } from '@/components/ui/button';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+
+export const DRAWING_COLOR = '#f43f5e'; // fixed rose-500
+export const STROKE_WIDTH = 3;
 
 interface DrawingToolbarProps {
-  currentTool: DrawingTool;
-  currentColor: string;
-  strokeWidth: number;
-  isEnabled: boolean;
-  onToolChange: (tool: DrawingTool) => void;
-  onColorChange: (color: string) => void;
-  onStrokeWidthChange: (width: number) => void;
-  onToggleDrawing: () => void;
+  activeTool: DrawingTool | null;
+  onToolSelect: (tool: DrawingTool | null) => void;
 }
 
-export default function DrawingToolbar({
-  currentTool,
-  currentColor,
-  strokeWidth,
-  isEnabled,
-  onToolChange,
-  onColorChange,
-  onStrokeWidthChange,
-  onToggleDrawing,
-}: DrawingToolbarProps) {
-  const tools: { value: DrawingTool; label: string; icon: string }[] = [
-    { value: 'pen', label: 'Pen', icon: '✏️' },
-    { value: 'rectangle', label: 'Rectangle', icon: '▢' },
-    { value: 'arrow', label: 'Arrow', icon: '→' },
-    { value: 'highlight', label: 'Highlight', icon: '🖍️' },
-  ];
+const tools: { value: DrawingTool; label: string; icon: React.ReactNode }[] = [
+  {
+    value: 'pen',
+    label: 'Freehand',
+    icon: (
+      <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+        <path d="M13.586 3.586a2 2 0 112.828 2.828l-8.5 8.5a1 1 0 01-.39.242l-3 1a1 1 0 01-1.265-1.265l1-3a1 1 0 01.242-.39l8.5-8.5z" />
+      </svg>
+    ),
+  },
+  {
+    value: 'rectangle',
+    label: 'Rectangle',
+    icon: (
+      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={1.8} className="w-4 h-4">
+        <rect x="3" y="4" width="14" height="12" rx="1.5" />
+      </svg>
+    ),
+  },
+  {
+    value: 'arrow',
+    label: 'Arrow',
+    icon: (
+      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+        <line x1="4" y1="16" x2="16" y2="4" />
+        <polyline points="9 4 16 4 16 11" />
+      </svg>
+    ),
+  },
+  {
+    value: 'highlight',
+    label: 'Highlight',
+    icon: (
+      <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+        <path d="M9.5 3a.5.5 0 00-.5.5V13H6l4 4 4-4h-3V3.5a.5.5 0 00-.5-.5h-1z" />
+        <rect x="3" y="15" width="14" height="2" rx="1" opacity={0.4} />
+      </svg>
+    ),
+  },
+  {
+    value: 'eraser',
+    label: 'Eraser',
+    icon: (
+      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+        <path d="M4 16l3-3 7-7-3-3-7 7-3 3h6z" />
+        <line x1="11" y1="3" x2="17" y2="9" />
+      </svg>
+    ),
+  },
+];
 
+export default function DrawingToolbar({ activeTool, onToolSelect }: DrawingToolbarProps) {
   return (
-    <div className="flex items-center gap-4 p-4 bg-white border-b">
-      {/* Toggle Drawing Mode */}
-      <Button
-        onClick={onToggleDrawing}
-        variant={isEnabled ? 'default' : 'outline'}
-        size="sm"
-      >
-        {isEnabled ? '🎨 Drawing Enabled' : '🔒 Drawing Disabled'}
-      </Button>
-
-      <div className="h-6 w-px bg-gray-300" />
-
-      {/* Tool Selection */}
-      <div className="flex gap-2">
-        {tools.map((tool) => (
+    <div className="flex items-center gap-0.5 bg-white/90 backdrop-blur-sm border border-gray-200 rounded-lg shadow-sm px-1 py-1">
+      {tools.map((tool, i) => (
+        <React.Fragment key={tool.value}>
+          {/* Divider before eraser */}
+          {i === tools.length - 1 && (
+            <div className="w-px h-5 bg-gray-200 mx-0.5 flex-shrink-0" />
+          )}
           <button
-            key={tool.value}
-            onClick={() => onToolChange(tool.value)}
-            disabled={!isEnabled}
-            className={`
-              px-3 py-2 rounded border transition-colors
-              ${currentTool === tool.value
-                ? 'bg-blue-500 text-white border-blue-600'
-                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-              }
-              ${!isEnabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
-            `}
+            onClick={() => onToolSelect(activeTool === tool.value ? null : tool.value)}
             title={tool.label}
+            className={`p-2 rounded-md transition-all ${
+              activeTool === tool.value
+                ? 'bg-rose-500 text-white shadow-inner'
+                : 'text-gray-500 hover:bg-gray-100 hover:text-gray-800'
+            }`}
           >
-            <span className="text-lg">{tool.icon}</span>
-            <span className="ml-2 text-sm">{tool.label}</span>
+            {tool.icon}
           </button>
-        ))}
-      </div>
-
-      <div className="h-6 w-px bg-gray-300" />
-
-      {/* Color Picker */}
-      <div className="flex items-center gap-2">
-        <span className="text-sm text-gray-600">Color:</span>
-        <div className="flex gap-1">
-          {DEFAULT_COLORS.map((color) => (
-            <button
-              key={color}
-              onClick={() => onColorChange(color)}
-              disabled={!isEnabled}
-              className={`
-                w-8 h-8 rounded border-2 transition-all
-                ${currentColor === color
-                  ? 'border-gray-800 scale-110'
-                  : 'border-gray-300 hover:scale-105'
-                }
-                ${!isEnabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
-              `}
-              style={{ backgroundColor: color }}
-              title={color}
-            />
-          ))}
-        </div>
-        
-        {/* Custom color input */}
-        <input
-          type="color"
-          value={currentColor}
-          onChange={(e) => onColorChange(e.target.value)}
-          disabled={!isEnabled}
-          className="w-8 h-8 rounded border cursor-pointer disabled:opacity-50"
-          title="Custom color"
-        />
-      </div>
-
-      <div className="h-6 w-px bg-gray-300" />
-
-      {/* Stroke Width */}
-      <div className="flex items-center gap-2">
-        <span className="text-sm text-gray-600">Width:</span>
-        <Select
-          value={strokeWidth.toString()}
-          onValueChange={(value) => onStrokeWidthChange(Number(value))}
-          disabled={!isEnabled}
-        >
-          <SelectTrigger className="w-20">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {DEFAULT_STROKE_WIDTHS.map((width) => (
-              <SelectItem key={width} value={width.toString()}>
-                {width}px
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+        </React.Fragment>
+      ))}
     </div>
   );
 }

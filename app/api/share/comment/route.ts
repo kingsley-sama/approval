@@ -5,14 +5,18 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { validateShareToken } from '@/app/actions/share-links';
-import { supabase } from '@/lib/supabase';
+import { supabaseAdmin as supabase } from '@/lib/supabase';
 import { z } from 'zod';
+import { nanoid } from 'nanoid';
 
 const CommentSchema = z.object({
   token: z.string().min(1),
   threadId: z.string().uuid(),
   userName: z.string().min(1).max(150),
   content: z.string().min(1).max(5000),
+  xPosition: z.number().min(0).max(100).optional().default(50),
+  yPosition: z.number().min(0).max(100).optional().default(50),
+  drawingData: z.any().optional(),
 });
 
 export async function POST(request: NextRequest) {
@@ -73,22 +77,34 @@ export async function POST(request: NextRequest) {
     const nextIndex = (count || 0) + 1;
 
     // Insert comment
+    const insertPayload: any = {
+      id: nanoid(),
+      thread_id: validated.threadId,
+      user_name: validated.userName,
+      content: validated.content,
+      pin_number: nextIndex,
+      comment_index: nextIndex,
+      display_number: nextIndex,
+      x_position: validated.xPosition,
+      y_position: validated.yPosition,
+      status: 'active',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    if (validated.drawingData != null) {
+      insertPayload.drawing_data = validated.drawingData;
+    }
+
     const { data, error: insertError } = await supabase
       .from('markup_comments')
-      .insert({
-        thread_id: validated.threadId,
-        user_name: validated.userName,
-        content: validated.content,
-        pin_number: nextIndex,
-        comment_index: nextIndex,
-      })
+      .insert(insertPayload as any)
       .select()
       .single();
 
     if (insertError) {
-      console.error('Error inserting comment:', insertError);
+      console.error('Error inserting comment:', JSON.stringify(insertError));
       return NextResponse.json(
-        { success: false, error: 'Failed to save comment' },
+        { success: false, error: insertError.message || 'Failed to save comment' },
         { status: 500 }
       );
     }

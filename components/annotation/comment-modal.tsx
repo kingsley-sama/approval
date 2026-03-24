@@ -4,25 +4,29 @@ import { useState, useEffect, useRef } from 'react';
 import { X, Paperclip, Pen, Link2 } from 'lucide-react';
 
 interface Pin {
-  id: number;
+  id: string;
+  number: number;
   x: number;
   y: number;
-  comment: string;
+  content: string;
   author: string;
   timestamp: string;
-  isNew?: boolean;
+  status: 'active' | 'resolved';
 }
 
 interface CommentModalProps {
   position: { x: number; y: number };
   onClose: () => void;
-  onSubmit: (text: string) => void;
-  pin?: Pin;
+  onSubmit: (text: string) => Promise<void>;
+  existingPin?: Pin;
+  currentUser: string;
+  isNewPin: boolean;
   isFullscreen?: boolean;
 }
 
-export default function CommentModal({ position, onClose, onSubmit, pin, isFullscreen }: CommentModalProps) {
-  const [comment, setComment] = useState(pin?.comment || '');
+export default function CommentModal({ position, onClose, onSubmit, existingPin, currentUser, isNewPin, isFullscreen }: CommentModalProps) {
+  const [comment, setComment] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [modalStyle, setModalStyle] = useState<any>({});
   const modalRef = useRef<HTMLDivElement>(null);
 
@@ -75,10 +79,15 @@ export default function CommentModal({ position, onClose, onSubmit, pin, isFulls
     };
   }, [position, isFullscreen]);
 
-  const handleSubmit = () => {
-    if (comment.trim()) {
-      onSubmit(comment);
-      setComment('');
+  const handleSubmit = async () => {
+    if (comment.trim() && isNewPin) {
+      setIsSubmitting(true);
+      try {
+        await onSubmit(comment);
+        setComment('');
+      } finally {
+        setIsSubmitting(false);
+      }
     }
   };
 
@@ -96,11 +105,18 @@ export default function CommentModal({ position, onClose, onSubmit, pin, isFulls
         style={modalStyle}
       >
         <div className="flex items-start justify-between gap-2 mb-1.5">
-          {pin?.author && (
-            <div className="text-xs text-gray-600 flex-1">
-              <div className="font-semibold leading-tight">{pin.author}</div>
-              <div className="text-gray-500 text-xs">{pin.timestamp}</div>
+          {existingPin ? (
+            <div className="flex items-center gap-2 flex-1">
+              <div className={`flex items-center justify-center w-5 h-5 rounded-full text-white text-xs font-bold ${
+                existingPin.status === 'resolved' ? 'bg-green-600' : 'bg-blue-600'
+              }`}>{existingPin.number}</div>
+              <div className="text-xs text-gray-600 flex-1">
+                <div className="font-semibold leading-tight">{existingPin.author}</div>
+                <div className="text-gray-500">{existingPin.timestamp}</div>
+              </div>
             </div>
+          ) : (
+            <div className="text-xs font-semibold text-gray-700 flex-1">New comment</div>
           )}
           <button
             onClick={onClose}
@@ -110,17 +126,23 @@ export default function CommentModal({ position, onClose, onSubmit, pin, isFulls
           </button>
         </div>
 
-        <div className="flex gap-1.5 items-start mb-1.5">
-          <textarea
-            placeholder="Add comment..."
-            value={comment}
-            onChange={(e) => setComment(e.target.value)}
-            onKeyDown={handleKeyDown}
-            autoFocus
-            className="w-full px-2 py-1.5 border border-border rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white resize-none transition-shadow duration-200"
-            rows={2}
-          />
-        </div>
+        {existingPin && !isNewPin ? (
+          <div className="text-sm text-gray-700 px-1 py-1 bg-gray-50 rounded border border-gray-200 mb-1.5">
+            {existingPin.content}
+          </div>
+        ) : (
+          <div className="flex gap-1.5 items-start mb-1.5">
+            <textarea
+              placeholder="Add comment..."
+              value={comment}
+              onChange={(e) => setComment(e.target.value)}
+              onKeyDown={handleKeyDown}
+              autoFocus
+              className="w-full px-2 py-1.5 border border-border rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white resize-none transition-shadow duration-200"
+              rows={2}
+            />
+          </div>
+        )}
 
         <div className="flex gap-0.5 items-center justify-between">
           <div className="flex gap-0.5">
@@ -139,12 +161,15 @@ export default function CommentModal({ position, onClose, onSubmit, pin, isFulls
               <Paperclip size={14} />
             </button>
           </div>
-          <button
-            onClick={handleSubmit}
-            className="px-2.5 py-1 bg-blue-600 text-white rounded text-xs font-medium hover:bg-blue-700 transition-colors duration-150"
-          >
-            Save
-          </button>
+          {isNewPin && (
+            <button
+              onClick={handleSubmit}
+              disabled={isSubmitting || !comment.trim()}
+              className="px-2.5 py-1 bg-blue-600 text-white rounded text-xs font-medium hover:bg-blue-700 transition-colors duration-150 disabled:opacity-50"
+            >
+              {isSubmitting ? 'Saving...' : 'Save'}
+            </button>
+          )}
         </div>
       </div>
     </div>

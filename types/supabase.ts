@@ -19,31 +19,46 @@ export type Database = {
           comment_index: number
           content: string
           created_at: string | null
+          drawing_data: Json | null
           id: string
           pin_number: number
           thread_id: string
           updated_at: string | null
           user_name: string
+          x_position: number
+          y_position: number
+          status: string | null
+          display_number: number | null
         }
         Insert: {
           comment_index: number
           content: string
           created_at?: string | null
+          drawing_data?: Json | null
           id: string
           pin_number: number
           thread_id: string
           updated_at?: string | null
           user_name: string
+          x_position?: number
+          y_position?: number
+          status?: string | null
+          display_number?: number | null
         }
         Update: {
           comment_index?: number
           content?: string
           created_at?: string | null
+          drawing_data?: Json | null
           id?: string
           pin_number?: number
           thread_id?: string
           updated_at?: string | null
           user_name?: string
+          x_position?: number
+          y_position?: number
+          status?: string | null
+          display_number?: number | null
         }
         Relationships: [
           {
@@ -363,6 +378,102 @@ export type Database = {
         }
         Relationships: []
       }
+      markup_drawings: {
+        Row: {
+          id: string
+          thread_id: string
+          drawing_data: Json
+          created_by: string
+          is_duplicated: boolean
+          original_drawing_id: string | null
+          metadata: Json | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          thread_id: string
+          drawing_data: Json
+          created_by: string
+          is_duplicated?: boolean
+          original_drawing_id?: string | null
+          metadata?: Json | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          thread_id?: string
+          drawing_data?: Json
+          created_by?: string
+          is_duplicated?: boolean
+          original_drawing_id?: string | null
+          metadata?: Json | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "markup_drawings_thread_id_fkey"
+            columns: ["thread_id"]
+            isOneToOne: false
+            referencedRelation: "markup_threads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "markup_drawings_original_drawing_id_fkey"
+            columns: ["original_drawing_id"]
+            isOneToOne: false
+            referencedRelation: "markup_drawings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      share_links: {
+        Row: {
+          id: string
+          token: string
+          resource_type: Database["public"]["Enums"]["share_resource_type"]
+          resource_id: string
+          permissions: Database["public"]["Enums"]["share_permission_type"]
+          created_by: string
+          expires_at: string | null
+          is_active: boolean
+          access_count: number
+          last_accessed_at: string | null
+          metadata: Json | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          token: string
+          resource_type: Database["public"]["Enums"]["share_resource_type"]
+          resource_id: string
+          permissions?: Database["public"]["Enums"]["share_permission_type"]
+          created_by: string
+          expires_at?: string | null
+          is_active?: boolean
+          access_count?: number
+          last_accessed_at?: string | null
+          metadata?: Json | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          token?: string
+          resource_type?: Database["public"]["Enums"]["share_resource_type"]
+          resource_id?: string
+          permissions?: Database["public"]["Enums"]["share_permission_type"]
+          created_by?: string
+          expires_at?: string | null
+          is_active?: boolean
+          access_count?: number
+          last_accessed_at?: string | null
+          metadata?: Json | null
+          created_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -372,9 +483,28 @@ export type Database = {
         Args: { p_payload: Json; p_scraped_data_id: number }
         Returns: string
       }
+      duplicate_project: {
+        Args: {
+          p_source_project_id: string
+          p_new_project_name: string
+          p_copy_comments?: boolean
+          p_copy_drawings?: boolean
+          p_created_by?: string
+        }
+        Returns: string
+      }
+      is_share_link_valid: {
+        Args: { p_token: string }
+        Returns: boolean
+      }
+      increment_share_link_access: {
+        Args: { p_token: string }
+        Returns: undefined
+      }
     }
     Enums: {
-      [_ in never]: never
+      share_permission_type: "view" | "comment" | "draw_and_comment"
+      share_resource_type: "thread" | "project"
     }
     CompositeTypes: {
       [_ in never]: never

@@ -4,53 +4,47 @@ import { MessageSquare, ChevronDown, ChevronRight, Check } from 'lucide-react';
 import { useState } from 'react';
 
 interface Pin {
-  id: number;
+  id: string;
+  number: number;
   x: number;
   y: number;
-  comment: string;
+  content: string;
   author: string;
   timestamp: string;
-  isNew?: boolean;
-  resolved?: boolean;
+  status: 'active' | 'resolved';
 }
 
-interface Image {
-  id: number;
+interface ImageData {
+  id: string;
   name: string;
+  pins: Pin[];
 }
 
 interface CommentsSidebarProps {
-  pins: Pin[];
-  selectedPin: number | null;
-  setSelectedPin: (id: number) => void;
-  onResolve: (pinId: number) => void;
-  images: Image[];
-  currentImageId: number;
-  allImages: Array<{ id: number; name: string; pins: Array<{ id: number; comment: string; author: string; timestamp: string; isNew?: boolean; resolved?: boolean }> }>;
+  allImages: ImageData[];
+  currentImageId: string;
+  selectedPinId: string | null;
+  onSelectPin: (id: string) => void;
+  onResolve: (pinId: string) => void;
+  /** When true the resolve button is hidden — for read-only viewers like share clients */
+  readOnly?: boolean;
 }
 
-export default function CommentsSidebar({ pins, selectedPin, setSelectedPin, onResolve, images, currentImageId, allImages }: CommentsSidebarProps) {
-  const [expandedImages, setExpandedImages] = useState<number[]>([currentImageId]);
+export default function CommentsSidebar({ allImages, currentImageId, selectedPinId, onSelectPin, onResolve, readOnly = false }: CommentsSidebarProps) {
+  const [expandedImages, setExpandedImages] = useState<string[]>([currentImageId]);
 
-  const allComments = allImages.flatMap(img => 
-    img.pins.filter(p => p.comment)
-  );
-  const resolvedCount = allComments.filter(p => p.resolved).length;
-  const activeCount = allComments.filter(p => !p.resolved).length;
-  
-  const imageGroups = allImages.map(img => {
-    const imageComments = allComments.filter(pin => 
-      img.pins.some(p => p.id === pin.id)
-    );
-    return {
-      ...img,
-      activeComments: imageComments.filter(p => !p.resolved),
-      resolvedComments: imageComments.filter(p => p.resolved),
-      totalComments: imageComments.length
-    };
-  }).filter(group => group.totalComments > 0);
+  const allPins = allImages.flatMap(img => img.pins);
+  const resolvedCount = allPins.filter(p => p.status === 'resolved').length;
+  const activeCount = allPins.filter(p => p.status !== 'resolved').length;
 
-  const toggleExpandImage = (imageId: number) => {
+  const imageGroups = allImages.map(img => ({
+    ...img,
+    activeComments: img.pins.filter(p => p.status !== 'resolved'),
+    resolvedComments: img.pins.filter(p => p.status === 'resolved'),
+    totalComments: img.pins.length,
+  })).filter(g => g.totalComments > 0);
+
+  const toggleExpandImage = (imageId: string) => {
     setExpandedImages(prev =>
       prev.includes(imageId)
         ? prev.filter(id => id !== imageId)
@@ -58,49 +52,40 @@ export default function CommentsSidebar({ pins, selectedPin, setSelectedPin, onR
     );
   };
 
-  const renderCommentItem = (pin: any) => (
+  const renderCommentItem = (pin: Pin) => (
     <div
       key={pin.id}
-      onClick={() => setSelectedPin(pin.id)}
+      onClick={() => onSelectPin(pin.id)}
       className={`border-t border-gray-200 p-4 ml-2 cursor-pointer transition-colors ${
-        pin.resolved ? 'bg-gray-50' : selectedPin === pin.id ? 'bg-blue-50' : 'hover:bg-white'
-      } ${pin.resolved ? 'opacity-60' : ''}`}
+        pin.status === 'resolved' ? 'bg-gray-50 opacity-70' : selectedPinId === pin.id ? 'bg-blue-50' : 'hover:bg-white'
+      }`}
     >
       <div className="flex items-center gap-2 mb-2">
-        <div className="flex items-center justify-center w-6 h-6 rounded-full bg-blue-600 text-white text-xs font-semibold">
-          {pin.id}
+        <div className={`flex items-center justify-center w-6 h-6 rounded-full text-white text-xs font-semibold ${
+          pin.status === 'resolved' ? 'bg-green-600' : 'bg-blue-600'
+        }`}>
+          {pin.number}
         </div>
         <div className="flex-1">
-          <p className={`text-sm font-semibold ${pin.resolved ? 'line-through text-gray-500' : ''}`}>{pin.author}</p>
-          {pin.isNew && !pin.resolved && (
-            <span className="inline-block ml-1 px-2 py-0.5 bg-red-500 text-white text-xs rounded-full">
-              New
-            </span>
-          )}
+          <p className={`text-sm font-semibold ${pin.status === 'resolved' ? 'line-through text-gray-500' : ''}`}>{pin.author}</p>
         </div>
       </div>
       <p className="text-xs text-muted-foreground mb-2">{pin.timestamp}</p>
-      <p className={`text-sm ${pin.resolved ? 'line-through text-gray-500' : 'text-gray-700'}`}>{pin.comment}</p>
+      <p className={`text-sm ${pin.status === 'resolved' ? 'line-through text-gray-500' : 'text-gray-700'}`}>{pin.content}</p>
       <div className="flex items-center gap-2 mt-3">
-        {pin.comment && (
-          <button className="text-xs text-blue-600 hover:underline">
-            1 Reply
+        {!readOnly && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onResolve(pin.id); }}
+            className={`text-xs ml-auto px-2 py-1 rounded flex items-center gap-1 transition-colors ${
+              pin.status === 'resolved'
+                ? 'bg-green-100 text-green-700 hover:bg-green-200'
+                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+            }`}
+          >
+            <Check size={14} />
+            {pin.status === 'resolved' ? 'Resolved' : 'Resolve'}
           </button>
         )}
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onResolve(pin.id);
-          }}
-          className={`text-xs ml-auto px-2 py-1 rounded flex items-center gap-1 transition-colors ${
-            pin.resolved
-              ? 'bg-green-100 text-green-700 hover:bg-green-200'
-              : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-          }`}
-        >
-          <Check size={14} />
-          {pin.resolved ? 'Resolved' : 'Resolve'}
-        </button>
       </div>
     </div>
   );
