@@ -48,7 +48,7 @@ export default function ProjectsPage() {
   useEffect(() => { fetchProjects() }, [])
 
   const handleOpen = (project: Project) => {
-    router.push(`/project/${project.id}?name=${encodeURIComponent(project.title)}`)
+    router.push(`/projects/${project.id}?name=${encodeURIComponent(project.title)}`)
   }
 
   const handleDelete = async (projectId: string) => {

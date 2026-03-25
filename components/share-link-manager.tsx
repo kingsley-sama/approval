@@ -33,6 +33,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
+import { Share } from 'lucide-react';
 
 interface ShareLinkManagerProps {
   resourceType: ShareResourceType;
@@ -126,10 +127,15 @@ export default function ShareLinkManager({
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
-        <Button variant="outline" size="sm">
-          🔗 Share
-        </Button>
-      </DialogTrigger>
+    <Button
+      size="sm"
+      className="rounded-full bg-primary text-primary-foreground hover:bg-primary/90 gap-1.5 h-8 px-4 text-xs font-semibold"
+    >
+      <Share className="h-3.5 w-3.5" />
+      Share
+    </Button>
+</DialogTrigger>
+
       <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Share: {resourceName}</DialogTitle>

@@ -38,7 +38,7 @@ export default function AppSidebar({ user }: AppSidebarProps) {
       {/* Header */}
       <SidebarHeader className="p-4">
         <button className="flex items-center gap-3 w-full group">
-          <div className="h-9 w-9 rounded-lg bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center text-white font-display font-bold text-sm shrink-0">
+          <div className="h-9 w-9 rounded-lg bg-primary flex items-center justify-center text-white font-display font-bold text-sm shrink-0">
             EP
           </div>
           <div className="flex-1 text-left min-w-0 group-data-[collapsible=icon]:hidden">

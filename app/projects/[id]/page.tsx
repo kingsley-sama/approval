@@ -1,37 +1,17 @@
 'use client';
 import React, { useState, useEffect } from 'react';
 import ImageViewer from '@/components/annotation/image-viewer';
-import CommentsSidebar from '@/components/annotation/comments-sidebar';
-import ThumbnailsSidebar from '@/components/annotation/thumbnails-sidebar';
 import CommentModal from '@/components/annotation/comment-modal';
 import { getProjectThreads } from '@/app/actions/threads';
 import { getThreadComments, resolveComment, DbComment } from '@/app/actions/comments';
 import { useCommentQueue } from '@/hooks/use-comment-queue';
-import { Upload, ArrowLeft, ChevronLeft } from 'lucide-react';
-import { useRouter } from 'next/navigation';
+import { Upload } from 'lucide-react';
 import ImageUploader from '@/components/image-uploader';
-import ShareLinkManager from '@/components/share-link-manager';
+import { ProjectTopNav, ProjectShell, ProjectImageData, ProjectPin } from './template';
 import type { Shape } from '@/types/drawing';
 
-interface Pin {
-  id: string;
-  number: number;
-  x: number;
-  y: number;
-  content: string;
-  author: string;
-  timestamp: string;
-  status: 'active' | 'resolved';
-  isPending?: boolean;
-  drawingData?: Shape; // non-null when this pin was created by drawing a shape
-}
-
-interface ImageData {
-  id: string;
-  name: string;
-  url: string;
-  pins: Pin[];
-}
+type Pin = ProjectPin;
+type ImageData = ProjectImageData;
 
 interface ProjectPageProps {
   params: Promise<{
@@ -46,7 +26,6 @@ export default function ProjectPage({ params, searchParams }: ProjectPageProps) 
   const { id: projectId } = React.use(params);
   const { name } = React.use(searchParams);
   const projectName = name ? decodeURIComponent(name) : `Project ${projectId}`;
-  const router = useRouter();
 
   const [imagesState, setImagesState] = useState<ImageData[]>([]);
   const [currentImageId, setCurrentImageId] = useState<string>('');
@@ -254,79 +233,38 @@ export default function ProjectPage({ params, searchParams }: ProjectPageProps) 
 
   return (
     <div className={`h-screen bg-background text-foreground flex flex-col ${isFullscreen ? 'fixed inset-0' : ''}`}>
-      {!isFullscreen && (
-        <div className="border-b border-border bg-white px-6 py-3 grid grid-cols-3 items-center">
-          {/* Left: back button + project name */}
-          <div className="flex items-center gap-4">
-            <button
-              onClick={() => router.push('/')}
-              className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors shrink-0"
-            >
-              <ChevronLeft className="w-4 h-4" />
-              Dashboard
-            </button>
-            <div className="w-px h-5 bg-border shrink-0" />
-            <h1 className="text-sm font-semibold truncate">{projectName}</h1>
-          </div>
+      <ProjectTopNav
+        isFullscreen={isFullscreen}
+        projectName={projectName}
+        projectId={projectId}
+        pins={pins}
+        pendingCount={pendingCount}
+        isSyncing={isSyncing}
+      />
 
-          {/* Center: pin stats + sync indicator */}
-          <div className="flex items-center justify-center gap-4">
-            <div className="flex items-center gap-3 text-sm">
-              <span>
-                <span className="font-semibold text-foreground">{pins.filter(p => p.content && p.status !== 'resolved').length}</span>
-                <span className="text-muted-foreground ml-1">Active</span>
-              </span>
-              <span className="w-px h-4 bg-border" />
-              <span>
-                <span className="font-semibold text-foreground">{pins.filter(p => p.status === 'resolved').length}</span>
-                <span className="text-muted-foreground ml-1">Resolved</span>
-              </span>
-            </div>
-            {pendingCount > 0 && (
-              <div className="flex items-center gap-1.5 text-xs text-amber-600 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-full">
-                <span className={`w-1.5 h-1.5 rounded-full ${isSyncing ? 'bg-amber-500 animate-pulse' : 'bg-amber-400'}`} />
-                {isSyncing ? `Saving ${pendingCount}…` : `${pendingCount} unsaved`}
-              </div>
-            )}
-          </div>
-
-          {/* Right: actions */}
-          <div className="flex items-center justify-end gap-3">
-            <button className="px-4 py-1.5 border border-border rounded-md text-sm hover:bg-muted transition-colors">
-              Browse
-            </button>
-            <ShareLinkManager
-              resourceType="project"
-              resourceId={projectId}
-              createdBy="user"
-              resourceName={projectName}
-            />
-          </div>
-        </div>
-      )}
-
-      <div className={`flex-1 flex overflow-hidden ${isFullscreen ? 'bg-black' : ''}`}>
-        {!isFullscreen && (
-          <CommentsSidebar
-            allImages={imagesState}
-            currentImageId={currentImageId}
-            selectedPinId={selectedPin}
-            onSelectPin={(pinId) => {
-              setSelectedPin(pinId);
-              setPendingPinPos(null);
-              // Switch to the image containing this pin if necessary
-              const img = imagesState.find(i => i.pins.some(p => p.id === pinId));
-              if (img && img.id !== currentImageId) handleSwitchImage(img.id);
-              const pin = img?.pins.find(p => p.id === pinId) ?? pins.find(p => p.id === pinId);
-              if (pin) {
-                setModalPosition({ x: pin.x, y: pin.y });
-                setIsNewPin(false);
-                setShowModal(true);
-              }
-            }}
-            onResolve={handleResolveComment}
-          />
-        )}
+      <ProjectShell
+        isFullscreen={isFullscreen}
+        images={imagesState}
+        currentImageId={currentImageId}
+        selectedPinId={selectedPin}
+        onSelectPin={(pinId) => {
+          setSelectedPin(pinId);
+          setPendingPinPos(null);
+          // Switch to the image containing this pin if necessary
+          const img = imagesState.find(i => i.pins.some(p => p.id === pinId));
+          if (img && img.id !== currentImageId) handleSwitchImage(img.id);
+          const pin = img?.pins.find(p => p.id === pinId) ?? pins.find(p => p.id === pinId);
+          if (pin) {
+            setModalPosition({ x: pin.x, y: pin.y });
+            setIsNewPin(false);
+            setShowModal(true);
+          }
+        }}
+        onResolveComment={handleResolveComment}
+        projectId={projectId}
+        onSelectImage={handleSwitchImage}
+        onUploadComplete={fetchThreads}
+      >
 
         {isLoading ? (
           <div className="flex-1 flex items-center justify-center bg-gray-100">
@@ -390,16 +328,7 @@ export default function ProjectPage({ params, searchParams }: ProjectPageProps) 
           />
         )}
 
-        {!isFullscreen && (
-          <ThumbnailsSidebar
-            images={imagesState}
-            currentImageId={currentImageId}
-            onSelectImage={handleSwitchImage}
-            projectId={projectId}
-            onUploadComplete={fetchThreads}
-          />
-        )}
-      </div>
+      </ProjectShell>
 
       {showModal && (
         <CommentModal

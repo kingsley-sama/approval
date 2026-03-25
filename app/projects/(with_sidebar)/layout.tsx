@@ -5,7 +5,6 @@ import AppSidebar from '@/components/sidebar'
 
 export default async function Layout({ children }: { children: React.ReactNode }) {
   const user = await getUser()
-
   return (
     <SidebarProvider>
       <div className="flex h-screen w-full">
