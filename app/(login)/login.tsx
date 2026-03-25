@@ -29,7 +29,7 @@ export function Login({ mode = 'signin' }: { mode?: 'signin' | 'signup' }) {
       >
         {/* Logo + heading */}
         <div className="text-center mb-10">
-          <div className="w-12 h-12 rounded-xl bg-accent flex items-center justify-center mx-auto mb-5">
+          <div className="w-12 h-12 rounded-xl bg-primary flex items-center justify-center mx-auto mb-5">
             <span className="text-accent-foreground font-display font-bold text-sm">EP</span>
           </div>
           <h1 className="font-display text-2xl font-bold text-foreground mb-2 tracking-tight">
@@ -147,4 +147,4 @@ export function Login({ mode = 'signin' }: { mode?: 'signin' | 'signup' }) {
       </motion.div>
     </div>
   );
-}
+} 

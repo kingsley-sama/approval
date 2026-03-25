@@ -1,36 +1,36 @@
 'use client'
-
-import { Home, Archive, Users, Settings, ChevronDown, MessageCircle, HelpCircle, Map, LogOut } from 'lucide-react'
+import { Users, Settings, ChevronDown, LogOut, Folder, Trash } from 'lucide-react'
 import { signOut } from '@/app/actions/auth'
 import { usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { Badge } from '@/components/ui/badge'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import {
-  Sidebar,
-  SidebarContent,
-  SidebarFooter,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarHeader,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
+  Sidebar, SidebarContent, SidebarFooter, SidebarGroup,
+  SidebarGroupContent, SidebarHeader, SidebarMenu,
+  SidebarMenuButton, SidebarMenuItem,
 } from '@/components/ui/sidebar'
-
+import type { users } from '@/lib/db/schema'
 const navItems = [
-  { title: 'Dashboard', href: '/', icon: Home },
-  { title: 'Archive', href: '/archive', icon: Archive, badge: 'Beta' },
+  { title: 'Projects', href: '/', icon: Folder },
   { title: 'Team', href: '/team', icon: Users },
+  { title: 'Archive', href: '/archive', icon: Trash, badge: 'Beta' },
   { title: 'Settings', href: '/settings', icon: Settings },
 ]
 
-const footerLinks = [
-  { title: 'Live Chat', icon: MessageCircle },
-  { title: 'Help Center', icon: HelpCircle },
-  { title: 'Roadmap', icon: Map },
-]
+interface AppSidebarProps {
+  user: typeof users.$inferSelect | null
+}
 
-export default function AppSidebar() {
+
+function getInitials(name?: string | null, email?: string | null) {
+  if (name) {
+    return name.split(' ').map((n) => n[0]).slice(0, 2).join('').toUpperCase()
+  }
+  return email?.[0]?.toUpperCase() ?? '?'
+}
+
+export default function AppSidebar({ user }: AppSidebarProps) {
   const pathname = usePathname()
 
   return (
@@ -56,11 +56,7 @@ export default function AppSidebar() {
             <SidebarMenu>
               {navItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton
-                    asChild
-                    isActive={pathname === item.href}
-                    tooltip={item.title}
-                  >
+                  <SidebarMenuButton asChild isActive={pathname === item.href} tooltip={item.title}>
                     <Link
                       href={item.href}
                       className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-muted-foreground transition-colors hover:text-foreground hover:bg-muted"
@@ -85,27 +81,41 @@ export default function AppSidebar() {
       </SidebarContent>
 
       {/* Footer */}
-      <SidebarFooter className="p-4 border-t border-border space-y-3">
-        <div className="flex items-center gap-4 text-xs text-muted-foreground group-data-[collapsible=icon]:hidden">
-          {footerLinks.map((link) => (
-            <button
-              key={link.title}
-              className="hover:text-foreground transition-colors whitespace-nowrap"
-            >
-              {link.title}
-            </button>
-          ))}
-        </div>
-        <form action={signOut}>
-          <button
-            type="submit"
-            className="flex items-center gap-3 px-3 py-2 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors w-full rounded-lg text-sm font-medium"
-          >
-            <LogOut className="h-[18px] w-[18px] shrink-0" />
-            <span className="group-data-[collapsible=icon]:hidden">Logout</span>
-          </button>
-        </form>
-      </SidebarFooter>
+        {/* Footer */}
+<SidebarFooter className="p-3 border-t border-border">
+  {/* User profile */}
+  <div className="flex items-center gap-3 p-2 rounded-xl group-data-[collapsible=icon]:justify-center ">
+    <div className="relative shrink-0">
+      <Avatar className="h-8 w-8 ring-2 ring-accent/20">
+        <AvatarImage src={user?.avatarUrl ?? '/apple-icon.png'} alt={user?.name ?? 'User'} />
+        <AvatarFallback className="bg-accent/20 text-accent text-xs font-semibold">
+          {getInitials(user?.name, user?.email)}
+        </AvatarFallback>
+      </Avatar>
+      {/* Online indicator */}
+      <span className="absolute bottom-0 right-0 h-2 w-2 rounded-full bg-accent ring-2 ring-background" />
+    </div>
+    <div className="flex-1 min-w-0 group-data-[collapsible=icon]:hidden">
+      {user?.name && (
+        <p className="text-sm font-semibold text-foreground truncate">{user.name}</p>
+      )}
+      {user?.email && (
+        <p className="text-xs text-muted-foreground truncate">{user.email}</p>
+      )}
+    </div>
+  </div>
+
+  {/* Logout */}
+  <form action={signOut} className="mt-1">
+    <button
+      type="submit"
+      className="flex items-center gap-3 px-3 py-2 text-muted-foreground hover:text-accent hover:bg-accent/10 transition-colors w-full rounded-lg text-sm font-medium group/logout"
+    >
+      <LogOut className="h-[18px] w-[18px] shrink-0 group-hover/logout:text-accent transition-colors" />
+      <span className="group-data-[collapsible=icon]:hidden">Logout</span>
+    </button>
+  </form>
+</SidebarFooter>
     </Sidebar>
   )
 }

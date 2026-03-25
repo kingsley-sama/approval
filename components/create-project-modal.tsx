@@ -113,9 +113,8 @@ export default function CreateProjectModal({ onProjectCreated }: CreateProjectMo
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
-        <button className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity">
+        <button className="flex items-center gap-1 px-2 py-1 bg-primary  text-primary-foreground rounded-lg hover:bg-accent/20 hover:text-accent/80 transition-colors">
           <FolderPlus size={20} />
-          New Project
         </button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-[500px]">

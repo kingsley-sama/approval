@@ -1,10 +1,9 @@
 'use server';
-
 import { z } from 'zod';
 import { eq } from 'drizzle-orm';
 import { db } from '@/lib/db/drizzle';
 import { users, type NewUser } from '@/lib/db/schema';
-import { comparePasswords, hashPassword, setSession } from '@/lib/auth/session';
+import { comparePasswords, hashPassword, setSession, getSession } from '@/lib/auth/session';
 import { redirect } from 'next/navigation';
 import { validatedAction } from '@/lib/auth/middleware';
 import { cookies } from 'next/headers';
@@ -117,5 +116,25 @@ export const signUp = validatedAction(signUpSchema, async (data) => {
 // ---------------------------------------------------------------------------
 export async function signOut() {
   (await cookies()).delete('session');
-  redirect('/sign-in');
+  redirect('/');
+}
+
+// ---------------------------------------------------------------------------
+// Get Current User
+// ---------------------------------------------------------------------------
+export async function getUser(): Promise<typeof users.$inferSelect | null> {
+  const session = await getSession();
+  if (!session) return null;
+
+  try {
+    const result = await db
+      .select()
+      .from(users)
+      .where(eq(users.id, session.user.id))
+      .limit(1);
+
+    return result[0] ?? null;
+  } catch {
+    return null;
+  }
 }

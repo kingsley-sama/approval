@@ -64,22 +64,22 @@ export default function ProjectsPage() {
       <div className="p-6 md:p-8 space-y-6">
 
         {/* URL input bar */}
-        <div className="flex items-center gap-3 max-w-2xl mx-auto">
+        <div className="flex items-center gap-2 max-w-2xl mx-auto">
           <div className="flex-1 relative">
             <Input
-              placeholder="Enter a URL here"
-              className="h-11 rounded-full pl-5 pr-16 bg-card border-border text-sm"
+              placeholder="search project by name"
+              className="h-10 rounded-full pl-5 pr-16 bg-card border-border text-sm"
             />
             <Button
               size="sm"
-              className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-full bg-accent text-accent-foreground hover:bg-accent/90 h-8 px-4 text-xs font-semibold"
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-full bg-accent text-accent-foreground hover:bg-accent/90 h-8 px-2 text-xs font-semibold"
             >
-              Go
+              <Search className="h-3 w-3 mr-1" />
             </Button>
           </div>
           <span className="text-sm text-muted-foreground">Or</span>
-          <Button variant="outline" className="rounded-full h-11 px-5 gap-2 font-semibold border-foreground/20">
-            <Upload className="h-4 w-4" />
+          <Button  variant="outline" className="rounded-full h-10 px-5 gap-2 font-semibold border-foreground/20 hover:bg-accent/10 hover:text-accent transition-colors">
+            <Upload className="h-3 w-4" />
             Upload
           </Button>
         </div>
@@ -88,17 +88,11 @@ export default function ProjectsPage() {
         <div className="flex items-center justify-between">
           <h1 className="text-lg font-semibold text-foreground font-display">Projects</h1>
           <div className="flex items-center gap-2">
-            <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground">
+            <Button variant="ghost" size="icon" className="h-8 w-8 text-accent bg-accent/10 hover:text-foreground">
               <Filter className="h-4 w-4" />
             </Button>
-            <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground">
+            <Button variant="ghost" size="icon" className="h-8 w-8 text-accent bg-accent/10 hover:text-foreground">
               <ArrowUpDown className="h-4 w-4" />
-            </Button>
-            <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground">
-              <FolderOpen className="h-4 w-4" />
-            </Button>
-            <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground">
-              <Search className="h-4 w-4" />
             </Button>
             <CreateProjectModal onProjectCreated={fetchProjects} />
           </div>
