@@ -21,9 +21,10 @@ import { FolderPlus, Upload, X } from 'lucide-react';
 
 interface CreateProjectModalProps {
   onProjectCreated: () => void;
+  trigger?: React.ReactNode;
 }
 
-export default function CreateProjectModal({ onProjectCreated }: CreateProjectModalProps) {
+export default function CreateProjectModal({ onProjectCreated, trigger }: CreateProjectModalProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [projectName, setProjectName] = useState('');
@@ -113,9 +114,11 @@ export default function CreateProjectModal({ onProjectCreated }: CreateProjectMo
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
-        <button className="flex items-center gap-1 px-2 py-1 bg-primary  text-primary-foreground rounded-lg hover:bg-accent/20 hover:text-accent/80 transition-colors">
-          <FolderPlus size={20} />
-        </button>
+        {trigger ?? (
+          <button className="flex items-center gap-1 px-2 py-1 bg-primary  text-primary-foreground rounded-lg hover:bg-accent/20 hover:text-accent/80 transition-colors">
+            <FolderPlus size={20} />
+          </button>
+        )}
       </DialogTrigger>
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>

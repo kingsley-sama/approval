@@ -40,6 +40,7 @@ interface ShareLinkManagerProps {
   resourceId: string;
   createdBy: string;
   resourceName?: string;
+  trigger?: React.ReactNode;
 }
 
 export default function ShareLinkManager({
@@ -47,6 +48,7 @@ export default function ShareLinkManager({
   resourceId,
   createdBy,
   resourceName = 'this resource',
+  trigger,
 }: ShareLinkManagerProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [shareLinks, setShareLinks] = useState<ShareLink[]>([]);
@@ -127,14 +129,16 @@ export default function ShareLinkManager({
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
-    <Button
-      size="sm"
-      className="rounded-full bg-primary text-primary-foreground hover:bg-primary/90 gap-1.5 h-8 px-4 text-xs font-semibold"
-    >
-      <Share className="h-3.5 w-3.5" />
-      Share
-    </Button>
-</DialogTrigger>
+        {trigger ?? (
+          <Button
+            size="sm"
+            className="rounded-full bg-primary text-primary-foreground hover:bg-primary/90 gap-1.5 h-8 px-4 text-xs font-semibold"
+          >
+            <Share className="h-3.5 w-3.5" />
+            Share
+          </Button>
+        )}
+      </DialogTrigger>
 
       <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
         <DialogHeader>

@@ -3,6 +3,7 @@ import { Users, Settings, ChevronDown, LogOut, Folder, Trash } from 'lucide-reac
 import { signOut } from '@/app/actions/auth'
 import { usePathname } from 'next/navigation'
 import Link from 'next/link'
+import Image from 'next/image'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import {
@@ -38,8 +39,14 @@ export default function AppSidebar({ user }: AppSidebarProps) {
       {/* Header */}
       <SidebarHeader className="p-4">
         <button className="flex items-center gap-3 w-full group">
-          <div className="h-9 w-9 rounded-lg bg-primary flex items-center justify-center text-white font-display font-bold text-sm shrink-0">
-            EP
+          <div className="h-9 w-9 rounded-lg flex items-center justify-center shrink-0">
+            <Image
+              src="/logo.png"
+              alt="Company logo"
+              width={20}
+              height={20}
+              className="object-contain"
+            />
           </div>
           <div className="flex-1 text-left min-w-0 group-data-[collapsible=icon]:hidden">
             <p className="text-sm font-semibold text-foreground truncate">Revision</p>

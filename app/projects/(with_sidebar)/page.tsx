@@ -83,10 +83,15 @@ export default function ProjectsPage() {
             </Button>
           </div>
           <span className="text-sm text-muted-foreground">Or</span>
-          <Button  variant="outline" className="rounded-full h-10 px-5 gap-2 font-semibold border-foreground/20 hover:bg-accent/10 hover:text-accent transition-colors">
-            <Upload className="h-3 w-4" />
-            Upload
-          </Button>
+          <CreateProjectModal
+            onProjectCreated={fetchProjects}
+            trigger={
+              <Button size="sm" className="rounded-full bg-primary text-primary-foreground hover:bg-primary/90 gap-1.5 h-8 px-4 text-xs font-semibold">
+                <Upload className="h-3.5 w-3.5" />
+                Upload
+              </Button>
+            }
+          />
         </div>
 
         {/* Workspace header */}

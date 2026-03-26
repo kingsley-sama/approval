@@ -1,5 +1,6 @@
 'use client';
 import { Button } from "@/components/ui/button";
+import Image from "next/image";
 import  {useRouter} from "next/navigation";
 
 const Navbar = () => {
@@ -9,10 +10,16 @@ const Navbar = () => {
     <nav className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-xl border-b border-border flex items-center justify-center h-16">
       <div className="container flex items-center justify-between h-16">
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-accent flex items-center justify-center">
-            <span className="text-accent-foreground font-display font-bold text-xs">EP</span>
+          <div className="w-6 h-8 rounded-lg flex items-center justify-center">
+            <Image
+                src="/logo.png" 
+                alt="Company logo" 
+                width={20} 
+                height={20} 
+                className="object-contain" 
+              />
           </div>
-          <span className="font-display font-bold text-lg text-foreground">ProtoFlow</span>
+          <span className="font-display font-bold text-lg text-foreground"></span>
         </div>
 
         <div className="hidden md:flex items-center gap-8">

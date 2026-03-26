@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { useActionState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
@@ -29,8 +30,14 @@ export function Login({ mode = 'signin' }: { mode?: 'signin' | 'signup' }) {
       >
         {/* Logo + heading */}
         <div className="text-center mb-10">
-          <div className="w-12 h-12 rounded-xl bg-primary flex items-center justify-center mx-auto mb-5">
-            <span className="text-accent-foreground font-display font-bold text-sm">EP</span>
+          <div className="w-12 h-12 rounded-xl flex items-center justify-center mx-auto mb-5">
+            <Image
+              src="/logo.png"
+              alt="Company logo"
+              width={20}
+              height={20}
+              className="object-contain"
+            />
           </div>
           <h1 className="font-display text-2xl font-bold text-foreground mb-2 tracking-tight">
             {mode === 'signin' ? 'Welcome back' : 'Create your account'}

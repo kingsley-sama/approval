@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { useRouter } from 'next/navigation';
+import Image from 'next/image';
 import CommentsSidebar from '@/components/annotation/comments-sidebar';
 import ThumbnailsSidebar from '@/components/annotation/thumbnails-sidebar';
 import ShareLinkManager from '@/components/share-link-manager';
@@ -97,8 +98,14 @@ export function ProjectTopNav({
           >
             <ArrowLeft className="h-4 w-4" />
           </Button>
-          <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-            <span className="text-primary-foreground font-bold text-sm font-display">EP</span>
+          <div className="w-8 h-8 rounded-lg flex items-center justify-center">
+						<Image
+							src="/logo.png"
+							alt="Company logo"
+							width={20}
+							height={20}
+							className="object-contain"
+						/>
           </div>
           <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground">
             <ImageIcon className="h-4 w-4" />

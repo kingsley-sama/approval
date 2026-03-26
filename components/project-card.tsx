@@ -16,6 +16,7 @@ import {
   Trash2,
 } from 'lucide-react'
 import React from 'react'
+import ShareLinkManager from '@/components/share-link-manager'
 
 export type Project = {
   id: string
@@ -106,12 +107,20 @@ export default function ProjectCard({ project, onOpen, onDuplicate, onDelete }: 
 
               <div className="flex items-center gap-2">
                 <Tip label="Share">
-                  <button
-                    onClick={(e) => e.stopPropagation()}
-                    className="p-1.5 rounded-md bg-white/20 hover:bg-white/30 text-white transition-colors"
-                  >
-                    <Share2 size={15} />
-                  </button>
+                  <ShareLinkManager
+                    resourceType="project"
+                    resourceId={project.id}
+                    createdBy="user"
+                    resourceName={project.title}
+                    trigger={
+                      <button
+                        onClick={(e) => e.stopPropagation()}
+                        className="p-1.5 rounded-md bg-white/20 hover:bg-white/30 text-white transition-colors"
+                      >
+                        <Share2 size={15} />
+                      </button>
+                    }
+                  />
                 </Tip>
 
                 <div className="relative" ref={menuRef}>
