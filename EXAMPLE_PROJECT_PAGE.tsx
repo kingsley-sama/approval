@@ -47,6 +47,13 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
   const canDuplicate = ['admin', 'pm'].includes(userRole);
   const canShare = ['admin', 'pm'].includes(userRole);
   const canDraw = ['admin', 'pm', 'supplier'].includes(userRole);
+  const projectMeta = project as typeof project & {
+    is_duplicated?: boolean;
+    original_project_id?: string | null;
+  };
+  const createdDateLabel = project.created_at
+    ? new Date(project.created_at).toLocaleDateString()
+    : 'Unknown';
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -59,9 +66,9 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
                 {project.project_name}
               </h1>
               <p className="text-sm text-gray-600 mt-1">
-                {threads?.length || 0} images • Created {new Date(project.created_at).toLocaleDateString()}
+                {threads?.length || 0} images • Created {createdDateLabel}
               </p>
-              {project.is_duplicated && (
+              {projectMeta.is_duplicated && (
                 <span className="inline-flex items-center px-2 py-1 mt-2 text-xs font-medium bg-blue-100 text-blue-800 rounded">
                   📋 Duplicated Project
                 </span>
@@ -144,16 +151,16 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
           <div>
             <label className="text-gray-600">Created</label>
             <p className="font-medium">
-              {new Date(project.created_at).toLocaleDateString()}
+              {createdDateLabel}
             </p>
           </div>
 
-          {project.is_duplicated && (
+          {projectMeta.is_duplicated && (
             <div>
               <label className="text-gray-600">Duplicated From</label>
               <p className="font-medium">
                 <a 
-                  href={`/project/${project.original_project_id}`}
+                  href={`/project/${projectMeta.original_project_id}`}
                   className="text-blue-600 hover:underline"
                 >
                   View Original

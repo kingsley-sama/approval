@@ -1,1 +1,1 @@
-export { default } from '../landing_page';
+export { default } from '../page';

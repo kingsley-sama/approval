@@ -85,12 +85,12 @@ export async function saveDrawing(
       drawing: {
         id: data.id,
         threadId: data.thread_id,
-        drawingData: data.drawing_data as DrawingData,
+        drawingData: data.drawing_data as unknown as DrawingData,
         createdBy: data.created_by,
         createdAt: data.created_at,
         updatedAt: data.updated_at,
         isDuplicated: data.is_duplicated,
-        originalDrawingId: data.original_drawing_id,
+        originalDrawingId: data.original_drawing_id ?? undefined,
       },
     };
   } catch (error) {
@@ -134,12 +134,12 @@ export async function updateDrawing(
       drawing: {
         id: data.id,
         threadId: data.thread_id,
-        drawingData: data.drawing_data as DrawingData,
+        drawingData: data.drawing_data as unknown as DrawingData,
         createdBy: data.created_by,
         createdAt: data.created_at,
         updatedAt: data.updated_at,
         isDuplicated: data.is_duplicated,
-        originalDrawingId: data.original_drawing_id,
+        originalDrawingId: data.original_drawing_id ?? undefined,
       },
     };
   } catch (error) {
@@ -175,12 +175,12 @@ export async function getDrawingsByThread(
     const drawings: Drawing[] = data.map(d => ({
       id: d.id,
       threadId: d.thread_id,
-      drawingData: d.drawing_data as DrawingData,
+      drawingData: d.drawing_data as unknown as DrawingData,
       createdBy: d.created_by,
       createdAt: d.created_at,
       updatedAt: d.updated_at,
       isDuplicated: d.is_duplicated,
-      originalDrawingId: d.original_drawing_id,
+      originalDrawingId: d.original_drawing_id ?? undefined,
     }));
 
     return {

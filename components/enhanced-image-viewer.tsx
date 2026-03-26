@@ -14,9 +14,8 @@ import {
   getDrawingsByThread,
   saveDrawing,
   updateDrawing,
-  type Drawing,
 } from '@/app/actions/drawings';
-import type { DrawingTool, DrawingData, Shape } from '@/types/drawing';
+import type { Drawing, DrawingTool, DrawingData, Shape } from '@/types/drawing';
 import { Button } from '@/components/ui/button';
 
 interface EnhancedImageViewerProps {
@@ -47,7 +46,7 @@ export default function EnhancedImageViewer({
   const [shapes, setShapes] = useState<Shape[]>([]);
   
   const [isDrawingEnabled, setIsDrawingEnabled] = useState(false);
-  const [currentTool, setCurrentTool] = useState<DrawingTool>('pen');
+  const [currentTool, setCurrentTool] = useState<DrawingTool | null>(null);
   const [currentColor, setCurrentColor] = useState('#FF0000');
   const [strokeWidth, setStrokeWidth] = useState(4);
   
@@ -106,13 +105,17 @@ export default function EnhancedImageViewer({
     }
   };
 
-  const handleShapesChange = (newShapes: Shape[]) => {
+  const handleShapeComplete = async (shape: Shape) => {
+    const newShapes = [...shapes, shape];
     setShapes(newShapes);
-  };
-
-  const toggleDrawing = () => {
-    if (!canDraw) return;
-    setIsDrawingEnabled(!isDrawingEnabled);
+    await handleSaveDrawing({
+      version: '1.0',
+      shapes: newShapes,
+      metadata: {
+        imageWidth,
+        imageHeight,
+      },
+    });
   };
 
   return (
@@ -142,14 +145,11 @@ export default function EnhancedImageViewer({
       {/* Drawing toolbar */}
       {canDraw && (
         <DrawingToolbar
-          currentTool={currentTool}
-          currentColor={currentColor}
-          strokeWidth={strokeWidth}
-          isEnabled={isDrawingEnabled}
-          onToolChange={setCurrentTool}
-          onColorChange={setCurrentColor}
-          onStrokeWidthChange={setStrokeWidth}
-          onToggleDrawing={toggleDrawing}
+          activeTool={currentTool}
+          onToolSelect={(tool) => {
+            setCurrentTool(tool);
+            setIsDrawingEnabled(tool !== null);
+          }}
         />
       )}
 
@@ -170,13 +170,12 @@ export default function EnhancedImageViewer({
               <DrawingCanvas
                 imageWidth={imageWidth}
                 imageHeight={imageHeight}
-                initialShapes={shapes}
-                currentTool={currentTool}
+                shapes={shapes}
+                currentTool={currentTool ?? 'pen'}
                 currentColor={currentColor}
                 strokeWidth={strokeWidth}
-                isEnabled={isDrawingEnabled}
-                onShapesChange={handleShapesChange}
-                onSave={handleSaveDrawing}
+                isEnabled={isDrawingEnabled && currentTool !== null}
+                onShapeComplete={handleShapeComplete}
               />
             </div>
           )}
