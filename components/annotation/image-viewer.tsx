@@ -247,7 +247,7 @@ export default function ImageViewer({
 
       {/* Main Image Viewport */}
       <div className={`flex-1 flex items-center justify-center ${isFullscreen ? 'w-screen h-screen' : 'min-w-full min-h-full'}`}>
-        <div className="relative" onClick={handleClick}>
+        <div data-annotation-image-container className="relative" onClick={handleClick}>
           <Image
             ref={imageRef}
             src={currentImageUrl || '/modern-house-exterior.jpg'}
@@ -309,8 +309,8 @@ export default function ImageViewer({
                   pin.status === 'resolved'
                     ? 'bg-green-600 opacity-70'
                     : selectedPin === pin.id
-                    ? 'bg-blue-700 ring-2 ring-blue-300 scale-110 shadow-lg'
-                    : 'bg-blue-600 hover:bg-blue-700'
+                    ? 'bg-primary ring-2 ring-blue-300 scale-110 shadow-lg'
+                    : 'bg-primary hover:bg-primary-400'
                 }`}
               >
                 {pin.number}

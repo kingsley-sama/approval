@@ -29,6 +29,7 @@ export type Project = {
     likes: number
     comments: number
     shares: number
+    images: number
   }
 }
 
@@ -230,7 +231,7 @@ export default function ProjectCard({ project, onOpen, onDuplicate, onDelete }: 
             <LinkIcon size={10} /><span>{project.stats.shares}</span>
           </div>
           <div className="flex items-center gap-1 bg-primary/10 rounded-md px-2 py-0.5 text-primary/80 text-xs">
-            <Image size={10} /><span>{allImages.length}</span>
+            <Image size={10} /><span>{project.stats.images}</span>
           </div>
         </div>
       </div>

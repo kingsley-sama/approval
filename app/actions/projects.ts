@@ -54,9 +54,14 @@ export async function getProjects() {
       .select(`
         *,
         markup_threads (
+          id,
           image_path,
           image_filename,
-          created_at
+          created_at,
+          markup_comments (
+            id,
+            status
+          )
         )
       `)
       .order('created_at', { ascending: false });
@@ -73,7 +78,30 @@ export async function getProjects() {
         (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
       );
       const firstImage = sorted[0]?.image_path || null;
-      return { ...p, first_image: firstImage };
+      const totalImages = threads.length;
+      const totalComments = threads.reduce((count, thread) => {
+        const comments = Array.isArray(thread.markup_comments) ? thread.markup_comments : [];
+        return count + comments.length;
+      }, 0);
+      const resolvedComments = threads.reduce((count, thread) => {
+        const comments = Array.isArray(thread.markup_comments) ? thread.markup_comments : [];
+        return (
+          count + comments.filter((comment: any) => comment.status === 'resolved').length
+        );
+      }, 0);
+      const commentedThreads = threads.filter((thread) => {
+        const comments = Array.isArray(thread.markup_comments) ? thread.markup_comments : [];
+        return comments.length > 0;
+      }).length;
+
+      return {
+        ...p,
+        first_image: firstImage,
+        total_images: totalImages,
+        total_comments: totalComments,
+        total_resolved_comments: resolvedComments,
+        total_commented_threads: commentedThreads,
+      };
     });
   } catch (error) {
     console.error('Unexpected error fetching projects:', error);

@@ -47,6 +47,7 @@ export default function ProjectDuplicator({
   const [newName, setNewName] = useState(`${projectName} (Copy)`);
   const [copyComments, setCopyComments] = useState(false);
   const [copyDrawings, setCopyDrawings] = useState(false);
+  const [anonymizeCommenters, setAnonymizeCommenters] = useState(false);
   const [result, setResult] = useState<DuplicationResult | null>(null);
 
   const isControlled = controlledIsOpen !== undefined;
@@ -77,6 +78,7 @@ export default function ProjectDuplicator({
       options: {
         copyComments,
         copyDrawings,
+        anonymizeCommenters,
       },
       createdBy,
     };
@@ -93,6 +95,7 @@ export default function ProjectDuplicator({
         setNewName(`${projectName} (Copy)`);
         setCopyComments(false);
         setCopyDrawings(false);
+        setAnonymizeCommenters(false);
         setResult(null);
       }, 2000);
     }
@@ -102,6 +105,7 @@ export default function ProjectDuplicator({
     setNewName(`${projectName} (Copy)`);
     setCopyComments(false);
     setCopyDrawings(false);
+    setAnonymizeCommenters(false);
     setResult(null);
   };
 
@@ -169,7 +173,13 @@ export default function ProjectDuplicator({
                 <Checkbox
                   id="copy-comments"
                   checked={copyComments}
-                  onCheckedChange={(checked) => setCopyComments(checked as boolean)}
+                  onCheckedChange={(checked) => {
+                    const next = checked as boolean;
+                    setCopyComments(next);
+                    if (!next) {
+                      setAnonymizeCommenters(false);
+                    }
+                  }}
                   disabled={isLoading}
                 />
                 <div className="space-y-1">
@@ -181,6 +191,26 @@ export default function ProjectDuplicator({
                   </label>
                   <p className="text-xs text-gray-500">
                     Include all comments and annotations
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-start space-x-3">
+                <Checkbox
+                  id="anonymize-commenters"
+                  checked={anonymizeCommenters}
+                  onCheckedChange={(checked) => setAnonymizeCommenters(checked as boolean)}
+                  disabled={isLoading || !copyComments}
+                />
+                <div className="space-y-1">
+                  <label
+                    htmlFor="anonymize-commenters"
+                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                  >
+                    Make commenter names anonymous
+                  </label>
+                  <p className="text-xs text-gray-500">
+                    If enabled, copied comment authors will be renamed to client
                   </p>
                 </div>
               </div>

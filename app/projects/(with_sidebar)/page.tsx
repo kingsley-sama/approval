@@ -35,7 +35,12 @@ export default function ProjectsPage() {
           : 'Just now',
         isNew: false,
         color: cardColors[i % cardColors.length],
-        stats: { likes: 0, comments: p.total_threads || 0, shares: 0 },
+        stats: {
+          likes: p.total_resolved_comments || 0,
+          comments: p.total_comments || 0,
+          shares: p.total_commented_threads || 0,
+          images: p.total_images || 0,
+        },
       }))
       setProjects(mapped)
     } catch (error) {

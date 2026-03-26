@@ -33,7 +33,10 @@ export default function CommentModal({ position, onClose, onSubmit, existingPin,
   useEffect(() => {
     const updatePosition = () => {
       if (modalRef.current) {
-        const imageContainer = document.querySelector('[data-pin]')?.closest('.relative') as HTMLElement;
+        const imageContainer = (
+          document.querySelector('[data-annotation-image-container]') ||
+          document.querySelector('[data-pin]')?.closest('.relative')
+        ) as HTMLElement | null;
         if (!imageContainer) return;
 
         const containerRect = imageContainer.getBoundingClientRect();

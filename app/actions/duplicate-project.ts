@@ -15,6 +15,7 @@ const DuplicateProjectSchema = z.object({
   options: z.object({
     copyComments: z.boolean().default(false),
     copyDrawings: z.boolean().default(false),
+    anonymizeCommenters: z.boolean().default(false),
   }),
   createdBy: z.string().min(1),
 });
@@ -76,6 +77,11 @@ export async function duplicateProject(
 
     // Get details about what was copied
     const newProjectId = data as string;
+
+    if (validated.options.copyComments && validated.options.anonymizeCommenters) {
+      await anonymizeProjectCommenters(newProjectId);
+    }
+
     const details = await getDuplicationDetails(
       newProjectId,
       validated.options.copyComments,
@@ -93,6 +99,30 @@ export async function duplicateProject(
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error occurred',
     };
+  }
+}
+
+/**
+ * Rewrites all duplicated comment author names for a project.
+ */
+async function anonymizeProjectCommenters(projectId: string) {
+  const { data: threads, error: threadsError } = await supabase
+    .from('markup_threads')
+    .select('id')
+    .eq('project_id', projectId);
+
+  if (threadsError || !threads || threads.length === 0) {
+    return;
+  }
+
+  const threadIds = threads.map(t => t.id);
+  const { error } = await supabase
+    .from('markup_comments')
+    .update({ user_name: 'client' })
+    .in('thread_id', threadIds);
+
+  if (error) {
+    console.error('Failed to anonymize duplicated commenters:', error);
   }
 }
 
