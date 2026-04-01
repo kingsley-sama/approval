@@ -1,9 +1,12 @@
 'use server';
 
 import { createClient } from '@/lib/supabase/server';
+import { requireUser } from '@/lib/auth/require-user';
+import { CreateThreadSchema } from '@/lib/validation/schemas';
 import { revalidatePath } from 'next/cache';
 
 export async function getProjectThreads(projectId: string) {
+  await requireUser();
   const supabase = await createClient();
   try {
     const { data, error } = await supabase
@@ -25,6 +28,13 @@ export async function getProjectThreads(projectId: string) {
 }
 
 export async function createThread(projectId: string, fileData: { path: string; name: string; filename: string }) {
+  await requireUser();
+
+  const parsed = CreateThreadSchema.safeParse({ projectId, fileData });
+  if (!parsed.success) {
+    return { success: false, error: 'Invalid input: ' + parsed.error.issues[0]?.message };
+  }
+
   const supabase = await createClient();
   try {
     const { data, error } = await supabase
@@ -56,7 +66,7 @@ export async function createThread(projectId: string, fileData: { path: string; 
       .update({ total_threads: count })
       .eq('id', projectId);
 
-    revalidatePath(`/project/${projectId}`);
+    revalidatePath(`/projects/${projectId}`);
     return { success: true, thread: data };
   } catch (error) {
     console.error('Unexpected error creating thread:', error);

@@ -1,10 +1,11 @@
 import { and, eq, isNull } from 'drizzle-orm';
+import { cache } from 'react';
 import { db } from './drizzle';
 import { users } from './schema';
 import { cookies } from 'next/headers';
 import { verifyToken } from '@/lib/auth/session';
 
-export async function getUser() {
+export const getUser = cache(async function getUser() {
   try {
     const sessionCookie = (await cookies()).get('session');
     if (!sessionCookie || !sessionCookie.value) {
@@ -15,7 +16,7 @@ export async function getUser() {
     if (
       !sessionData ||
       !sessionData.user ||
-      typeof sessionData.user.id !== 'number'
+      typeof sessionData.user.id !== 'string'
     ) {
       return null;
     }
@@ -38,4 +39,4 @@ export async function getUser() {
   } catch {
     return null;
   }
-}
+});

@@ -1,4 +1,5 @@
 'use client'
+import React from 'react'
 import { Users, Settings, ChevronDown, LogOut, Folder, Trash } from 'lucide-react'
 import { signOut } from '@/app/actions/auth'
 import { usePathname } from 'next/navigation'
@@ -12,11 +13,22 @@ import {
   SidebarMenuButton, SidebarMenuItem,
 } from '@/components/ui/sidebar'
 import type { users } from '@/lib/db/schema'
-const navItems = [
-  { title: 'Projects', href: '/', icon: Folder },
+interface NavItem {
+  title: string;
+  href: string;
+  icon: React.ComponentType<{ className?: string }>;
+  badge?: string;
+}
+
+const adminNavItems: NavItem[] = [
+  { title: 'Projects', href: '/projects', icon: Folder },
   { title: 'Team', href: '/team', icon: Users },
   { title: 'Archive', href: '/archive', icon: Trash, badge: 'Beta' },
   { title: 'Settings', href: '/settings', icon: Settings },
+]
+
+const memberNavItems: NavItem[] = [
+  { title: 'Projects', href: '/projects', icon: Folder },
 ]
 
 interface AppSidebarProps {
@@ -33,6 +45,7 @@ function getInitials(name?: string | null, email?: string | null) {
 
 export default function AppSidebar({ user }: AppSidebarProps) {
   const pathname = usePathname()
+  const navItems = user?.role === 'admin' ? adminNavItems : memberNavItems
 
   return (
     <Sidebar collapsible="icon" className="border-r border-border">
@@ -63,7 +76,7 @@ export default function AppSidebar({ user }: AppSidebarProps) {
             <SidebarMenu>
               {navItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild isActive={pathname === item.href} tooltip={item.title}>
+                  <SidebarMenuButton asChild isActive={pathname === item.href || pathname.startsWith(item.href + '/')} tooltip={item.title}>
                     <Link
                       href={item.href}
                       className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-muted-foreground transition-colors hover:text-foreground hover:bg-muted"

@@ -58,7 +58,7 @@ export default function ImageUploader({ projectId, onUploadComplete, trigger }: 
   const uploadOne = async (file: File, state: FileUploadState): Promise<boolean> => {
     // 1. Get presigned URL from server (tiny request — no file data)
     patch(state.id, { status: 'uploading', progress: 0 });
-    const urlResult = await getSignedUploadUrl(file.name);
+    const urlResult = await getSignedUploadUrl(projectId, file.name);
     if (!urlResult.success || !urlResult.signedUrl || !urlResult.storagePath) {
       patch(state.id, { status: 'error', error: urlResult.error || 'Could not get upload URL' });
       return false;

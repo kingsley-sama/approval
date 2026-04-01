@@ -2,25 +2,21 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { signToken, verifyToken } from '@/lib/auth/session';
 
-const protectedRoutes = ['/projects', '/project'];
-const publicRoutes = ['/', '/sign-in', '/sign-up', '/login'];
+const publicRoutes = ['/', '/sign-in', '/sign-up', '/login', '/landing'];
+const publicPrefixes = ['/share', '/api/share'];
 
-function matchesRoute(pathname: string, route: string) {
-  if (route === '/') {
-    return pathname === '/';
-  }
-
-  return pathname === route || pathname.startsWith(`${route}/`);
+function isPublicPath(pathname: string): boolean {
+  if (publicRoutes.some((route) => pathname === route)) return true;
+  if (publicPrefixes.some((prefix) => pathname.startsWith(prefix))) return true;
+  return false;
 }
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const sessionCookie = request.cookies.get('session');
 
-  const isProtectedRoute = protectedRoutes.some(
-    (route) => matchesRoute(pathname, route)
-  );
-  const isPublicRoute = publicRoutes.some((route) => matchesRoute(pathname, route));
+  const isPublicRoute = isPublicPath(pathname);
+  const isProtectedRoute = !isPublicRoute;
 
   if (isProtectedRoute && !sessionCookie) {
     return NextResponse.redirect(new URL('/sign-in', request.url));

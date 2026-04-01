@@ -73,7 +73,7 @@ export default function CreateProjectModal({ onProjectCreated, trigger }: Create
       // 2. Upload Image if selected
       if (selectedFile) {
         // Step A: get presigned URL from server (no file data sent)
-        const urlResult = await getSignedUploadUrl(selectedFile.name);
+        const urlResult = await getSignedUploadUrl(projectId, selectedFile.name);
         if (!urlResult.success || !urlResult.signedUrl || !urlResult.storagePath) {
           throw new Error(urlResult.error || 'Failed to get upload URL');
         }

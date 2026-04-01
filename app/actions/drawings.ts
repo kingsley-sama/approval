@@ -6,6 +6,7 @@
 'use server';
 
 import { supabaseAdmin as supabase } from '@/lib/supabase';
+import { requireUser } from '@/lib/auth/require-user';
 import { z } from 'zod';
 import type { DrawingData, Drawing } from '@/types/drawing';
 
@@ -45,6 +46,7 @@ export async function saveDrawing(
   input: SaveDrawingInput
 ): Promise<DrawingResult> {
   try {
+    await requireUser();
     const validated = SaveDrawingSchema.parse(input);
 
     // Check if thread exists
@@ -109,6 +111,7 @@ export async function updateDrawing(
   input: UpdateDrawingInput
 ): Promise<DrawingResult> {
   try {
+    await requireUser();
     const validated = UpdateDrawingSchema.parse(input);
 
     const { data, error } = await supabase
@@ -203,6 +206,7 @@ export async function deleteDrawing(
   drawingId: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
+    await requireUser();
     const { error } = await supabase
       .from('markup_drawings')
       .delete()

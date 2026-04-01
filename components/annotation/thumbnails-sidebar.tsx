@@ -15,7 +15,7 @@ interface ThumbnailsSidebarProps {
   currentImageId: string;
   onSelectImage: (imageId: string) => void;
   projectId: string;
-  onUploadComplete?: () => void;
+  onUploadComplete?: () => void | Promise<void>;
   /** When true the upload button is hidden */
   readOnly?: boolean;
 }
@@ -56,10 +56,24 @@ export default function ThumbnailsSidebar({
       <div className="border-t border-border p-2 flex items-center justify-between text-xs text-gray-600">
         <span>{images.findIndex(img => img.id === currentImageId) + 1} of {images.length}</span>
         <div className="flex gap-1">
-          <button className="p-1 hover:bg-gray-100 rounded">
+          <button
+            className="p-1 hover:bg-gray-100 rounded disabled:opacity-40"
+            disabled={images.findIndex(img => img.id === currentImageId) === 0}
+            onClick={() => {
+              const idx = images.findIndex(img => img.id === currentImageId);
+              if (idx > 0) onSelectImage(images[idx - 1].id);
+            }}
+          >
             <ChevronUp size={16} />
           </button>
-          <button className="p-1 hover:bg-gray-100 rounded">
+          <button
+            className="p-1 hover:bg-gray-100 rounded disabled:opacity-40"
+            disabled={images.findIndex(img => img.id === currentImageId) === images.length - 1}
+            onClick={() => {
+              const idx = images.findIndex(img => img.id === currentImageId);
+              if (idx < images.length - 1) onSelectImage(images[idx + 1].id);
+            }}
+          >
             <ChevronDown size={16} />
           </button>
         </div>

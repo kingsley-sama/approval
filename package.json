@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "test:e2e": "npx playwright test"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
@@ -60,7 +61,7 @@
     "lucide-react": "^0.454.0",
     "nanoid": "^5.1.6",
     "next": "^16.2.1",
-    "next-themes": "^0.4.6",
+    "next-themes": "^0.3.0",
     "postgres": "^3.4.8",
     "react": "19.2.0",
     "react-day-picker": "9.8.0",
@@ -75,6 +76,7 @@
     "zod": "3.25.76"
   },
   "devDependencies": {
+    "@playwright/test": "^1.58.2",
     "@tailwindcss/postcss": "^4.1.9",
     "@types/node": "^22",
     "@types/react": "^19",

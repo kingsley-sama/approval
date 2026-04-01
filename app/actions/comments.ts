@@ -2,6 +2,8 @@
 
 import { createClient } from '@/lib/supabase/server';
 import { getUser } from '@/lib/db/queries';
+import { requireUser } from '@/lib/auth/require-user';
+import { CreateCommentSchema, ResolveCommentSchema, DeleteCommentSchema } from '@/lib/validation/schemas';
 import { revalidatePath } from 'next/cache';
 import { nanoid } from 'nanoid';
 
@@ -31,7 +33,7 @@ export interface CreateCommentResult {
 export async function getCurrentUser() {
   const user = await getUser();
   if (!user) return null;
-  return { id: user.id, name: user.name || user.email, email: user.email };
+  return { id: user.id, name: user.name || user.email, email: user.email, role: user.role };
 }
 
 /** Load all comments (pins) for a thread, ordered by creation time */
@@ -62,6 +64,13 @@ export async function createComment(
   y: number,
   drawingData?: any,
 ): Promise<CreateCommentResult> {
+  await requireUser();
+
+  const parsed = CreateCommentSchema.safeParse({ threadId, content, userName, x, y, drawingData });
+  if (!parsed.success) {
+    return { success: false, error: 'Invalid input: ' + parsed.error.issues[0]?.message };
+  }
+
   const supabase = await createClient();
 
   // Count existing comments in this thread to derive sequential numbers
@@ -100,7 +109,7 @@ export async function createComment(
     return { success: false, error: error.message };
   }
 
-  revalidatePath('/project');
+  revalidatePath('/projects');
   return { success: true, comment: data as DbComment };
 }
 
@@ -109,6 +118,13 @@ export async function resolveComment(
   commentId: string,
   projectId?: string
 ): Promise<{ success: boolean; error?: string }> {
+  await requireUser();
+
+  const parsed = ResolveCommentSchema.safeParse({ commentId });
+  if (!parsed.success) {
+    return { success: false, error: 'Invalid comment ID' };
+  }
+
   const supabase = await createClient();
 
   // Fetch current status first
@@ -134,7 +150,7 @@ export async function resolveComment(
     return { success: false, error: error.message };
   }
 
-  if (projectId) revalidatePath(`/project/${projectId}`);
+  if (projectId) revalidatePath(`/projects/${projectId}`);
   return { success: true };
 }
 
@@ -142,6 +158,13 @@ export async function resolveComment(
 export async function deleteComment(
   commentId: string
 ): Promise<{ success: boolean; error?: string }> {
+  await requireUser();
+
+  const parsed = DeleteCommentSchema.safeParse({ commentId });
+  if (!parsed.success) {
+    return { success: false, error: 'Invalid comment ID' };
+  }
+
   const supabase = await createClient();
 
   const { error } = await supabase

@@ -60,8 +60,10 @@ SQL migrations for Supabase are in `migrations/` (run manually in Supabase SQL E
 
 All data mutations are Next.js Server Actions (`'use server'`):
 - `projects.ts` — CRUD for `markup_projects`
+- `update-project.ts` — `updateProjectImage` (updates `markup_url` on a project)
 - `threads.ts` — `getProjectThreads`, `createThread`
 - `comments.ts` — `createComment`, `getThreadComments`, `resolveComment`, `deleteComment`, `getCurrentUser`
+- `drawings.ts` — Save/load/manage drawing markup (operates on `drawing_data` JSONB)
 - `share-links.ts` — `createShareLink`, `validateShareToken`
 - `storage.ts` — File upload helpers
 - `auth.ts` — Sign-in/sign-up server actions

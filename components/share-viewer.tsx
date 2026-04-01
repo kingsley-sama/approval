@@ -139,7 +139,7 @@ export default function ShareViewer({ shareLink, resourceData, token }: ShareVie
     setShowModal(true);
   };
 
-  const handleAddComment = async (text: string) => {
+  const handleAddComment = async (text: string, _attachments: File[] = []) => {
     if (!currentThread || !pendingPinPos) return;
     setSaveError(null);
 
@@ -281,7 +281,7 @@ export default function ShareViewer({ shareLink, resourceData, token }: ShareVie
           </div>
           <div className="flex items-center justify-end gap-3 text-sm">
             <Link
-              href="/shared"
+              href="/projects"
               className="text-xs text-muted-foreground hover:text-foreground transition-colors underline underline-offset-2"
             >
               My Shared Projects
@@ -400,6 +400,7 @@ export default function ShareViewer({ shareLink, resourceData, token }: ShareVie
           isNewPin={isNewPin}
           existingPin={isNewPin ? undefined : (pins.find(p => p.id === selectedPin) as any)}
           currentUser={guestName || 'Guest'}
+          userRole="member"
           onClose={() => {
             setShowModal(false);
             setIsNewPin(false);

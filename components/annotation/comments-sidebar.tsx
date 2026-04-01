@@ -1,7 +1,7 @@
 'use client';
 
 import { MessageSquare, ChevronDown, ChevronRight, Check } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 interface Pin {
   id: string;
@@ -39,18 +39,33 @@ export default function CommentsSidebar({
   readOnly = false,
 }: CommentsSidebarProps) {
   const [expandedImages, setExpandedImages] = useState<string[]>([currentImageId]);
+  const [activeTab, setActiveTab] = useState<'active' | 'resolved'>('active');
+
+  // Auto-expand the current image when it changes
+  useEffect(() => {
+    setExpandedImages(prev =>
+      prev.includes(currentImageId) ? prev : [...prev, currentImageId]
+    );
+  }, [currentImageId]);
 
   const allPins = allImages.flatMap(img => img.pins);
   const resolvedCount = allPins.filter(p => p.status === 'resolved').length;
   const activeCount = allPins.filter(p => p.status !== 'resolved').length;
 
   const imageGroups = allImages
-    .map(img => ({
-      ...img,
-      activeComments: img.pins.filter(p => p.status !== 'resolved'),
-      resolvedComments: img.pins.filter(p => p.status === 'resolved'),
-      totalComments: img.pins.length,
-    }))
+    .map(img => {
+      const filtered = img.pins.filter(p =>
+        activeTab === 'resolved' ? p.status === 'resolved' : p.status !== 'resolved'
+      );
+      return {
+        ...img,
+        filteredPins: filtered,
+        totalComments: filtered.length,
+        // still need these for the full counts in header
+        activeComments: img.pins.filter(p => p.status !== 'resolved'),
+        resolvedComments: img.pins.filter(p => p.status === 'resolved'),
+      };
+    })
     .filter(g => g.totalComments > 0);
 
   const toggleExpandImage = (imageId: string) => {
@@ -135,10 +150,24 @@ export default function CommentsSidebar({
     <div className="w-72 border-r border-border/50 bg-background flex flex-col overflow-hidden">
       {/* Header tabs */}
       <div className="flex items-center gap-6 px-5 py-3 border-b border-border/50">
-        <button className="text-sm font-semibold text-foreground border-b-2 border-primary pb-1">
+        <button
+          onClick={() => setActiveTab('active')}
+          className={`text-sm font-semibold pb-1 transition-colors ${
+            activeTab === 'active'
+              ? 'text-foreground border-b-2 border-primary'
+              : 'text-muted-foreground hover:text-foreground'
+          }`}
+        >
           {activeCount} Active
         </button>
-        <button className="text-sm text-muted-foreground hover:text-foreground pb-1">
+        <button
+          onClick={() => setActiveTab('resolved')}
+          className={`text-sm pb-1 transition-colors ${
+            activeTab === 'resolved'
+              ? 'text-foreground font-semibold border-b-2 border-primary'
+              : 'text-muted-foreground hover:text-foreground'
+          }`}
+        >
           {resolvedCount} Resolved
         </button>
       </div>
@@ -170,22 +199,7 @@ export default function CommentsSidebar({
 
                 {expandedImages.includes(imageGroup.id) && (
                   <div className="bg-gray-50">
-                    {imageGroup.activeComments.length > 0 && (
-                      <>
-                        <div className="px-4 pt-3 pb-2">
-                          <p className="text-xs font-semibold text-blue-700">Active</p>
-                        </div>
-                        {imageGroup.activeComments.map(renderCommentItem)}
-                      </>
-                    )}
-                    {imageGroup.resolvedComments.length > 0 && (
-                      <>
-                        <div className="px-4 pt-3 pb-2">
-                          <p className="text-xs font-semibold text-green-700">Resolved</p>
-                        </div>
-                        {imageGroup.resolvedComments.map(renderCommentItem)}
-                      </>
-                    )}
+                    {imageGroup.filteredPins.map(renderCommentItem)}
                   </div>
                 )}
               </div>

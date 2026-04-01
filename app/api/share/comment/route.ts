@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { validateShareToken } from '@/app/actions/share-links';
 import { supabaseAdmin as supabase } from '@/lib/supabase';
+import { checkRateLimit } from '@/lib/rate-limit';
 import { z } from 'zod';
 import { nanoid } from 'nanoid';
 
@@ -21,6 +22,15 @@ const CommentSchema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
+    // Rate limiting: 10 requests per minute per IP
+    const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+    if (!checkRateLimit(`share-comment:${ip}`, 60_000, 10)) {
+      return NextResponse.json(
+        { success: false, error: 'Too many requests. Please try again later.' },
+        { status: 429 }
+      );
+    }
+
     const body = await request.json();
     const validated = CommentSchema.parse(body);
 

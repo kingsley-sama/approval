@@ -94,7 +94,7 @@ export function ProjectTopNav({
             variant="ghost"
             size="icon"
             className="h-8 w-8 text-muted-foreground hover:text-foreground"
-            onClick={() => router.push('/')}
+            onClick={() => router.push('/projects')}
           >
             <ArrowLeft className="h-4 w-4" />
           </Button>
@@ -115,20 +115,8 @@ export function ProjectTopNav({
           </Button>
         </div>
 
-        {/* Center tabs */}
-        <div className="flex items-center gap-1 bg-surface-low rounded-full p-1">
-          <button
-            onClick={() => router.push('/')}
-            className={"px-5 py-1.5 rounded-full text-sm font-medium transition-colors"}
-          >
-            Comment
-          </button>
-          <button
-            className={"px-5 py-1.5 rounded-full text-sm font-medium transition-colors"}
-          >
-            Browse
-          </button>
-        </div>
+        {/* Center: project name */}
+        <span className="text-sm font-medium text-foreground truncate max-w-xs">{projectName}</span>
 
         {/* Right actions */}
         <div className="flex items-center gap-2">
