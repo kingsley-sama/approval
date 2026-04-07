@@ -1,6 +1,6 @@
 'use client'
 import React from 'react'
-import { Users, Settings, ChevronDown, LogOut, Folder, Trash } from 'lucide-react'
+import { Users, Settings, ChevronDown, LogOut, Folder, Archive } from 'lucide-react'
 import { signOut } from '@/app/actions/auth'
 import { usePathname } from 'next/navigation'
 import Link from 'next/link'
@@ -10,7 +10,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import {
   Sidebar, SidebarContent, SidebarFooter, SidebarGroup,
   SidebarGroupContent, SidebarHeader, SidebarMenu,
-  SidebarMenuButton, SidebarMenuItem,
+  SidebarMenuButton, SidebarMenuItem, SidebarTrigger,
 } from '@/components/ui/sidebar'
 import type { users } from '@/lib/db/schema'
 interface NavItem {
@@ -22,13 +22,14 @@ interface NavItem {
 
 const adminNavItems: NavItem[] = [
   { title: 'Projects', href: '/projects', icon: Folder },
-  { title: 'Team', href: '/team', icon: Users },
-  { title: 'Archive', href: '/archive', icon: Trash, badge: 'Beta' },
-  { title: 'Settings', href: '/settings', icon: Settings },
+  { title: 'Team', href: '/projects/team', icon: Users },
+  { title: 'Archive', href: '/projects/archive', icon: Archive, badge: 'Beta' },
+  { title: 'Settings', href: '/projects/settings', icon: Settings },
 ]
 
 const memberNavItems: NavItem[] = [
   { title: 'Projects', href: '/projects', icon: Folder },
+  { title: 'Settings', href: '/projects/settings', icon: Settings },
 ]
 
 interface AppSidebarProps {
@@ -50,8 +51,8 @@ export default function AppSidebar({ user }: AppSidebarProps) {
   return (
     <Sidebar collapsible="icon" className="border-r border-border">
       {/* Header */}
-      <SidebarHeader className="p-4">
-        <button className="flex items-center gap-3 w-full group">
+      <SidebarHeader className="p-3">
+        <div className="flex items-center gap-2">
           <div className="h-9 w-9 rounded-lg flex items-center justify-center shrink-0">
             <Image
               src="/logo.png"
@@ -61,40 +62,53 @@ export default function AppSidebar({ user }: AppSidebarProps) {
               className="object-contain"
             />
           </div>
-          <div className="flex-1 text-left min-w-0 group-data-[collapsible=icon]:hidden">
-            <p className="text-sm font-semibold text-foreground truncate">Revision</p>
-            <p className="text-xs text-accent font-medium">Pro</p>
+          <div className="flex-1 min-w-0 group-data-[collapsible=icon]:hidden">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-muted text-muted-foreground text-xs font-medium">
+              <span className="w-1.5 h-1.5 rounded-full bg-accent shrink-0" />
+              — ExposéProfi
+            </div>
           </div>
-          <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0 group-data-[collapsible=icon]:hidden" />
-        </button>
+          <SidebarTrigger className="shrink-0 h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-colors group-data-[collapsible=icon]:hidden" />
+        </div>
       </SidebarHeader>
 
       {/* Navigation */}
       <SidebarContent className="px-2">
+        {/* Expand trigger — only visible when collapsed to icon mode */}
+        <div className="hidden group-data-[collapsible=icon]:flex justify-center py-2">
+          <SidebarTrigger className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-colors" />
+        </div>
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
-              {navItems.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild isActive={pathname === item.href || pathname.startsWith(item.href + '/')} tooltip={item.title}>
-                    <Link
-                      href={item.href}
-                      className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-muted-foreground transition-colors hover:text-foreground hover:bg-muted"
-                    >
-                      <item.icon className="h-[18px] w-[18px] shrink-0" />
-                      <span>{item.title}</span>
-                      {item.badge && (
-                        <Badge
-                          variant="secondary"
-                          className="ml-auto text-[10px] px-1.5 py-0 h-5 bg-green-100 text-green-700 border-0 font-medium"
-                        >
-                          {item.badge}
-                        </Badge>
-                      )}
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
+              {navItems.map((item) => {
+                const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
+                return (
+                  <SidebarMenuItem key={item.title}>
+                    <SidebarMenuButton asChild isActive={isActive} tooltip={item.title}>
+                      <Link
+                        href={item.href}
+                        className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                          isActive
+                            ? 'bg-primary/10 text-primary'
+                            : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+                        }`}
+                      >
+                        <item.icon className="h-[18px] w-[18px] shrink-0" />
+                        <span>{item.title}</span>
+                        {item.badge && (
+                          <Badge
+                            variant="secondary"
+                            className="ml-auto text-[10px] px-1.5 py-0 h-5 bg-green-100 text-green-700 border-0 font-medium"
+                          >
+                            {item.badge}
+                          </Badge>
+                        )}
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                )
+              })}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

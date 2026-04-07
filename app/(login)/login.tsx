@@ -8,13 +8,17 @@ import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ArrowLeft, Loader2 } from 'lucide-react';
+import { ArrowLeft, Loader2, Eye, EyeOff } from 'lucide-react';
 import { signIn, signUp } from '@/app/actions/auth';
 import { ActionState } from '@/lib/auth/middleware';
+import { useState } from 'react';
 
 export function Login({ mode = 'signin' }: { mode?: 'signin' | 'signup' }) {
   const searchParams = useSearchParams();
   const redirect = searchParams.get('redirect');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [confirmPasswordError, setConfirmPasswordError] = useState('');
   const [state, formAction, pending] = useActionState<ActionState, FormData>(
     mode === 'signin' ? signIn : signUp,
     { error: '' }
@@ -49,7 +53,23 @@ export function Login({ mode = 'signin' }: { mode?: 'signin' | 'signup' }) {
 
         {/* Card */}
         <div className="bg-background rounded-2xl border border-border p-8">
-          <form action={formAction} className="space-y-5">
+          <form
+            action={formAction}
+            className="space-y-5"
+            onSubmit={(e) => {
+              if (mode === 'signup') {
+                const form = e.currentTarget;
+                const pw = (form.elements.namedItem('password') as HTMLInputElement).value;
+                const cpw = (form.elements.namedItem('confirmPassword') as HTMLInputElement).value;
+                if (pw !== cpw) {
+                  e.preventDefault();
+                  setConfirmPasswordError('Passwords do not match');
+                } else {
+                  setConfirmPasswordError('');
+                }
+              }
+            }}
+          >
             <input type="hidden" name="redirect" value={redirect || ''} />
 
             {mode === 'signup' && (
@@ -91,19 +111,64 @@ export function Login({ mode = 'signin' }: { mode?: 'signin' | 'signup' }) {
               <Label htmlFor="password" className="font-display font-semibold text-sm">
                 Password
               </Label>
-              <Input
-                id="password"
-                name="password"
-                type="password"
-                autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
-                defaultValue={state.password}
-                required
-                minLength={8}
-                maxLength={100}
-                placeholder="Enter your password"
-                className="h-11 rounded-lg font-body"
-              />
+              <div className="relative">
+                <Input
+                  id="password"
+                  name="password"
+                  type={showPassword ? 'text' : 'password'}
+                  autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
+                  defaultValue={state.password}
+                  required
+                  minLength={8}
+                  maxLength={100}
+                  placeholder="Enter your password"
+                  className="h-11 rounded-lg font-body pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((v) => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                  tabIndex={-1}
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
             </div>
+
+            {mode === 'signup' && (
+              <div className="space-y-2">
+                <Label htmlFor="confirmPassword" className="font-display font-semibold text-sm">
+                  Confirm Password
+                </Label>
+                <div className="relative">
+                  <Input
+                    id="confirmPassword"
+                    name="confirmPassword"
+                    type={showConfirmPassword ? 'text' : 'password'}
+                    autoComplete="new-password"
+                    required
+                    minLength={8}
+                    maxLength={100}
+                    placeholder="Confirm your password"
+                    className="h-11 rounded-lg font-body pr-10"
+                    onChange={() => setConfirmPasswordError('')}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword((v) => !v)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                    tabIndex={-1}
+                    aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
+                  >
+                    {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+                {confirmPasswordError && (
+                  <p className="text-destructive text-sm font-body">{confirmPasswordError}</p>
+                )}
+              </div>
+            )}
 
             {state?.error && (
               <p className="text-destructive text-sm font-body">{state.error}</p>
@@ -148,9 +213,12 @@ export function Login({ mode = 'signin' }: { mode?: 'signin' | 'signup' }) {
           </div>
         </div>
 
-        <p className="text-center text-xs text-muted-foreground mt-8 font-body">
-          Internal tool. Contact your admin for access.
-        </p>
+        <div className="flex justify-center mt-8">
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-muted text-muted-foreground text-xs font-medium font-body">
+            <span className="w-1.5 h-1.5 rounded-full bg-accent" />
+            — ExposéProfi
+          </div>
+        </div>
       </motion.div>
     </div>
   );

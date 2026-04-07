@@ -1,11 +1,13 @@
 'use client';
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import ImageViewer from '@/components/annotation/image-viewer';
 import CommentModal from '@/components/annotation/comment-modal';
 import { getProjectThreads } from '@/app/actions/threads';
 import { getThreadComments, resolveComment, getCurrentUser, DbComment } from '@/app/actions/comments';
-import { getAttachmentUploadUrl, registerAttachment } from '@/app/actions/storage';
+import { getAttachmentUploadUrl, registerAttachment, getAttachmentsForComments } from '@/app/actions/storage';
 import { useCommentQueue } from '@/hooks/use-comment-queue';
+import { useRealtimeComments } from '@/hooks/use-realtime-comments';
+import { useToast } from '@/hooks/use-toast';
 import { Upload } from 'lucide-react';
 import ImageUploader from '@/components/image-uploader';
 import { ProjectTopNav, ProjectShell, ProjectImageData, ProjectPin } from './template';
@@ -45,6 +47,7 @@ export default function ProjectPage({ params, searchParams }: ProjectPageProps) 
   const [currentUserRole, setCurrentUserRole] = useState<string>('member');
 
   const { enqueue, getPendingForThread, drainQueue, pendingCount, isSyncing } = useCommentQueue();
+  const { toast } = useToast();
   // Holds File[] per localId so they can be uploaded once the comment is synced
   const pendingAttachments = useRef<Map<string, File[]>>(new Map());
 
@@ -58,6 +61,7 @@ export default function ProjectPage({ params, searchParams }: ProjectPageProps) 
     timestamp: c.created_at ? new Date(c.created_at).toLocaleDateString() : '',
     status: c.status === 'resolved' ? 'resolved' : 'active',
     drawingData: c.drawing_data ?? undefined,
+    attachments: c.attachments ?? [],
   });
 
   const pendingToPin = (p: { localId: string; pinNumber: number; x: number; y: number; content: string; userName: string; createdAt: string; drawingData?: any }): Pin => ({
@@ -91,17 +95,26 @@ export default function ProjectPage({ params, searchParams }: ProjectPageProps) 
       pendingAttachments.current.delete(localId);
       setImagesState(prev => prev.map(img => ({
         ...img,
-        pins: img.pins.map(p => p.id === localId ? { ...p, status: 'error' as any } : p),
+        pins: img.pins.filter(p => p.id !== localId),
       })));
+      toast({
+        title: 'Comment failed to save',
+        description: 'Your comment could not be saved after several attempts. Please try again.',
+        variant: 'destructive',
+      });
     },
   };
 
   /** Upload files to project-scoped attachment storage after a comment is confirmed. */
   async function uploadAttachmentsForComment(commentId: string, pid: string, files: File[]) {
+    const failed: string[] = [];
     for (const file of files) {
       try {
         const urlResult = await getAttachmentUploadUrl(pid, file.name, file.type, file.size);
-        if (!urlResult.success || !urlResult.signedUrl || !urlResult.storagePath) continue;
+        if (!urlResult.success || !urlResult.signedUrl || !urlResult.storagePath) {
+          failed.push(file.name);
+          continue;
+        }
 
         await new Promise<void>((resolve, reject) => {
           const xhr = new XMLHttpRequest();
@@ -114,8 +127,15 @@ export default function ProjectPage({ params, searchParams }: ProjectPageProps) 
 
         await registerAttachment(commentId, pid, urlResult.storagePath, file.name, file.type, file.size);
       } catch {
-        console.error(`Failed to upload attachment: ${file.name}`);
+        failed.push(file.name);
       }
+    }
+    if (failed.length > 0) {
+      toast({
+        title: 'Attachment upload failed',
+        description: `Could not upload: ${failed.join(', ')}. Your comment was saved without these files.`,
+        variant: 'destructive',
+      });
     }
   }
 
@@ -132,8 +152,15 @@ export default function ProjectPage({ params, searchParams }: ProjectPageProps) 
       const commentsByThread = await Promise.all(
         threads.map((t: any) => getThreadComments(t.id))
       );
+      // Batch-fetch attachments for all comments in one query
+      const allCommentIds = commentsByThread.flat().map((c: DbComment) => c.id);
+      const attachmentMap = await getAttachmentsForComments(allCommentIds);
       const mappedImages: ImageData[] = threads.map((t: any, i: number) => {
-        const dbPins = commentsByThread[i].map(dbCommentToPin);
+        const enriched = commentsByThread[i].map((c: DbComment) => ({
+          ...c,
+          attachments: attachmentMap[c.id] ?? [],
+        }));
+        const dbPins = enriched.map(dbCommentToPin);
         // Merge any locally-queued comments not yet in the DB
         const dbIds = new Set(dbPins.map(p => p.id));
         const localPins = getPendingForThread(t.id)
@@ -163,6 +190,27 @@ export default function ProjectPage({ params, searchParams }: ProjectPageProps) 
   useEffect(() => {
     fetchThreads();
   }, [projectId]);
+
+  const handleRealtimeComment = useCallback((comment: DbComment) => {
+    setImagesState(prev => prev.map(img => {
+      if (img.id !== comment.thread_id) return img;
+      const alreadyExists = img.pins.some(p =>
+        p.id === comment.id ||
+        (p.id.startsWith('local_') && p.content === comment.content &&
+          Math.abs(new Date(p.timestamp).getTime() - new Date(comment.created_at ?? '').getTime()) < 5000)
+      );
+      if (alreadyExists) return img;
+      return {
+        ...img,
+        pins: [...img.pins, dbCommentToPin(comment)],
+      };
+    }));
+  }, []);
+
+  const { connectionStatus } = useRealtimeComments({
+    threadIds: imagesState.map(img => img.id),
+    onNewComment: handleRealtimeComment,
+  });
 
   const currentImage = imagesState.find(img => img.id === currentImageId);
   const pins = currentImage?.pins || [];
@@ -218,6 +266,17 @@ export default function ProjectPage({ params, searchParams }: ProjectPageProps) 
 
     // 3. Sync to DB in the background (non-blocking)
     drainQueue(syncCallbacks.onSynced, syncCallbacks.onFailed);
+  };
+
+  const handleAddAttachmentToComment = async (commentId: string, files: File[]) => {
+    await uploadAttachmentsForComment(commentId, projectId, files);
+    const updated = await getAttachmentsForComments([commentId]);
+    setImagesState(prev => prev.map(img => ({
+      ...img,
+      pins: img.pins.map(p =>
+        p.id === commentId ? { ...p, attachments: updated[commentId] ?? p.attachments } : p
+      ),
+    })));
   };
 
   const handleSwitchImage = (imageId: string) => {
@@ -284,6 +343,13 @@ export default function ProjectPage({ params, searchParams }: ProjectPageProps) 
         pendingCount={pendingCount}
         isSyncing={isSyncing}
       />
+
+      {connectionStatus === 'disconnected' && (
+        <div className="bg-yellow-50 border-b border-yellow-200 px-6 py-1.5 text-xs text-yellow-800 flex items-center justify-between">
+          <span>Live updates paused.</span>
+          <button onClick={fetchThreads} className="underline underline-offset-2 hover:text-yellow-900">Refresh</button>
+        </div>
+      )}
 
       <ProjectShell
         isFullscreen={isFullscreen}
@@ -389,6 +455,7 @@ export default function ProjectPage({ params, searchParams }: ProjectPageProps) 
           userRole={currentUserRole}
           isNewPin={isNewPin}
           isFullscreen={isFullscreen}
+          onAddAttachment={!isNewPin ? handleAddAttachmentToComment : undefined}
         />
       )}
     </div>

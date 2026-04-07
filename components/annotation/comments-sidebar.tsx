@@ -1,7 +1,9 @@
 'use client';
 
-import { MessageSquare, ChevronDown, ChevronRight, Check } from 'lucide-react';
+import { MessageSquare, ChevronDown, ChevronRight, Check, FileText } from 'lucide-react';
 import { useState, useEffect } from 'react';
+import type { AttachmentRecord } from '@/app/actions/storage';
+import CommentBody from './comment-body';
 
 interface Pin {
   id: string;
@@ -12,6 +14,7 @@ interface Pin {
   author: string;
   timestamp: string;
   status: 'active' | 'resolved';
+  attachments?: (AttachmentRecord & { signedUrl: string })[];
 }
 
 interface ImageData {
@@ -91,8 +94,10 @@ export default function CommentsSidebar({
     <div className="flex items-start gap-3">
       {/* Pin number */}
       <span
-        className={`flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold text-white ${
-          pin.status === 'resolved' ? 'bg-green-600' : 'bg-primary'
+        className={`flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold ${
+          pin.status === 'resolved'
+            ? 'bg-green-100 text-green-700'
+            : 'bg-primary text-white'
         }`}
       >
         {pin.number}
@@ -114,15 +119,41 @@ export default function CommentsSidebar({
           {pin.timestamp}
         </p>
 
-        <p
+        <CommentBody
+          content={pin.content}
           className={`text-sm leading-relaxed ${
             pin.status === 'resolved'
               ? 'line-through text-gray-500'
               : 'text-foreground'
           }`}
-        >
-          {pin.content}
-        </p>
+        />
+
+        {pin.attachments && pin.attachments.length > 0 && (
+          <div className="mt-2 space-y-1">
+            <div className="flex flex-wrap gap-1">
+              {pin.attachments
+                .filter(a => a.mime_type.startsWith('image/'))
+                .slice(0, 4)
+                .map(a => (
+                  <a key={a.id} href={a.signedUrl} target="_blank" rel="noopener noreferrer"
+                    onClick={e => e.stopPropagation()}>
+                    <img src={a.signedUrl} alt={a.original_filename}
+                      className="h-8 w-8 rounded object-cover border border-border/40" />
+                  </a>
+                ))}
+            </div>
+            {pin.attachments
+              .filter(a => a.mime_type === 'application/pdf')
+              .map(a => (
+                <a key={a.id} href={a.signedUrl} target="_blank" rel="noopener noreferrer"
+                  onClick={e => e.stopPropagation()}
+                  className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
+                  <FileText className="h-3 w-3 shrink-0" />
+                  <span className="truncate max-w-[160px]">{a.original_filename}</span>
+                </a>
+              ))}
+          </div>
+        )}
 
         {!readOnly && (
           <div className="mt-2 flex">

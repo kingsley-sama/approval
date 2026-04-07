@@ -177,6 +177,7 @@ export default function ProjectsPage() {
                 onOpen={handleOpen}
                 onDuplicate={setDuplicatingProject}
                 onDelete={handleDelete}
+                isAdmin={isAdmin}
               />
             ))}
           </div>

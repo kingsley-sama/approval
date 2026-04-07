@@ -149,17 +149,15 @@ export async function validateShareToken(
   token: string
 ): Promise<{ success: boolean; shareLink?: ShareLink; error?: string }> {
   try {
-    const { data, error } = await (supabase as any)
+    const { data: row, error } = await supabase
       .from('share_links')
       .select('*')
       .eq('token', token)
       .single();
 
-    if (error || !data) {
+    if (error || !row) {
       return { success: false, error: 'Share link not found' };
     }
-
-    const row = data as any;
 
     // Check active status
     if (!row.is_active) {
@@ -172,15 +170,13 @@ export async function validateShareToken(
     }
 
     // Increment access count (fire-and-forget — don't block on failure)
-    (supabase as any)
+    void supabase
       .from('share_links')
       .update({
         access_count: (row.access_count ?? 0) + 1,
         last_accessed_at: new Date().toISOString(),
       })
-      .eq('token', token)
-      .then(() => {/* ignore */})
-      .catch(() => {/* ignore */});
+      .eq('token', token);
 
     const shareLink: ShareLink = {
       id: String(row.id),
@@ -259,15 +255,14 @@ export async function getSharedProjectSummaries(
   const results = await Promise.all(
     tokens.map(async (token): Promise<SharedProjectSummary | null> => {
       try {
-        const { data, error } = await (supabase as any)
+        const { data: row, error } = await supabase
           .from('share_links')
           .select('*')
           .eq('token', token)
           .eq('is_active', true)
           .single();
 
-        if (error || !data) return null;
-        const row = data as any;
+        if (error || !row) return null;
         if (row.expires_at && new Date(row.expires_at) < new Date()) return null;
 
         let projectName = 'Shared Project';

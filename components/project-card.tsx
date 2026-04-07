@@ -39,6 +39,7 @@ type ProjectCardProps = {
   onOpen: (project: Project) => void
   onDuplicate: (project: Project) => void
   onDelete: (projectId: string) => void
+  isAdmin?: boolean
 }
 
 const Tip: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
@@ -50,7 +51,7 @@ const Tip: React.FC<{ label: string; children: React.ReactNode }> = ({ label, ch
   </div>
 )
 
-export default function ProjectCard({ project, onOpen, onDuplicate, onDelete }: ProjectCardProps) {
+export default function ProjectCard({ project, onOpen, onDuplicate, onDelete, isAdmin = false }: ProjectCardProps) {
   const [isHovered, setIsHovered] = React.useState(false)
   const [isChecked, setIsChecked] = React.useState(false)
   const [activeIndex, setActiveIndex] = React.useState(0)
@@ -96,68 +97,72 @@ export default function ProjectCard({ project, onOpen, onDuplicate, onDelete }: 
 
             {/* Top bar */}
             <div className="flex items-center justify-between px-2 pt-2">
-              <Tip label="Select">
-                <button
-                  onClick={(e) => { e.stopPropagation(); setIsChecked((c) => !c) }}
-                  className="p-1.5 rounded-md text-white transition-colors"
-                >
-                  {isChecked ? <SquareCheck size={16} /> : <Square size={16} />}
-                </button>
-              </Tip>
-
-              <div className="flex items-center gap-2">
-                <Tip label="Share">
-                  <ShareLinkManager
-                    resourceType="project"
-                    resourceId={project.id}
-                    createdBy="user"
-                    resourceName={project.title}
-                    trigger={
-                      <button
-                        onClick={(e) => e.stopPropagation()}
-                        className="p-1.5 rounded-md bg-white/20 hover:bg-white/30 text-white transition-colors"
-                      >
-                        <Share2 size={15} />
-                      </button>
-                    }
-                  />
+              {isAdmin ? (
+                <Tip label="Select">
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setIsChecked((c) => !c) }}
+                    className="p-1.5 rounded-md text-white transition-colors"
+                  >
+                    {isChecked ? <SquareCheck size={16} /> : <Square size={16} />}
+                  </button>
                 </Tip>
+              ) : <div />}
 
-                <div className="relative" ref={menuRef}>
-                  <Tip label="More actions">
-                    <button
-                      onClick={(e) => { e.stopPropagation(); setMenuOpen((o) => !o) }}
-                      className="p-1.5 rounded-md bg-white/20 hover:bg-white/30 text-white transition-colors"
-                    >
-                      <MoreHorizontal size={15} />
-                    </button>
+              {isAdmin && (
+                <div className="flex items-center gap-2">
+                  <Tip label="Share">
+                    <ShareLinkManager
+                      resourceType="project"
+                      resourceId={project.id}
+                      createdBy="user"
+                      resourceName={project.title}
+                      trigger={
+                        <button
+                          onClick={(e) => e.stopPropagation()}
+                          className="p-1.5 rounded-md bg-white/20 hover:bg-white/30 text-white transition-colors"
+                        >
+                          <Share2 size={15} />
+                        </button>
+                      }
+                    />
                   </Tip>
 
-                  {menuOpen && (
-                    <div
-                      className="absolute right-0 top-full mt-1.5 z-50 w-48 rounded-xl bg-popover border border-border shadow-xl overflow-hidden"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <div className="py-1">
-                        {MENU_ITEMS.map(({ label, icon: Icon, destructive, action }) => (
-                          <button
-                            key={label}
-                            onClick={(e) => { e.stopPropagation(); action(); setMenuOpen(false) }}
-                            className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm transition-colors hover:rounded-md hover:bg-accent/10 ${
-                              destructive
-                                ? 'text-destructive hover:text-destructive'
-                                : 'text-popover-foreground hover:text-accent'
-                            }`}
-                          >
-                            <Icon size={14} className="shrink-0" />
-                            {label}
-                          </button>
-                        ))}
+                  <div className="relative" ref={menuRef}>
+                    <Tip label="More actions">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setMenuOpen((o) => !o) }}
+                        className="p-1.5 rounded-md bg-white/20 hover:bg-white/30 text-white transition-colors"
+                      >
+                        <MoreHorizontal size={15} />
+                      </button>
+                    </Tip>
+
+                    {menuOpen && (
+                      <div
+                        className="absolute right-0 top-full mt-1.5 z-50 w-48 rounded-xl bg-popover border border-border shadow-xl overflow-hidden"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <div className="py-1">
+                          {MENU_ITEMS.map(({ label, icon: Icon, destructive, action }) => (
+                            <button
+                              key={label}
+                              onClick={(e) => { e.stopPropagation(); action(); setMenuOpen(false) }}
+                              className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm transition-colors hover:rounded-md hover:bg-accent/10 ${
+                                destructive
+                                  ? 'text-destructive hover:text-destructive'
+                                  : 'text-popover-foreground hover:text-accent'
+                              }`}
+                            >
+                              <Icon size={14} className="shrink-0" />
+                              {label}
+                            </button>
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
 
             {/* Center actions */}
@@ -167,15 +172,17 @@ export default function ProjectCard({ project, onOpen, onDuplicate, onDelete }: 
                 className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white/20 hover:bg-white/30 text-white text-sm font-medium transition-colors"
               >
                 <ExternalLink size={14} />
-                Open link
+                Open
               </button>
-              <button
-                onClick={(e) => { e.stopPropagation(); onDuplicate(project) }}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white/20 hover:bg-white/30 text-white text-sm font-medium transition-colors"
-              >
-                <Copy size={14} />
-                Duplicate
-              </button>
+              {isAdmin && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); onDuplicate(project) }}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white/20 hover:bg-white/30 text-white text-sm font-medium transition-colors"
+                >
+                  <Copy size={14} />
+                  Duplicate
+                </button>
+              )}
             </div>
 
             <div className="pb-2" />

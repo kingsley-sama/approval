@@ -7,6 +7,7 @@ import CommentsSidebar from '@/components/annotation/comments-sidebar';
 import ThumbnailsSidebar from '@/components/annotation/thumbnails-sidebar';
 import ShareLinkManager from '@/components/share-link-manager';
 import type { Shape } from '@/types/drawing';
+import type { AttachmentRecord } from '@/app/actions/storage';
 import { Button } from '@/components/ui/button';
 import {
   ChevronLeft,
@@ -34,6 +35,7 @@ export interface ProjectPin {
 	status: 'active' | 'resolved';
 	isPending?: boolean;
 	drawingData?: Shape;
+	attachments?: (AttachmentRecord & { signedUrl: string })[];
 }
 
 export interface ProjectImageData {
@@ -98,14 +100,20 @@ export function ProjectTopNav({
           >
             <ArrowLeft className="h-4 w-4" />
           </Button>
-          <div className="w-8 h-8 rounded-lg flex items-center justify-center">
-						<Image
-							src="/logo.png"
-							alt="Company logo"
-							width={20}
-							height={20}
-							className="object-contain"
-						/>
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center">
+              <Image
+                src="/logo.png"
+                alt="Company logo"
+                width={20}
+                height={20}
+                className="object-contain"
+              />
+            </div>
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-muted text-muted-foreground text-xs font-medium">
+              <span className="w-1.5 h-1.5 rounded-full bg-accent shrink-0" />
+              — ExposéProfi
+            </div>
           </div>
           <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground">
             <ImageIcon className="h-4 w-4" />

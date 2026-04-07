@@ -7,15 +7,18 @@ const Footer = () => {
         <div className="flex flex-col md:flex-row items-center justify-between gap-6">
           <div className="flex items-center gap-2">
             <div className="w-7 h-7 rounded-lg flex items-center justify-center">
-              <Image 
-                src="/logo.png" 
-                alt="Company logo" 
-                width={20} 
-                height={20} 
-                className="object-contain" 
+              <Image
+                src="/logo.png"
+                alt="Company logo"
+                width={20}
+                height={20}
+                className="object-contain"
               />
             </div>
-            <span className="font-display font-bold text-black/70"></span>
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-muted text-muted-foreground text-xs font-medium">
+              <span className="w-1.5 h-1.5 rounded-full bg-accent shrink-0" />
+              — ExposéProfi
+            </div>
           </div>
           <p className="text-sm text-black/60 font-body">© 2026 ExposéProfi. Internal use only.</p>
         </div>

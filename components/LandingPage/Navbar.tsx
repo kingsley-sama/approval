@@ -12,14 +12,17 @@ const Navbar = () => {
         <div className="flex items-center gap-2">
           <div className="w-6 h-8 rounded-lg flex items-center justify-center">
             <Image
-                src="/logo.png" 
-                alt="Company logo" 
-                width={20} 
-                height={20} 
-                className="object-contain" 
+                src="/logo.png"
+                alt="Company logo"
+                width={20}
+                height={20}
+                className="object-contain"
               />
           </div>
-          <span className="font-display font-bold text-lg text-foreground"></span>
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-muted text-muted-foreground text-xs font-medium">
+            <span className="w-1.5 h-1.5 rounded-full bg-accent shrink-0" />
+            — ExposéProfi
+          </div>
         </div>
 
         <div className="hidden md:flex items-center gap-8">

@@ -6,6 +6,11 @@ import { requireUser } from '@/lib/auth/require-user';
 import { CreateCommentSchema, ResolveCommentSchema, DeleteCommentSchema } from '@/lib/validation/schemas';
 import { revalidatePath } from 'next/cache';
 import { nanoid } from 'nanoid';
+import type { AttachmentRecord } from './storage';
+import { db } from '@/lib/db/drizzle';
+import { users } from '@/lib/db/schema';
+import { eq } from 'drizzle-orm';
+import { sendNewCommentEmail } from '@/lib/email';
 
 export interface DbComment {
   id: string;
@@ -21,6 +26,7 @@ export interface DbComment {
   created_at: string | null;
   updated_at: string | null;
   drawing_data?: any; // null = plain pin; non-null = drawing annotation
+  attachments?: (AttachmentRecord & { signedUrl: string })[];
 }
 
 export interface CreateCommentResult {
@@ -96,7 +102,7 @@ export async function createComment(
     ...(drawingData != null ? { drawing_data: drawingData } : {}),
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
-  } as any;
+  };
 
   const { data, error } = await supabase
     .from('markup_comments')
@@ -110,7 +116,33 @@ export async function createComment(
   }
 
   revalidatePath('/projects');
+  // Fire-and-forget — never awaited, never blocks the response
+  notifyAdminsOfNewComment(data.thread_id, data.content, data.user_name).catch(() => {});
   return { success: true, comment: data as DbComment };
+}
+
+async function notifyAdminsOfNewComment(threadId: string, content: string, userName: string) {
+  const supabase = await createClient();
+  const { data: thread } = await supabase
+    .from('markup_threads')
+    .select('project_id, markup_projects(project_name)')
+    .eq('id', threadId)
+    .single();
+  if (!thread) return;
+
+  const adminUsers = await db
+    .select({ email: users.email })
+    .from(users)
+    .where(eq(users.role, 'admin'));
+
+  const emails = adminUsers.map(u => u.email);
+  await sendNewCommentEmail({
+    to: emails,
+    commenterName: userName,
+    commentPreview: content,
+    projectName: (thread as any).markup_projects?.project_name ?? 'Unknown Project',
+    projectId: thread.project_id,
+  });
 }
 
 /** Toggle resolved / active status for a pin */

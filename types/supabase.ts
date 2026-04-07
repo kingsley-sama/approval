@@ -378,6 +378,86 @@ export type Database = {
         }
         Relationships: []
       }
+      comment_attachments: {
+        Row: {
+          id: string
+          comment_id: string
+          project_id: string
+          storage_path: string
+          original_filename: string
+          mime_type: string
+          file_size_bytes: number
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          comment_id: string
+          project_id: string
+          storage_path: string
+          original_filename: string
+          mime_type: string
+          file_size_bytes: number
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          comment_id?: string
+          project_id?: string
+          storage_path?: string
+          original_filename?: string
+          mime_type?: string
+          file_size_bytes?: number
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "comment_attachments_comment_id_fkey"
+            columns: ["comment_id"]
+            isOneToOne: false
+            referencedRelation: "markup_comments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "comment_attachments_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "markup_projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      project_access: {
+        Row: {
+          id: string
+          project_id: string
+          user_email: string
+          granted_by: string | null
+          granted_at: string
+        }
+        Insert: {
+          id?: string
+          project_id: string
+          user_email: string
+          granted_by?: string | null
+          granted_at?: string
+        }
+        Update: {
+          id?: string
+          project_id?: string
+          user_email?: string
+          granted_by?: string | null
+          granted_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_access_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "markup_projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       markup_drawings: {
         Row: {
           id: string

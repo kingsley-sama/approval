@@ -209,7 +209,7 @@ export async function registerAttachment(
       return { success: false, error: 'Missing required fields' };
     }
 
-    const { data, error } = await (supabaseAdmin as any)
+    const { data, error } = await supabaseAdmin
       .from('comment_attachments')
       .insert({
         comment_id: commentId,
@@ -265,7 +265,7 @@ export async function getCommentAttachments(
   try {
     await requireUser();
 
-    const { data, error } = await (supabaseAdmin as any)
+    const { data, error } = await supabaseAdmin
       .from('comment_attachments')
       .select('*')
       .eq('comment_id', commentId)
@@ -287,6 +287,43 @@ export async function getCommentAttachments(
 }
 
 /**
+ * Batch-fetches attachments for multiple comments in one query.
+ * Returns a map of commentId → attachment array (each with a signed URL).
+ * Does NOT require an authenticated session — safe to call from the share page.
+ */
+export async function getAttachmentsForComments(
+  commentIds: string[],
+): Promise<Record<string, (AttachmentRecord & { signedUrl: string })[]>> {
+  if (!commentIds.length) return {};
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('comment_attachments')
+      .select('*')
+      .in('comment_id', commentIds)
+      .order('created_at', { ascending: true });
+
+    if (error || !data) return {};
+
+    const withUrls = await Promise.all(
+      (data as AttachmentRecord[]).map(async (row) => {
+        const { data: urlData } = await supabaseAdmin.storage
+          .from(BUCKET)
+          .createSignedUrl(row.storage_path, 3600);
+        return { ...row, signedUrl: urlData?.signedUrl ?? '' };
+      }),
+    );
+
+    const map: Record<string, (AttachmentRecord & { signedUrl: string })[]> = {};
+    for (const a of withUrls) {
+      (map[a.comment_id] ??= []).push(a);
+    }
+    return map;
+  } catch {
+    return {};
+  }
+}
+
+/**
  * Deletes an attachment from storage and the database.
  */
 export async function deleteAttachment(
@@ -295,7 +332,7 @@ export async function deleteAttachment(
   try {
     await requireUser();
 
-    const { data: existing, error: fetchErr } = await (supabaseAdmin as any)
+    const { data: existing, error: fetchErr } = await supabaseAdmin
       .from('comment_attachments')
       .select('storage_path')
       .eq('id', attachmentId)
@@ -309,7 +346,7 @@ export async function deleteAttachment(
     await supabaseAdmin.storage.from(BUCKET).remove([existing.storage_path]);
 
     // Delete DB row
-    const { error } = await (supabaseAdmin as any)
+    const { error } = await supabaseAdmin
       .from('comment_attachments')
       .delete()
       .eq('id', attachmentId);

@@ -140,7 +140,7 @@ async function getAllProjects() {
 async function getMemberProjects(userEmail: string) {
   try {
     // Get project IDs this user has been granted access to
-    const { data: accessRows, error: accessError } = await (supabaseAdmin as any)
+    const { data: accessRows, error: accessError } = await supabaseAdmin
       .from('project_access')
       .select('project_id')
       .eq('user_email', userEmail);
@@ -201,7 +201,7 @@ export async function grantProjectAccess(
   }
 
   try {
-    const { error } = await (supabaseAdmin as any)
+    const { error } = await supabaseAdmin
       .from('project_access')
       .upsert(
         {
@@ -240,7 +240,7 @@ export async function revokeProjectAccess(
   }
 
   try {
-    const { error } = await (supabaseAdmin as any)
+    const { error } = await supabaseAdmin
       .from('project_access')
       .delete()
       .eq('project_id', projectId)
@@ -276,7 +276,7 @@ export async function getProjectsForMention(): Promise<{ id: string; name: strin
   }
 
   // member: only projects they have access to
-  const { data: accessRows } = await (supabaseAdmin as any)
+  const { data: accessRows } = await supabaseAdmin
     .from('project_access')
     .select('project_id')
     .eq('user_email', user.email);

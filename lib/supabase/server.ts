@@ -1,6 +1,7 @@
 import { createServerClient } from '@supabase/ssr'
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
+import type { Database } from '@/types/supabase'
 
 /**
  * Server client using the service role key — bypasses RLS.
@@ -16,7 +17,7 @@ export async function createClient() {
     throw new Error('SUPABASE_SERVICE_ROLE_KEY is not set in environment variables.')
   }
 
-  return createSupabaseClient(url, serviceKey, {
+  return createSupabaseClient<Database>(url, serviceKey, {
     auth: {
       autoRefreshToken: false,
       persistSession: false,

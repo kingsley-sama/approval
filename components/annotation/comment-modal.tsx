@@ -1,8 +1,10 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { X, Paperclip, Link2, Search, FileText, ImageIcon, XCircle } from 'lucide-react';
+import { X, Paperclip, Link2, Search, FileText, ImageIcon, XCircle, ExternalLink } from 'lucide-react';
 import { getProjectsForMention } from '@/app/actions/projects';
+import type { AttachmentRecord } from '@/app/actions/storage';
+import CommentBody from './comment-body';
 
 interface Pin {
   id: string;
@@ -13,6 +15,7 @@ interface Pin {
   author: string;
   timestamp: string;
   status: 'active' | 'resolved';
+  attachments?: (AttachmentRecord & { signedUrl: string })[];
 }
 
 interface ProjectOption {
@@ -34,6 +37,8 @@ interface CommentModalProps {
   userRole: string;
   isNewPin: boolean;
   isFullscreen?: boolean;
+  disableAttachments?: boolean;
+  onAddAttachment?: (commentId: string, files: File[]) => Promise<void>;
 }
 
 const ALLOWED_TYPES = new Set([
@@ -57,9 +62,12 @@ export default function CommentModal({
   userRole,
   isNewPin,
   isFullscreen,
+  disableAttachments = false,
+  onAddAttachment,
 }: CommentModalProps) {
   const [comment, setComment] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
   const [modalStyle, setModalStyle] = useState<React.CSSProperties>({});
 
   // Link picker state
@@ -76,6 +84,7 @@ export default function CommentModal({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const editFileInputRef = useRef<HTMLInputElement>(null);
 
   const canLink = ELEVATED_ROLES.includes(userRole);
 
@@ -204,6 +213,30 @@ export default function CommentModal({
     setAttachments(prev => prev.filter(a => a.id !== id));
   };
 
+  const handleEditFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!onAddAttachment || !existingPin) return;
+    const files = Array.from(e.target.files ?? []);
+    if (editFileInputRef.current) editFileInputRef.current.value = '';
+    if (!files.length) return;
+
+    const errors: string[] = [];
+    const valid: File[] = [];
+    for (const file of files) {
+      if (!ALLOWED_TYPES.has(file.type)) { errors.push(`${file.name}: unsupported type`); continue; }
+      if (file.size > MAX_BYTES) { errors.push(`${file.name}: exceeds 20 MB`); continue; }
+      valid.push(file);
+    }
+    if (errors.length) setAttachmentError(errors.join('; '));
+    if (!valid.length) return;
+
+    setIsUploadingAttachment(true);
+    try {
+      await onAddAttachment(existingPin.id, valid);
+    } finally {
+      setIsUploadingAttachment(false);
+    }
+  };
+
   const filteredProjects = projects.filter(p =>
     p.name.toLowerCase().includes(projectSearch.toLowerCase())
   );
@@ -246,9 +279,74 @@ export default function CommentModal({
 
         {/* ── Body ── */}
         {existingPin && !isNewPin ? (
-          <div className="text-sm text-gray-700 px-1 py-1 bg-gray-50 rounded border border-gray-200 mb-1.5">
-            {existingPin.content}
-          </div>
+          <>
+            <div className="text-sm text-gray-700 px-1 py-1 bg-gray-50 rounded border border-gray-200 mb-1.5">
+              <CommentBody content={existingPin.content} />
+            </div>
+            {existingPin.attachments && existingPin.attachments.length > 0 && (
+              <div className="mb-1.5 space-y-1">
+                <div className="flex flex-wrap gap-1">
+                  {existingPin.attachments
+                    .filter(a => a.mime_type.startsWith('image/'))
+                    .map(a => (
+                      <a
+                        key={a.id}
+                        href={a.signedUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="relative group block"
+                      >
+                        <img
+                          src={a.signedUrl}
+                          alt={a.original_filename}
+                          className="h-14 w-14 rounded object-cover border border-border/40 group-hover:opacity-80 transition-opacity"
+                        />
+                        <ExternalLink size={10} className="absolute bottom-1 right-1 text-white drop-shadow opacity-0 group-hover:opacity-100 transition-opacity" />
+                      </a>
+                    ))}
+                </div>
+                {existingPin.attachments
+                  .filter(a => a.mime_type === 'application/pdf')
+                  .map(a => (
+                    <a
+                      key={a.id}
+                      href={a.signedUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1.5 px-2 py-1 bg-gray-50 border border-border rounded text-xs text-muted-foreground hover:text-foreground hover:bg-gray-100 transition-colors"
+                    >
+                      <FileText size={12} className="text-gray-500 shrink-0" />
+                      <span className="flex-1 truncate">{a.original_filename}</span>
+                      <ExternalLink size={10} className="shrink-0 opacity-50" />
+                    </a>
+                  ))}
+              </div>
+            )}
+            {onAddAttachment && (
+              <div className="flex items-center gap-1.5 mt-1">
+                <input
+                  ref={editFileInputRef}
+                  type="file"
+                  multiple
+                  accept="image/jpeg,image/png,image/webp,image/gif,application/pdf"
+                  className="hidden"
+                  onChange={handleEditFileSelect}
+                />
+                <button
+                  onClick={() => editFileInputRef.current?.click()}
+                  disabled={isUploadingAttachment}
+                  className="flex items-center gap-1 p-1 rounded text-xs text-muted-foreground hover:bg-gray-100 hover:text-gray-700 disabled:opacity-50 transition-colors"
+                  title="Add attachment"
+                >
+                  <Paperclip size={13} />
+                  <span>{isUploadingAttachment ? 'Uploading…' : 'Add attachment'}</span>
+                </button>
+                {attachmentError && (
+                  <p className="text-[10px] text-red-500 flex-1">{attachmentError}</p>
+                )}
+              </div>
+            )}
+          </>
         ) : (
           <div className="mb-1.5">
             <textarea
@@ -344,7 +442,7 @@ export default function CommentModal({
                 <Link2 size={14} />
               </button>
             )}
-            {isNewPin && (
+            {isNewPin && !disableAttachments && (
               <>
                 <input
                   ref={fileInputRef}
