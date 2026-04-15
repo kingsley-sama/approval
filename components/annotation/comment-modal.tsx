@@ -1,10 +1,11 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { X, Paperclip, Link2, Search, FileText, ImageIcon, XCircle, ExternalLink } from 'lucide-react';
+import { X, Paperclip, Link2, Search, FileText, ImageIcon, XCircle, ExternalLink, Send } from 'lucide-react';
 import { getProjectsForMention } from '@/app/actions/projects';
 import type { AttachmentRecord } from '@/app/actions/storage';
 import CommentBody from './comment-body';
+import { getRepliesForComment, createReply, type CommentReply } from '@/app/actions/replies';
 
 interface Pin {
   id: string;
@@ -70,6 +71,12 @@ export default function CommentModal({
   const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
   const [modalStyle, setModalStyle] = useState<React.CSSProperties>({});
 
+  // Reply state
+  const [replies, setReplies] = useState<CommentReply[]>([]);
+  const [replyText, setReplyText] = useState('');
+  const [isSendingReply, setIsSendingReply] = useState(false);
+  const repliesEndRef = useRef<HTMLDivElement>(null);
+
   // Link picker state
   const [showLinkPicker, setShowLinkPicker] = useState(false);
   const [projects, setProjects] = useState<ProjectOption[]>([]);
@@ -87,6 +94,41 @@ export default function CommentModal({
   const editFileInputRef = useRef<HTMLInputElement>(null);
 
   const canLink = ELEVATED_ROLES.includes(userRole);
+
+  // ── load replies when an existing pin is opened ─────────────────────────────
+  useEffect(() => {
+    if (!existingPin || isNewPin) return;
+    getRepliesForComment(existingPin.id).then(setReplies);
+  }, [existingPin?.id, isNewPin]);
+
+  // ── scroll replies to bottom when new ones arrive ───────────────────────────
+  useEffect(() => {
+    repliesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [replies.length]);
+
+  const handleSendReply = async () => {
+    if (!replyText.trim() || !existingPin) return;
+    setIsSendingReply(true);
+    // Optimistic update
+    const optimistic: CommentReply = {
+      id: `opt_${Date.now()}`,
+      comment_id: existingPin.id,
+      user_name: currentUser,
+      content: replyText.trim(),
+      created_at: new Date().toISOString(),
+    };
+    setReplies(prev => [...prev, optimistic]);
+    setReplyText('');
+    const result = await createReply(existingPin.id, optimistic.content, currentUser);
+    if (result.success && result.reply) {
+      setReplies(prev => prev.map(r => r.id === optimistic.id ? result.reply! : r));
+    } else {
+      // Roll back
+      setReplies(prev => prev.filter(r => r.id !== optimistic.id));
+      setReplyText(optimistic.content);
+    }
+    setIsSendingReply(false);
+  };
 
   // ── position modal relative to pin ──────────────────────────────────────────
   useEffect(() => {
@@ -346,6 +388,56 @@ export default function CommentModal({
                 )}
               </div>
             )}
+
+            {/* ── Reply thread ── */}
+            <div className="mt-2 border-t border-gray-100 pt-2">
+              {replies.length > 0 && (
+                <div className="max-h-36 overflow-y-auto space-y-2 mb-2 pr-0.5">
+                  {replies.map(reply => (
+                    <div key={reply.id} className="flex gap-1.5">
+                      <div className="flex-shrink-0 w-5 h-5 rounded-full bg-primary/20 flex items-center justify-center text-[9px] font-bold text-primary uppercase">
+                        {reply.user_name.charAt(0)}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-baseline gap-1.5">
+                          <span className="text-[11px] font-semibold text-gray-800 truncate">{reply.user_name}</span>
+                          <span className="text-[9px] text-gray-400 shrink-0">
+                            {new Date(reply.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+                        <p className={`text-[11px] text-gray-700 leading-snug break-words ${reply.id.startsWith('opt_') ? 'opacity-60' : ''}`}>
+                          {reply.content}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                  <div ref={repliesEndRef} />
+                </div>
+              )}
+
+              {/* Reply input */}
+              <div className="flex items-center gap-1">
+                <input
+                  type="text"
+                  placeholder="Reply…"
+                  value={replyText}
+                  onChange={e => setReplyText(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendReply(); }
+                    if (e.key === 'Escape') onClose();
+                  }}
+                  disabled={isSendingReply}
+                  className="flex-1 px-2 py-1 text-[11px] border border-border rounded bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50"
+                />
+                <button
+                  onClick={handleSendReply}
+                  disabled={!replyText.trim() || isSendingReply}
+                  className="p-1.5 rounded bg-primary text-white hover:bg-primary/90 disabled:opacity-40 transition-colors"
+                >
+                  <Send size={11} />
+                </button>
+              </div>
+            </div>
           </>
         ) : (
           <div className="mb-1.5">

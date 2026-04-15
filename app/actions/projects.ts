@@ -9,7 +9,6 @@ import { revalidatePath } from 'next/cache';
 
 export interface CreateProjectInput {
   name: string;
-  imageUrl?: string;
   description?: string;
 }
 
@@ -33,7 +32,7 @@ export async function createProject(input: CreateProjectInput): Promise<CreatePr
       .from('markup_projects')
       .insert({
         project_name: input.name,
-        markup_url: input.imageUrl || '/placeholder.svg',
+        markup_url: '/placeholder.svg',
         raw_payload: input.description ? { description: input.description } : null,
         total_screenshots: 0,
         total_threads: 0,
@@ -89,7 +88,11 @@ function attachThreadStats(data: any[]) {
 }
 
 const THREAD_SELECT = `
-  *,
+  id,
+  project_name,
+  markup_url,
+  updated_at,
+  created_at,
   markup_threads (
     id,
     image_path,

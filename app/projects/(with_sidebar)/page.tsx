@@ -7,9 +7,18 @@ import CreateProjectModal from '@/components/create-project-modal'
 import ProjectCard, { type Project } from '@/components/project-card'
 import { getProjectPageData, deleteProject } from '@/app/actions/projects'
 import { formatDistanceToNow } from 'date-fns'
-import { Filter, ArrowUpDown, FolderOpen, Search, Upload, Folder } from 'lucide-react'
+import { getOptimizedImageUrl, IMAGE_SIZES } from '@/lib/image-url'
+import { Filter, ArrowUpDown, Search, Upload, Folder, Trash2, X, CheckSquare, AlertTriangle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 
 const cardColors = [
   'bg-orange-50', 'bg-green-50', 'bg-blue-50', 'bg-purple-50',
@@ -25,6 +34,9 @@ export default function ProjectsPage() {
   const [currentUserId, setCurrentUserId] = useState('user')
   const [searchQuery, setSearchQuery] = useState('')
   const [sortOrder, setSortOrder] = useState<'newest' | 'oldest' | 'name'>('newest')
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false)
+  const [deleteModal, setDeleteModal] = useState<{ type: 'single'; projectId: string; projectName: string } | { type: 'bulk'; ids: string[] } | null>(null)
 
   const filteredProjects = projects
     .filter(p => p.title.toLowerCase().includes(searchQuery.toLowerCase()))
@@ -42,7 +54,7 @@ export default function ProjectsPage() {
       const mapped: Project[] = data.map((p: any, i: number) => ({
         id: p.id,
         title: p.project_name,
-        image: p.first_image || p.markup_url || '/placeholder.svg',
+        image: getOptimizedImageUrl(p.first_image || p.markup_url || '/placeholder.svg', IMAGE_SIZES.DASHBOARD_THUMB),
         updatedAt: p.updated_at
           ? formatDistanceToNow(new Date(p.updated_at)) + ' ago'
           : 'Just now',
@@ -69,11 +81,48 @@ export default function ProjectsPage() {
     router.push(`/projects/${project.id}?name=${encodeURIComponent(project.title)}`)
   }
 
-  const handleDelete = async (projectId: string) => {
-    if (confirm('Are you sure you want to delete this project?')) {
-      const result = await deleteProject(projectId)
+  const handleDelete = (projectId: string) => {
+    const project = projects.find(p => p.id === projectId)
+    setDeleteModal({ type: 'single', projectId, projectName: project?.title ?? 'this project' })
+  }
+
+  const handleToggleSelect = (projectId: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(projectId)) next.delete(projectId)
+      else next.add(projectId)
+      return next
+    })
+  }
+
+  const handleSelectAll = () => {
+    if (selectedIds.size === filteredProjects.length) {
+      setSelectedIds(new Set())
+    } else {
+      setSelectedIds(new Set(filteredProjects.map(p => p.id)))
+    }
+  }
+
+  const handleBulkDelete = () => {
+    setDeleteModal({ type: 'bulk', ids: Array.from(selectedIds) })
+  }
+
+  const handleConfirmDelete = async () => {
+    if (!deleteModal) return
+    setIsBulkDeleting(true)
+    if (deleteModal.type === 'single') {
+      const result = await deleteProject(deleteModal.projectId)
+      setIsBulkDeleting(false)
+      setDeleteModal(null)
       if (result.success) fetchProjects()
-      else alert('Failed to delete project')
+    } else {
+      const results = await Promise.all(deleteModal.ids.map(id => deleteProject(id)))
+      const failed = results.filter(r => !r.success).length
+      setSelectedIds(new Set())
+      setIsBulkDeleting(false)
+      setDeleteModal(null)
+      if (failed > 0) console.error(`${failed} project(s) failed to delete.`)
+      fetchProjects()
     }
   }
 
@@ -112,6 +161,44 @@ export default function ProjectsPage() {
             </>
           )}
         </div>
+
+        {/* Bulk action bar */}
+        {selectedIds.size > 0 && (
+          <div className="flex items-center justify-between rounded-xl bg-card border border-border px-4 py-2.5 shadow-sm">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={handleSelectAll}
+                className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <CheckSquare size={15} />
+                {selectedIds.size === filteredProjects.length ? 'Deselect all' : 'Select all'}
+              </button>
+              <span className="text-sm font-medium text-foreground">
+                {selectedIds.size} selected
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="destructive"
+                size="sm"
+                className="gap-1.5 h-8 px-3 text-xs"
+                onClick={handleBulkDelete}
+                disabled={isBulkDeleting}
+              >
+                <Trash2 size={13} />
+                {isBulkDeleting ? 'Deleting…' : `Delete ${selectedIds.size}`}
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                onClick={() => setSelectedIds(new Set())}
+              >
+                <X size={14} />
+              </Button>
+            </div>
+          </div>
+        )}
 
         {/* Workspace header */}
         <div className="flex items-center justify-between">
@@ -170,7 +257,7 @@ export default function ProjectsPage() {
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-5">
-            {filteredProjects.map((project) => (
+            {filteredProjects.map((project, i) => (
               <ProjectCard
                 key={project.id}
                 project={project}
@@ -178,11 +265,44 @@ export default function ProjectsPage() {
                 onDuplicate={setDuplicatingProject}
                 onDelete={handleDelete}
                 isAdmin={isAdmin}
+                isSelected={selectedIds.has(project.id)}
+                onSelect={handleToggleSelect}
+                index={i}
               />
             ))}
           </div>
         )}
       </div>
+
+      <Dialog open={!!deleteModal} onOpenChange={(open) => !open && setDeleteModal(null)}>
+        <DialogContent className="sm:max-w-[420px]">
+          <DialogHeader>
+            <div className="flex items-center gap-3 mb-1">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-destructive/10">
+                <AlertTriangle className="h-5 w-5 text-destructive" />
+              </div>
+              <DialogTitle>
+                {deleteModal?.type === 'bulk'
+                  ? `Delete ${deleteModal.ids.length} project${deleteModal.ids.length > 1 ? 's' : ''}?`
+                  : 'Delete project?'}
+              </DialogTitle>
+            </div>
+            <DialogDescription className="pl-[52px]">
+              {deleteModal?.type === 'bulk'
+                ? `You're about to permanently delete ${deleteModal.ids.length} project${deleteModal.ids.length > 1 ? 's' : ''} and all their images and comments. This cannot be undone.`
+                : <>You're about to permanently delete <span className="font-medium text-foreground">"{deleteModal?.type === 'single' ? deleteModal.projectName : ''}"</span> and all its images and comments. This cannot be undone.</>}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="mt-2">
+            <Button variant="outline" onClick={() => setDeleteModal(null)} disabled={isBulkDeleting}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleConfirmDelete} disabled={isBulkDeleting}>
+              {isBulkDeleting ? 'Deleting…' : 'Delete'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {duplicatingProject && (
         <ProjectDuplicator

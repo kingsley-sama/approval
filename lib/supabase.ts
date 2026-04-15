@@ -79,7 +79,7 @@ export class StorageService {
     const { data, error } = await this.client.storage
       .from(this.bucketName)
       .upload(filePath, file, {
-        cacheControl: options?.cacheControl || '3600',
+        cacheControl: options?.cacheControl || '31536000',
         upsert: options?.upsert ?? true,
       });
 
@@ -111,6 +111,7 @@ export class StorageService {
       .from(this.bucketName)
       .upload(filePath, buffer, {
         contentType,
+        cacheControl: '31536000',
         upsert: options?.upsert ?? true,
       });
 

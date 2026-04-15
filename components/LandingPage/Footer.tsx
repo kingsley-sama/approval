@@ -6,13 +6,13 @@ const Footer = () => {
       <div className="container px-4">
         <div className="flex flex-col md:flex-row items-center justify-between gap-6">
           <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg flex items-center justify-center">
+            <div className="w-7 h-7 rounded-lg flex items-center justify-center overflow-hidden">
               <Image
                 src="/logo.png"
                 alt="Company logo"
-                width={20}
-                height={20}
-                className="object-contain"
+                width={28}
+                height={28}
+                className="object-contain h-full w-full"
               />
             </div>
             <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-muted text-muted-foreground text-xs font-medium">

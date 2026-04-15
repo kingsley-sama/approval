@@ -4,7 +4,7 @@ import {
   CheckIcon,
   Copy,
   ExternalLink,
-  Image,
+  Image as ImageIcon,
   LinkIcon,
   MessageCircleIcon,
   MoreHorizontal,
@@ -16,7 +16,51 @@ import {
   Trash2,
 } from 'lucide-react'
 import React from 'react'
+import NextImage from 'next/image'
 import ShareLinkManager from '@/components/share-link-manager'
+
+// ── Blur-up lazy image ──────────────────────────────────────────────────────
+function BlurImage({
+  src,
+  alt,
+  placeholderClass,
+  eager = false,
+}: {
+  src: string
+  alt: string
+  placeholderClass: string
+  eager?: boolean
+}) {
+  const [loaded, setLoaded] = React.useState(false)
+
+  return (
+    <div className="relative w-full h-full">
+      {/* Shimmer placeholder — hidden once image is loaded */}
+      <div
+        className={`absolute inset-0 rounded-xl overflow-hidden transition-opacity duration-300 ${
+          loaded ? 'opacity-0 pointer-events-none' : 'opacity-100'
+        } ${placeholderClass}`}
+        aria-hidden
+      >
+        {/* Moving shimmer streak */}
+        <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-transparent via-white/30 to-transparent" />
+      </div>
+
+      {/* Real image — fades + unblurs in */}
+      <NextImage
+        src={src}
+        alt={alt}
+        fill
+        sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, (max-width: 1280px) 33vw, 25vw"
+        loading={eager ? 'eager' : 'lazy'}
+        onLoad={() => setLoaded(true)}
+        className={`object-cover rounded-xl transition-all duration-500 ease-out ${
+          loaded ? 'opacity-100 blur-0 scale-100' : 'opacity-0 blur-md scale-[1.04]'
+        }`}
+      />
+    </div>
+  )
+}
 
 export type Project = {
   id: string
@@ -40,6 +84,9 @@ type ProjectCardProps = {
   onDuplicate: (project: Project) => void
   onDelete: (projectId: string) => void
   isAdmin?: boolean
+  isSelected?: boolean
+  onSelect?: (projectId: string) => void
+  index?: number
 }
 
 const Tip: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
@@ -51,9 +98,8 @@ const Tip: React.FC<{ label: string; children: React.ReactNode }> = ({ label, ch
   </div>
 )
 
-export default function ProjectCard({ project, onOpen, onDuplicate, onDelete, isAdmin = false }: ProjectCardProps) {
+export default function ProjectCard({ project, onOpen, onDuplicate, onDelete, isAdmin = false, isSelected = false, onSelect, index = 0 }: ProjectCardProps) {
   const [isHovered, setIsHovered] = React.useState(false)
-  const [isChecked, setIsChecked] = React.useState(false)
   const [activeIndex, setActiveIndex] = React.useState(0)
   const [menuOpen, setMenuOpen] = React.useState(false)
   const menuRef = React.useRef<HTMLDivElement>(null)
@@ -81,9 +127,13 @@ export default function ProjectCard({ project, onOpen, onDuplicate, onDelete, is
     return () => document.removeEventListener('mousedown', handler)
   }, [menuOpen])
 
+  // Cap delay at 10 cards so late items don't feel sluggish
+  const delayMs = Math.min(index, 10) * 50
+
   return (
     <div
-      className="bg-muted p-2 rounded-xl transition-shadow duration-300 cursor-pointer hover:shadow-lg"
+      style={{ animationDelay: `${delayMs}ms` }}
+      className={`animate-card-enter bg-muted p-2 rounded-xl transition-shadow duration-300 cursor-pointer hover:shadow-lg ${isSelected ? 'ring-2 ring-primary' : ''}`}
       onClick={() => onOpen(project)}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => { setIsHovered(false); setMenuOpen(false) }}
@@ -100,10 +150,10 @@ export default function ProjectCard({ project, onOpen, onDuplicate, onDelete, is
               {isAdmin ? (
                 <Tip label="Select">
                   <button
-                    onClick={(e) => { e.stopPropagation(); setIsChecked((c) => !c) }}
+                    onClick={(e) => { e.stopPropagation(); onSelect?.(project.id) }}
                     className="p-1.5 rounded-md text-white transition-colors"
                   >
-                    {isChecked ? <SquareCheck size={16} /> : <Square size={16} />}
+                    {isSelected ? <SquareCheck size={16} /> : <Square size={16} />}
                   </button>
                 </Tip>
               ) : <div />}
@@ -194,14 +244,19 @@ export default function ProjectCard({ project, onOpen, onDuplicate, onDelete, is
           <>
             {/* All images stacked, only active one visible */}
             {allImages.map((src, i) => (
-              <img
+              <div
                 key={i}
-                src={src}
-                alt={`${project.title} — slide ${i + 1}`}
-                className={`absolute inset-0 w-full h-full object-cover rounded-xl transition-opacity duration-300 ${
-                  i === activeIndex ? 'opacity-100' : 'opacity-0'
+                className={`absolute inset-0 transition-opacity duration-300 ${
+                  i === activeIndex ? 'opacity-100' : 'opacity-0 pointer-events-none'
                 }`}
-              />
+              >
+                <BlurImage
+                  src={src}
+                  alt={`${project.title} — slide ${i + 1}`}
+                  placeholderClass={project.color}
+                  eager={i === 0 && index < 4}
+                />
+              </div>
             ))}
 
             {/* Carousel dots */}
@@ -247,7 +302,7 @@ export default function ProjectCard({ project, onOpen, onDuplicate, onDelete, is
             <LinkIcon size={10} /><span>{project.stats.shares}</span>
           </div>
           <div className="flex items-center gap-1 bg-primary/10 rounded-md px-2 py-0.5 text-primary/80 text-xs">
-            <Image size={10} /><span>{project.stats.images}</span>
+            <ImageIcon size={10} /><span>{project.stats.images}</span>
           </div>
         </div>
       </div>

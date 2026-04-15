@@ -137,6 +137,16 @@ export default function ImageViewer({
     };
   }, [zoom, isFullscreen, currentImageUrl, imageDimensions]);
 
+  // Exit fullscreen on Escape key
+  useEffect(() => {
+    if (!isFullscreen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onToggleFullscreen();
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isFullscreen, onToggleFullscreen]);
+
   const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (activeTool !== null) return;
     if (!imageRef.current) return;
@@ -150,7 +160,8 @@ export default function ImageViewer({
 
   const getImageStyle = () => {
     const baseWidth = isFullscreen ? '100vw' : 'calc(100vw - 600px)';
-    const baseHeight = isFullscreen ? '100vh' : 'calc(100vh - 100px)';
+    // Subtract ~48px toolbar height so the image never pushes the toolbar off-screen
+    const baseHeight = isFullscreen ? 'calc(100vh - 48px)' : 'calc(100vh - 100px)';
 
     if (zoom === 'fit-horizontal') return { width: baseWidth, height: 'auto' };
     if (zoom === 'fit-window') return { maxWidth: baseWidth, maxHeight: baseHeight, width: 'auto', height: 'auto' };
@@ -165,13 +176,13 @@ export default function ImageViewer({
   return (
     <div
       ref={containerRef}
-      className={`flex-1 flex flex-col relative overflow-auto transition-colors ${isFullscreen ? 'bg-black' : 'bg-gray-100'}`}
+      className={`flex-1 flex flex-col relative overflow-hidden transition-colors ${isFullscreen ? 'bg-black' : 'bg-gray-100'}`}
     >
       {/* Viewer Toolbar */}
-      <div className="flex items-center justify-between px-4 py-2 border-b border-border/50 bg-background shrink-0">
+      <div className={`flex items-center justify-between px-4 py-2 border-b shrink-0 z-30 ${isFullscreen ? 'bg-zinc-900 border-zinc-700' : 'bg-background border-border/50'}`}>
         {/* Left: File Info */}
-        <div className="flex items-center gap-3 text-sm text-muted-foreground">
-          <span className="font-medium text-foreground">{currentImageName || 'Untitled'}</span>
+        <div className={`flex items-center gap-3 text-sm ${isFullscreen ? 'text-zinc-400' : 'text-muted-foreground'}`}>
+          <span className={`font-medium ${isFullscreen ? 'text-zinc-100' : 'text-foreground'}`}>{currentImageName || 'Untitled'}</span>
           <span>JPG</span>
           <span>1.4 MB</span>
         </div>
@@ -181,20 +192,20 @@ export default function ImageViewer({
           <Button
             variant="ghost"
             size="sm"
-            className="h-7 gap-1 text-xs text-muted-foreground"
+            className={`h-7 gap-1 text-xs ${isFullscreen ? 'text-zinc-300 hover:text-white hover:bg-zinc-700' : 'text-muted-foreground'}`}
             onClick={() => onNavigate('prev')}
             disabled={currentImageIndex === 0}
           >
             <ChevronLeft className="h-3.5 w-3.5" />
             Prev
           </Button>
-          <span className="text-sm text-muted-foreground min-w-[60px] text-center">
+          <span className={`text-sm min-w-[60px] text-center ${isFullscreen ? 'text-zinc-400' : 'text-muted-foreground'}`}>
             {currentImageIndex + 1} of {totalImages}
           </span>
           <Button
             variant="ghost"
             size="sm"
-            className="h-7 gap-1 text-xs text-muted-foreground"
+            className={`h-7 gap-1 text-xs ${isFullscreen ? 'text-zinc-300 hover:text-white hover:bg-zinc-700' : 'text-muted-foreground'}`}
             onClick={() => onNavigate('next')}
             disabled={currentImageIndex === totalImages - 1}
           >
@@ -203,7 +214,7 @@ export default function ImageViewer({
           </Button>
 
           {showDrawingTools && (
-            <div className="ml-4 pl-4 border-l border-border/50">
+            <div className={`ml-4 pl-4 border-l ${isFullscreen ? 'border-zinc-600' : 'border-border/50'}`}>
               <DrawingToolbar
                 activeTool={activeTool}
                 onToolSelect={setActiveTool}
@@ -216,7 +227,11 @@ export default function ImageViewer({
         <div className="flex items-center gap-2">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs text-muted-foreground font-normal">
+              <Button
+                variant="ghost"
+                size="sm"
+                className={`h-7 gap-1 text-xs font-normal ${isFullscreen ? 'text-zinc-300 hover:text-white hover:bg-zinc-700' : 'text-muted-foreground'}`}
+              >
                 {getZoomLabel()}
                 <ChevronDown className="h-3 w-3 opacity-50" />
               </Button>
@@ -230,15 +245,20 @@ export default function ImageViewer({
             </DropdownMenuContent>
           </DropdownMenu>
 
-          <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground">
+          <Button
+            variant="ghost"
+            size="icon"
+            className={`h-7 w-7 ${isFullscreen ? 'text-zinc-300 hover:text-white hover:bg-zinc-700' : 'text-muted-foreground'}`}
+          >
             <Download className="h-3.5 w-3.5" />
           </Button>
 
-          <Button 
-            variant="ghost" 
-            size="icon" 
-            className="h-7 w-7 text-muted-foreground"
+          <Button
+            variant="ghost"
+            size="icon"
+            className={`h-7 w-7 ${isFullscreen ? 'text-zinc-300 hover:text-white hover:bg-zinc-700' : 'text-muted-foreground'}`}
             onClick={onToggleFullscreen}
+            title={isFullscreen ? 'Exit fullscreen (Esc)' : 'Fullscreen'}
           >
             {isFullscreen ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
           </Button>
@@ -246,7 +266,7 @@ export default function ImageViewer({
       </div>
 
       {/* Main Image Viewport */}
-      <div className={`flex-1 flex items-center justify-center ${isFullscreen ? 'w-screen h-screen' : 'min-w-full min-h-full'}`}>
+      <div className="flex-1 flex items-center justify-center overflow-auto min-w-full min-h-full">
         <div data-annotation-image-container className="relative" onClick={handleClick}>
           <Image
             ref={imageRef}
@@ -255,11 +275,13 @@ export default function ImageViewer({
             height={imageDimensions.height}
             alt="Annotation view"
             className="block"
+            sizes="(max-width: 768px) 100vw, calc(100vw - 600px)"
+            quality={85}
+            priority
             style={{
               ...getImageStyle(),
               cursor: activeTool ? 'crosshair' : 'default',
             }}
-            unoptimized
           />
 
           {/* Annotation/Drawing Layer */}

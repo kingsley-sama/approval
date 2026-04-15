@@ -34,13 +34,13 @@ export function Login({ mode = 'signin' }: { mode?: 'signin' | 'signup' }) {
       >
         {/* Logo + heading */}
         <div className="text-center mb-10">
-          <div className="w-12 h-12 rounded-xl flex items-center justify-center mx-auto mb-5">
+          <div className="w-12 h-12 rounded-xl flex items-center justify-center mx-auto mb-5 overflow-hidden">
             <Image
               src="/logo.png"
               alt="Company logo"
-              width={20}
-              height={20}
-              className="object-contain"
+              width={48}
+              height={48}
+              className="object-contain h-full w-full"
             />
           </div>
           <h1 className="font-display text-2xl font-bold text-foreground mb-2 tracking-tight">

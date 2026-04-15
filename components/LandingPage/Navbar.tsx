@@ -10,13 +10,13 @@ const Navbar = () => {
     <nav className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-xl border-b border-border flex items-center justify-center h-16">
       <div className="container flex items-center justify-between h-16">
         <div className="flex items-center gap-2">
-          <div className="w-6 h-8 rounded-lg flex items-center justify-center">
+          <div className="w-8 h-8 rounded-lg flex items-center justify-center overflow-hidden">
             <Image
                 src="/logo.png"
                 alt="Company logo"
-                width={20}
-                height={20}
-                className="object-contain"
+                width={32}
+                height={32}
+                className="object-contain h-full w-full"
               />
           </div>
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-muted text-muted-foreground text-xs font-medium">

@@ -378,6 +378,41 @@ export type Database = {
         }
         Relationships: []
       }
+      comment_replies: {
+        Row: {
+          id: string
+          comment_id: string
+          user_name: string
+          content: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id: string
+          comment_id: string
+          user_name: string
+          content: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          comment_id?: string
+          user_name?: string
+          content?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "comment_replies_comment_id_fkey"
+            columns: ["comment_id"]
+            isOneToOne: false
+            referencedRelation: "markup_comments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       comment_attachments: {
         Row: {
           id: string

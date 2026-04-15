@@ -28,7 +28,6 @@ export const CreateThreadSchema = z.object({
 
 export const CreateProjectSchema = z.object({
   name: z.string().min(1).max(300),
-  imageUrl: z.string().url().optional(),
   description: z.string().max(5000).optional(),
 });
 

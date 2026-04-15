@@ -5,6 +5,7 @@ import { getSignedUploadUrl, registerUploadedFile } from '@/app/actions/storage'
 import { Button } from '@/components/ui/button';
 import { Plus, CheckCircle2, XCircle, Loader2, X } from 'lucide-react';
 import { toast } from 'sonner';
+import { xhrUpload, validateFiles, type FileUploadState } from '@/lib/upload';
 
 interface ImageUploaderProps {
   projectId: string;
@@ -12,40 +13,7 @@ interface ImageUploaderProps {
   trigger?: React.ReactNode;
 }
 
-type FileStatus = 'pending' | 'uploading' | 'registering' | 'done' | 'error';
-
-interface FileUploadState {
-  id: string;
-  name: string;
-  status: FileStatus;
-  progress: number; // 0-100
-  error?: string;
-}
-
 const CONCURRENCY = 3;
-
-/** Upload a file directly to a Supabase presigned URL via XHR (real progress). */
-function xhrUpload(
-  file: File,
-  signedUrl: string,
-  onProgress: (pct: number) => void,
-): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.open('PUT', signedUrl);
-    // Only set Content-Type — no custom headers (avoids CORS preflight rejection)
-    xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
-    xhr.upload.addEventListener('progress', (e) => {
-      if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
-    });
-    xhr.onload = () => {
-      if (xhr.status >= 200 && xhr.status < 300) resolve();
-      else reject(new Error(`Upload failed (${xhr.status}): ${xhr.responseText}`));
-    };
-    xhr.onerror = () => reject(new Error('Network error during upload'));
-    xhr.send(file);
-  });
-}
 
 export default function ImageUploader({ projectId, onUploadComplete, trigger }: ImageUploaderProps) {
   const [fileStates, setFileStates] = useState<FileUploadState[]>([]);
@@ -88,8 +56,14 @@ export default function ImageUploader({ projectId, onUploadComplete, trigger }: 
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
-    const files = Array.from(e.target.files);
+    const raw = Array.from(e.target.files);
     if (fileInputRef.current) fileInputRef.current.value = '';
+
+    const { accepted: files, rejected } = validateFiles(raw);
+    if (rejected.length > 0) {
+      rejected.forEach(r => toast.error(`${r.file.name}: ${r.reason}`));
+    }
+    if (files.length === 0) return;
 
     const newStates: FileUploadState[] = files.map(f => ({
       id: crypto.randomUUID(),

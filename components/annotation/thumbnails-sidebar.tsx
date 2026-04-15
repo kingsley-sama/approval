@@ -1,7 +1,9 @@
 'use client';
 
 import { ChevronUp, ChevronDown } from 'lucide-react';
+import NextImage from 'next/image';
 import ImageUploader from '@/components/image-uploader';
+import { getOptimizedImageUrl, IMAGE_SIZES } from '@/lib/image-url';
 
 interface ImageData {
   id: string;
@@ -43,11 +45,14 @@ export default function ThumbnailsSidebar({
               currentImageId === img.id ? 'ring-2 ring-blue-600' : ''
             }`}
           >
-            <img
-              src={img.url || "/placeholder.svg"}
+            <NextImage
+              src={getOptimizedImageUrl(img.url, IMAGE_SIZES.SIDEBAR_THUMB) || "/placeholder.svg"}
               alt={img.name}
+              width={128}
+              height={128}
+              sizes="128px"
+              quality={60}
               className="w-full h-full object-cover"
-              crossOrigin="anonymous"
             />
           </div>
         ))}
