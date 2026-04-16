@@ -1,5 +1,5 @@
 'use client';
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import ImageViewer from '@/components/annotation/image-viewer';
 import CommentModal from '@/components/annotation/comment-modal';
 import { getProjectThreads } from '@/app/actions/threads';
@@ -80,10 +80,14 @@ export default function ProjectPage({ params, searchParams }: ProjectPageProps) 
   const syncCallbacks = {
     onSynced: (localId: string, comment: DbComment) => {
       const realPin = dbCommentToPin(comment);
-      setImagesState(prev => prev.map(img => ({
-        ...img,
-        pins: img.pins.map(p => p.id === localId ? realPin : p),
-      })));
+      setImagesState(prev => prev.map(img => {
+        const idx = img.pins.findIndex(p => p.id === localId);
+        if (idx === -1) return img;
+        return {
+          ...img,
+          pins: img.pins.map(p => p.id === localId ? realPin : p),
+        };
+      }));
       // Upload any attachments that were queued for this comment
       const files = pendingAttachments.current.get(localId);
       if (files && files.length > 0) {
@@ -93,10 +97,13 @@ export default function ProjectPage({ params, searchParams }: ProjectPageProps) 
     },
     onFailed: (localId: string) => {
       pendingAttachments.current.delete(localId);
-      setImagesState(prev => prev.map(img => ({
-        ...img,
-        pins: img.pins.filter(p => p.id !== localId),
-      })));
+      setImagesState(prev => prev.map(img => {
+        if (!img.pins.some(p => p.id === localId)) return img;
+        return {
+          ...img,
+          pins: img.pins.filter(p => p.id !== localId),
+        };
+      }));
       toast({
         title: 'Comment failed to save',
         description: 'Your comment could not be saved after several attempts. Please try again.',
@@ -215,21 +222,22 @@ export default function ProjectPage({ params, searchParams }: ProjectPageProps) 
   const currentImage = imagesState.find(img => img.id === currentImageId);
   const pins = currentImage?.pins || [];
   // Extract Konva shapes from saved pins to pass to the drawing canvas
-  const drawnShapes: Shape[] = pins
-    .filter(p => p.drawingData)
-    .map(p => p.drawingData!);
+  const drawnShapes = useMemo<Shape[]>(
+    () => pins.filter(p => p.drawingData).map(p => p.drawingData!),
+    [pins]
+  );
 
   /** Called by ImageViewer when the user finishes drawing a shape. */
-  const handleShapeComplete = (shape: Shape, center: { x: number; y: number }) => {
+  const handleShapeComplete = useCallback((shape: Shape, center: { x: number; y: number }) => {
     setPendingShape(shape);
     setPendingPinPos(center);
     setModalPosition(center);
     setSelectedPin(null);
     setIsNewPin(true);
     setShowModal(true);
-  };
+  }, []);
 
-  const handleImageClick = (x: number, y: number) => {
+  const handleImageClick = useCallback((x: number, y: number) => {
     // Store position and open modal — no placeholder pin yet
     // The real pin is only created in the DB on submit
     setPendingPinPos({ x, y });
@@ -237,7 +245,7 @@ export default function ProjectPage({ params, searchParams }: ProjectPageProps) 
     setSelectedPin(null);
     setIsNewPin(true);
     setShowModal(true);
-  };
+  }, []);
 
   const handleAddComment = async (text: string, attachmentFiles: File[] = []) => {
     if (!currentImageId || !pendingPinPos) return;
@@ -271,15 +279,18 @@ export default function ProjectPage({ params, searchParams }: ProjectPageProps) 
   const handleAddAttachmentToComment = async (commentId: string, files: File[]) => {
     await uploadAttachmentsForComment(commentId, projectId, files);
     const updated = await getAttachmentsForComments([commentId]);
-    setImagesState(prev => prev.map(img => ({
-      ...img,
-      pins: img.pins.map(p =>
-        p.id === commentId ? { ...p, attachments: updated[commentId] ?? p.attachments } : p
-      ),
-    })));
+    setImagesState(prev => prev.map(img => {
+      if (!img.pins.some(p => p.id === commentId)) return img;
+      return {
+        ...img,
+        pins: img.pins.map(p =>
+          p.id === commentId ? { ...p, attachments: updated[commentId] ?? p.attachments } : p
+        ),
+      };
+    }));
   };
 
-  const handleSwitchImage = (imageId: string) => {
+  const handleSwitchImage = useCallback((imageId: string) => {
     const index = imagesState.findIndex(img => img.id === imageId);
     if (index !== -1) {
       setCurrentImageIndex(index);
@@ -287,7 +298,7 @@ export default function ProjectPage({ params, searchParams }: ProjectPageProps) 
     setCurrentImageId(imageId);
     setSelectedPin(null);
     setShowModal(false);
-  };
+  }, [imagesState]);
 
   const handleResolveComment = async (pinId: string) => {
     // Optimistic update
@@ -323,7 +334,7 @@ export default function ProjectPage({ params, searchParams }: ProjectPageProps) 
     }
   };
 
-  const handleNavigateImages = (direction: 'prev' | 'next') => {
+  const handleNavigateImages = useCallback((direction: 'prev' | 'next') => {
     if (direction === 'prev' && currentImageIndex > 0) {
       handleSwitchImage(imagesState[currentImageIndex - 1].id);
       setCurrentImageIndex(currentImageIndex - 1);
@@ -331,7 +342,23 @@ export default function ProjectPage({ params, searchParams }: ProjectPageProps) 
       handleSwitchImage(imagesState[currentImageIndex + 1].id);
       setCurrentImageIndex(currentImageIndex + 1);
     }
-  };
+  }, [currentImageIndex, imagesState, handleSwitchImage]);
+
+  const handlePinClick = useCallback((x: number, y: number, pinId?: string) => {
+    if (pinId) {
+      setSelectedPin(pinId);
+      setPendingPinPos(null);
+      setPendingShape(null);
+      const pin = pins.find(p => p.id === pinId);
+      if (pin) {
+        setModalPosition({ x: pin.x, y: pin.y });
+        setIsNewPin(false);
+        setShowModal(true);
+      }
+    } else {
+      handleImageClick(x, y);
+    }
+  }, [pins, handleImageClick]);
 
   return (
     <div className={`h-screen bg-background text-foreground flex flex-col ${isFullscreen ? 'fixed inset-0' : ''}`}>
@@ -412,21 +439,7 @@ export default function ProjectPage({ params, searchParams }: ProjectPageProps) 
             pendingShape={pendingShape}
             currentImageName={currentImage?.name}
             onShapeComplete={handleShapeComplete}
-            onPinClick={(x, y, pinId) => {
-              if (pinId) {
-                setSelectedPin(pinId);
-                setPendingPinPos(null);
-                setPendingShape(null);
-                const pin = pins.find(p => p.id === pinId);
-                if (pin) {
-                  setModalPosition({ x: pin.x, y: pin.y });
-                  setIsNewPin(false);
-                  setShowModal(true);
-                }
-              } else {
-                handleImageClick(x, y);
-              }
-            }}
+            onPinClick={handlePinClick}
             isFullscreen={isFullscreen}
             onToggleFullscreen={() => setIsFullscreen(!isFullscreen)}
             hoveredPin={hoveredPin}

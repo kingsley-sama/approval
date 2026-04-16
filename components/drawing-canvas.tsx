@@ -35,7 +35,7 @@ interface DrawingCanvasProps {
   onShapeComplete?: (shape: Shape) => void;
 }
 
-export default function DrawingCanvas({
+function DrawingCanvasInner({
   imageWidth,
   imageHeight,
   shapes,
@@ -123,3 +123,5 @@ export default function DrawingCanvas({
     </Stage>
   );
 }
+
+export default React.memo(DrawingCanvasInner);

@@ -115,7 +115,6 @@ export async function createComment(
     return { success: false, error: error.message };
   }
 
-  revalidatePath('/projects');
   // Fire-and-forget — never awaited, never blocks the response
   notifyAdminsOfNewComment(data.thread_id, data.content, data.user_name).catch(() => {});
   return { success: true, comment: data as DbComment };

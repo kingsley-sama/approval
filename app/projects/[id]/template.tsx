@@ -101,7 +101,7 @@ export function ProjectTopNav({
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg flex items-center justify-center overflow-hidden">
+            <div className="w-8 h-8 flex items-center justify-center overflow-hidden">
               <Image
                 src="/logo.png"
                 alt="Company logo"

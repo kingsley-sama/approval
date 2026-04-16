@@ -8,6 +8,22 @@
 import { supabaseAdmin as supabase } from '@/lib/supabase';
 import { z } from 'zod';
 import { nanoid } from 'nanoid';
+import { headers } from 'next/headers';
+
+async function getRequestOrigin(): Promise<string> {
+  try {
+    const h = await headers();
+    const host = h.get('x-forwarded-host') ?? h.get('host');
+    if (host) {
+      const proto =
+        h.get('x-forwarded-proto') ?? (host.startsWith('localhost') ? 'http' : 'https');
+      return `${proto}://${host}`;
+    }
+  } catch {}
+  if (process.env.NEXT_PUBLIC_APP_URL) return process.env.NEXT_PUBLIC_APP_URL;
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
+  return 'http://localhost:3000';
+}
 
 // Types
 export type SharePermission = 'view' | 'comment' | 'draw_and_comment';
@@ -123,8 +139,10 @@ export async function createShareLink(
       lastAccessedAt: data.last_accessed_at,
     };
 
-    // Generate full URL
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+    // Generate full URL — derive origin from the actual incoming request so the
+    // link is correct regardless of deployment hostname (NEXT_PUBLIC_* vars are
+    // baked at build time and won't pick up env changes after deploy).
+    const baseUrl = await getRequestOrigin();
     const url = `${baseUrl}/share/${token}`;
 
     return {

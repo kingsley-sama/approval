@@ -240,7 +240,7 @@ export default function ShareLinkManager({
                         <>
                           <Button
                             onClick={() => copyToClipboard(
-                              `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/share/${link.token}`
+                              `${typeof window !== 'undefined' ? window.location.origin : ''}/share/${link.token}`
                             )}
                             variant="ghost"
                             size="sm"

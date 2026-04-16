@@ -271,6 +271,7 @@ DECLARE
     v_thread_record   RECORD;
     v_new_thread_id   UUID;
     v_comment_record  RECORD;
+    v_new_comment_id  TEXT;
     v_drawing_record  RECORD;
 BEGIN
     -- 1. Clone the project row
@@ -317,20 +318,23 @@ BEGIN
         )
         RETURNING id INTO v_new_thread_id;
 
-        -- 3. Optionally clone comments
+        -- 3. Optionally clone comments (includes drawing_data, attachments, replies)
         IF p_copy_comments THEN
             FOR v_comment_record IN
                 SELECT * FROM markup_comments WHERE thread_id = v_thread_record.id
             LOOP
+                v_new_comment_id := gen_random_uuid()::text;
+
                 INSERT INTO markup_comments (
                     id, thread_id, user_name, content,
                     pin_number, comment_index, display_number,
                     x_position, y_position, status,
+                    drawing_data,
                     is_duplicated, original_comment_id,
                     created_at, updated_at
                 )
                 VALUES (
-                    gen_random_uuid()::text,
+                    v_new_comment_id,
                     v_new_thread_id,
                     v_comment_record.user_name,
                     v_comment_record.content,
@@ -340,9 +344,41 @@ BEGIN
                     v_comment_record.x_position,
                     v_comment_record.y_position,
                     v_comment_record.status,
+                    v_comment_record.drawing_data,
                     TRUE, v_comment_record.id,
                     NOW(), NOW()
                 );
+
+                -- Copy attachments for this comment
+                INSERT INTO comment_attachments (
+                    comment_id, project_id, storage_path,
+                    original_filename, mime_type, file_size_bytes,
+                    created_at
+                )
+                SELECT
+                    v_new_comment_id,
+                    v_new_project_id,
+                    storage_path,
+                    original_filename,
+                    mime_type,
+                    file_size_bytes,
+                    NOW()
+                FROM comment_attachments
+                WHERE comment_id = v_comment_record.id;
+
+                -- Copy replies for this comment
+                INSERT INTO comment_replies (
+                    id, comment_id, user_name, content,
+                    created_at, updated_at
+                )
+                SELECT
+                    gen_random_uuid()::text,
+                    v_new_comment_id,
+                    user_name,
+                    content,
+                    NOW(), NOW()
+                FROM comment_replies
+                WHERE comment_id = v_comment_record.id;
             END LOOP;
         END IF;
 

@@ -34,7 +34,7 @@ export function Login({ mode = 'signin' }: { mode?: 'signin' | 'signup' }) {
       >
         {/* Logo + heading */}
         <div className="text-center mb-10">
-          <div className="w-12 h-12 rounded-xl flex items-center justify-center mx-auto mb-5 overflow-hidden">
+          <div className="w-12 h-12 flex items-center justify-center mx-auto mb-5 overflow-hidden">
             <Image
               src="/logo.png"
               alt="Company logo"

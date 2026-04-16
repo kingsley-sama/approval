@@ -53,7 +53,7 @@ export default function AppSidebar({ user }: AppSidebarProps) {
       {/* Header */}
       <SidebarHeader className="p-3">
         <div className="flex items-center gap-2">
-          <div className="h-9 w-9 rounded-lg flex items-center justify-center shrink-0 overflow-hidden">
+          <div className="h-9 w-9 flex items-center justify-center shrink-0 overflow-hidden">
             <Image
               src="/logo.png"
               alt="Company logo"

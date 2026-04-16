@@ -288,7 +288,7 @@ export default function ShareViewer({ shareLink, resourceData, token }: ShareVie
               <ArrowLeft className="h-4 w-4" />
             </Link>
             <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg flex items-center justify-center overflow-hidden">
+              <div className="w-8 h-8 flex items-center justify-center overflow-hidden">
                 <Image src="/logo.png" alt="Logo" width={32} height={32} className="object-contain h-full w-full" />
               </div>
               <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-muted text-muted-foreground text-xs font-medium">

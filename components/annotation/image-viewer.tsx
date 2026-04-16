@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, useMemo } from 'react';
 import { 
   Maximize2, 
   Minimize2, 
@@ -57,7 +57,7 @@ interface ImageViewerProps {
 
 type ZoomMode = 'fit-window' | 'fit-horizontal' | number;
 
-export default function ImageViewer({
+function ImageViewerInner({
   pins,
   selectedPin,
   onPinClick,
@@ -136,6 +136,11 @@ export default function ImageViewer({
       window.removeEventListener('resize', updateDimensions);
     };
   }, [zoom, isFullscreen, currentImageUrl, imageDimensions]);
+
+  const shapes = useMemo(
+    () => [...drawnShapes, ...(pendingShape ? [pendingShape] : [])],
+    [drawnShapes, pendingShape]
+  );
 
   // Exit fullscreen on Escape key
   useEffect(() => {
@@ -298,7 +303,7 @@ export default function ImageViewer({
               <DrawingCanvas
                 imageWidth={renderedDimensions.width}
                 imageHeight={renderedDimensions.height}
-                shapes={[...drawnShapes, ...(pendingShape ? [pendingShape] : [])]}
+                shapes={shapes}
                 currentTool={activeTool ?? 'pen'}
                 currentColor={DRAWING_COLOR}
                 strokeWidth={STROKE_WIDTH}
@@ -344,3 +349,5 @@ export default function ImageViewer({
     </div>
   );
 }
+
+export default React.memo(ImageViewerInner);

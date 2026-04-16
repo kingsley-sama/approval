@@ -18,7 +18,13 @@ export async function sendNewCommentEmail(opts: NewCommentEmailOptions): Promise
     .replace(/@\[[^\]]+\]\([^)]+\)/g, '@mention')
     .slice(0, 200);
 
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000';
+  const appUrl =
+    process.env.NEXT_PUBLIC_APP_URL ??
+    (process.env.VERCEL_PROJECT_PRODUCTION_URL
+      ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+      : process.env.VERCEL_URL
+        ? `https://${process.env.VERCEL_URL}`
+        : 'http://localhost:3000');
   const domain = new URL(appUrl).hostname;
   const fromAddress = `Annotations <no-reply@${domain}>`;
   const projectUrl = `${appUrl}/projects/${opts.projectId}`;
