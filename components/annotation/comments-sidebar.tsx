@@ -29,6 +29,7 @@ interface CommentsSidebarProps {
   selectedPinId: string | null;
   onSelectPin: (id: string) => void;
   onResolve: (pinId: string) => void;
+  onTabChange?: (tab: 'active' | 'resolved') => void;
   /** When true the resolve button is hidden — for read-only viewers like share clients */
   readOnly?: boolean;
 }
@@ -39,6 +40,7 @@ export default function CommentsSidebar({
   selectedPinId,
   onSelectPin,
   onResolve,
+  onTabChange,
   readOnly = false,
 }: CommentsSidebarProps) {
   const [expandedImages, setExpandedImages] = useState<string[]>([currentImageId]);
@@ -182,7 +184,7 @@ export default function CommentsSidebar({
       {/* Header tabs */}
       <div className="flex items-center gap-6 px-5 py-3 border-b border-border/50">
         <button
-          onClick={() => setActiveTab('active')}
+          onClick={() => { setActiveTab('active'); onTabChange?.('active'); }}
           className={`text-sm font-semibold pb-1 transition-colors ${
             activeTab === 'active'
               ? 'text-foreground border-b-2 border-primary'
@@ -192,7 +194,7 @@ export default function CommentsSidebar({
           {activeCount} Active
         </button>
         <button
-          onClick={() => setActiveTab('resolved')}
+          onClick={() => { setActiveTab('resolved'); onTabChange?.('resolved'); }}
           className={`text-sm pb-1 transition-colors ${
             activeTab === 'resolved'
               ? 'text-foreground font-semibold border-b-2 border-primary'

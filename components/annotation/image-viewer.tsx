@@ -25,6 +25,9 @@ const DrawingCanvas = dynamic(() => import('@/components/drawing-canvas'), {
   ssr: false,
 });
 
+// Custom cursor for comment/pin placement mode — orange map pin with "+" indicator
+const COMMENT_PIN_CURSOR = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='28' viewBox='0 0 20 28'%3E%3Cpath d='M10 27C10 27 19 15.5 19 9.5C19 4.5 15 1 10 1C5 1 1 4.5 1 9.5C1 15.5 10 27 10 27Z' fill='%23ff6137' stroke='white' stroke-width='1'/%3E%3Ccircle cx='10' cy='9.5' r='3.5' fill='white'/%3E%3Cline x1='8.5' y1='9.5' x2='11.5' y2='9.5' stroke='%23ff6137' stroke-width='1.5' stroke-linecap='round'/%3E%3Cline x1='10' y1='8' x2='10' y2='11' stroke='%23ff6137' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E") 10 27, crosshair`;
+
 interface Pin {
   id: string;
   number: number;
@@ -166,7 +169,7 @@ function ImageViewerInner({
   const getImageStyle = () => {
     const baseWidth = isFullscreen ? '100vw' : 'calc(100vw - 600px)';
     // Subtract ~48px toolbar height so the image never pushes the toolbar off-screen
-    const baseHeight = isFullscreen ? 'calc(100vh - 48px)' : 'calc(100vh - 100px)';
+    const baseHeight = isFullscreen ? 'calc(100vh - 100px)' : 'calc(100vh - 160px)';
 
     if (zoom === 'fit-horizontal') return { width: baseWidth, height: 'auto' };
     if (zoom === 'fit-window') return { maxWidth: baseWidth, maxHeight: baseHeight, width: 'auto', height: 'auto' };
@@ -271,7 +274,7 @@ function ImageViewerInner({
       </div>
 
       {/* Main Image Viewport */}
-      <div className="flex-1 flex items-center justify-center overflow-auto min-w-full min-h-full">
+      <div className="flex-1 flex items-center justify-center overflow-auto min-w-full min-h-full py-8 px-6">
         <div data-annotation-image-container className="relative" onClick={handleClick}>
           <Image
             ref={imageRef}
@@ -285,7 +288,7 @@ function ImageViewerInner({
             priority
             style={{
               ...getImageStyle(),
-              cursor: activeTool ? 'crosshair' : 'default',
+              cursor: activeTool ? 'crosshair' : COMMENT_PIN_CURSOR,
             }}
           />
 

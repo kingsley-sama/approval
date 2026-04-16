@@ -68,6 +68,7 @@ interface ProjectShellProps {
 	projectId: string;
 	onSelectImage: (imageId: string) => void;
 	onUploadComplete: () => Promise<void>;
+	onCommentTabChange?: (tab: 'active' | 'resolved') => void;
 	children: React.ReactNode;
 }
 
@@ -157,6 +158,7 @@ export function ProjectShell({
 	projectId,
 	onSelectImage,
 	onUploadComplete,
+	onCommentTabChange,
 	children,
 }: ProjectShellProps) {
 	return (
@@ -168,6 +170,7 @@ export function ProjectShell({
 					selectedPinId={selectedPinId}
 					onSelectPin={onSelectPin}
 					onResolve={onResolveComment}
+					onTabChange={onCommentTabChange}
 				/>
 			)}
 

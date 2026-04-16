@@ -45,6 +45,7 @@ export default function ProjectPage({ params, searchParams }: ProjectPageProps) 
   const [pendingShape, setPendingShape] = useState<Shape | null>(null);
   const [currentUserName, setCurrentUserName] = useState<string>('Anonymous');
   const [currentUserRole, setCurrentUserRole] = useState<string>('member');
+  const [commentTab, setCommentTab] = useState<'active' | 'resolved'>('active');
 
   const { enqueue, getPendingForThread, drainQueue, pendingCount, isSyncing } = useCommentQueue();
   const { toast } = useToast();
@@ -221,10 +222,14 @@ export default function ProjectPage({ params, searchParams }: ProjectPageProps) 
 
   const currentImage = imagesState.find(img => img.id === currentImageId);
   const pins = currentImage?.pins || [];
-  // Extract Konva shapes from saved pins to pass to the drawing canvas
+  const visiblePins = useMemo(
+    () => pins.filter(p => commentTab === 'resolved' ? p.status === 'resolved' : p.status !== 'resolved'),
+    [pins, commentTab]
+  );
+  // Extract Konva shapes from visible pins to pass to the drawing canvas
   const drawnShapes = useMemo<Shape[]>(
-    () => pins.filter(p => p.drawingData).map(p => p.drawingData!),
-    [pins]
+    () => visiblePins.filter(p => p.drawingData).map(p => p.drawingData!),
+    [visiblePins]
   );
 
   /** Called by ImageViewer when the user finishes drawing a shape. */
@@ -400,6 +405,7 @@ export default function ProjectPage({ params, searchParams }: ProjectPageProps) 
         projectId={projectId}
         onSelectImage={handleSwitchImage}
         onUploadComplete={fetchThreads}
+        onCommentTabChange={setCommentTab}
       >
 
         {isLoading ? (
@@ -433,7 +439,7 @@ export default function ProjectPage({ params, searchParams }: ProjectPageProps) 
           </div>
         ) : (
           <ImageViewer
-            pins={pins}
+            pins={visiblePins}
             selectedPin={selectedPin}
             drawnShapes={drawnShapes}
             pendingShape={pendingShape}
