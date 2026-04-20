@@ -117,7 +117,7 @@ function DrawingCanvasInner({
       onMouseUp={handleMouseUp}
     >
       <Layer>
-        {shapes.map(s => renderShape(s, s.id))}
+        {shapes.map((s, index) => renderShape(s, `${s.id}_${index}`))}
         {currentShape && renderShape(currentShape, '__current__')}
       </Layer>
     </Stage>

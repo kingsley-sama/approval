@@ -24,6 +24,19 @@ function normalizeDrawingPayload(drawingData: unknown): unknown {
   }
 }
 
+function isMissingColumnError(error: any, expectedColumns: string[]): boolean {
+  const message = `${error?.message ?? ''} ${error?.details ?? ''} ${error?.hint ?? ''}`.toLowerCase();
+  if (!message) return false;
+
+  const hasColumnHint =
+    message.includes('column') ||
+    message.includes('schema cache') ||
+    message.includes('could not find');
+
+  if (!hasColumnHint) return false;
+  return expectedColumns.some((column) => message.includes(column.toLowerCase()));
+}
+
 const CommentSchema = z.object({
   token: z.string().min(1),
   threadId: z.string().uuid(),
@@ -92,16 +105,48 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get next comment index
-    const { count } = await supabase
+    // Get next comment index (excluding replies in typed schema)
+    const typedCount = await supabase
+      .from('markup_comments')
+      .select('*', { count: 'exact', head: true })
+      .eq('thread_id', validated.threadId)
+      .neq('type' as any, 'reply');
+
+    const legacyCount = await supabase
       .from('markup_comments')
       .select('*', { count: 'exact', head: true })
       .eq('thread_id', validated.threadId);
 
-    const nextIndex = (count || 0) + 1;
+    const nextIndex = ((typedCount.error ? legacyCount.count : typedCount.count) || 0) + 1;
 
-    // Insert comment
-    const insertPayload: any = {
+    // Create drawing row first when this comment includes drawing data
+    let drawingId: string | null = null;
+    if (validated.drawingData != null) {
+      const drawingInsertPayload: any = {
+        thread_id: validated.threadId,
+        drawing_data: validated.drawingData,
+        created_by: validated.userName,
+        metadata: { source: 'share_comment' },
+      };
+
+      const { data: drawingRow, error: drawingError } = await supabase
+        .from('markup_drawings')
+        .insert(drawingInsertPayload)
+        .select('id')
+        .single();
+
+      if (drawingError) {
+        console.error('Error inserting drawing for share comment:', JSON.stringify(drawingError));
+        return NextResponse.json(
+          { success: false, error: drawingError.message || 'Failed to save drawing' },
+          { status: 500 }
+        );
+      }
+
+      drawingId = drawingRow.id;
+    }
+
+    const basePayload: any = {
       id: nanoid(),
       thread_id: validated.threadId,
       user_name: validated.userName,
@@ -115,15 +160,56 @@ export async function POST(request: NextRequest) {
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
-    if (validated.drawingData != null) {
-      insertPayload.drawing_data = validated.drawingData;
+
+    const typedPayload = {
+      ...basePayload,
+      type: drawingId ? 'drawing' : 'comment',
+      drawing_id: drawingId,
+      parent_comment_id: null,
+    };
+
+    const typedInsert = await supabase
+      .from('markup_comments')
+      .insert(typedPayload as any)
+      .select()
+      .single();
+
+    if (!typedInsert.error) {
+      const saved = typedInsert.data as any;
+      if (validated.drawingData != null && saved.drawing_data == null) {
+        saved.drawing_data = validated.drawingData;
+      }
+      return NextResponse.json({ success: true, comment: saved });
     }
+
+    const canFallbackToLegacy = isMissingColumnError(typedInsert.error, [
+      'type',
+      'drawing_id',
+      'parent_comment_id',
+    ]);
+
+    if (!canFallbackToLegacy) {
+      console.error('Error inserting typed share comment:', JSON.stringify(typedInsert.error));
+      return NextResponse.json(
+        { success: false, error: typedInsert.error.message || 'Failed to save comment' },
+        { status: 500 }
+      );
+    }
+
+    const legacyPayload: any = {
+      ...basePayload,
+      ...(validated.drawingData != null ? { drawing_data: validated.drawingData } : {}),
+    };
 
     const { data, error: insertError } = await supabase
       .from('markup_comments')
-      .insert(insertPayload as any)
+      .insert(legacyPayload)
       .select()
       .single();
+
+    if (drawingId) {
+      await supabase.from('markup_drawings').delete().eq('id', drawingId);
+    }
 
     if (insertError) {
       console.error('Error inserting comment:', JSON.stringify(insertError));
@@ -133,10 +219,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    return NextResponse.json({
-      success: true,
-      comment: data,
-    });
+    return NextResponse.json({ success: true, comment: data });
   } catch (error) {
     console.error('Share comment error:', error);
     

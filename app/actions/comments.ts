@@ -30,6 +30,9 @@ export interface DbComment {
   status: string | null;
   created_at: string | null;
   updated_at: string | null;
+  type?: 'comment' | 'reply' | 'drawing' | string | null;
+  parent_comment_id?: string | null;
+  drawing_id?: string | null;
   drawing_data?: any; // null = plain pin; non-null = drawing annotation
   attachments?: (AttachmentRecord & { signedUrl: string })[];
 }
@@ -55,6 +58,76 @@ function normalizeDrawingPayload(drawingData: any): any {
   }
 }
 
+function isMissingColumnError(error: any, expectedColumns: string[]): boolean {
+  const message = `${error?.message ?? ''} ${error?.details ?? ''} ${error?.hint ?? ''}`.toLowerCase();
+  if (!message) return false;
+
+  const hasColumnHint =
+    message.includes('column') ||
+    message.includes('schema cache') ||
+    message.includes('could not find');
+
+  if (!hasColumnHint) return false;
+  return expectedColumns.some((column) => message.includes(column.toLowerCase()));
+}
+
+async function hydrateDrawingDataForComments(
+  comments: DbComment[],
+  supabase: Awaited<ReturnType<typeof createClient>>,
+): Promise<DbComment[]> {
+  const drawingIds = Array.from(new Set(
+    comments
+      .map((c) => c.drawing_id)
+      .filter((id): id is string => typeof id === 'string' && id.length > 0),
+  ));
+
+  if (drawingIds.length === 0) return comments;
+
+  const { data: drawings, error } = await supabase
+    .from('markup_drawings')
+    .select('id, drawing_data')
+    .in('id', drawingIds);
+
+  if (error || !drawings) {
+    console.error('Error hydrating drawing data for comments:', error);
+    return comments;
+  }
+
+  const drawingById = new Map<string, any>(
+    drawings.map((row: any) => [row.id, row.drawing_data]),
+  );
+
+  return comments.map((comment) => {
+    if (comment.drawing_data != null) return comment;
+    if (!comment.drawing_id) return comment;
+    const drawingData = drawingById.get(comment.drawing_id);
+    if (drawingData == null) return comment;
+    return { ...comment, drawing_data: drawingData };
+  });
+}
+
+async function getNextPinNumber(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  threadId: string,
+): Promise<number> {
+  const typedCount = await supabase
+    .from('markup_comments')
+    .select('*', { count: 'exact', head: true })
+    .eq('thread_id', threadId)
+    .neq('type' as any, 'reply');
+
+  if (!typedCount.error) {
+    return (typedCount.count ?? 0) + 1;
+  }
+
+  const legacyCount = await supabase
+    .from('markup_comments')
+    .select('*', { count: 'exact', head: true })
+    .eq('thread_id', threadId);
+
+  return (legacyCount.count ?? 0) + 1;
+}
+
 /** Get the currently logged-in user from the JWT session */
 export async function getCurrentUser() {
   const user = await getUser();
@@ -75,7 +148,16 @@ export async function getThreadComments(threadId: string): Promise<DbComment[]> 
     console.error('Error loading comments:', error);
     return [];
   }
-  return (data as DbComment[]) || [];
+
+  const rows = ((data as DbComment[]) || []).filter((comment) => {
+    // Replies are now stored in markup_comments when `type='reply'`.
+    // Exclude them from pin lists to avoid rendering them as annotation markers.
+    if (comment.type === 'reply') return false;
+    if (comment.parent_comment_id) return false;
+    return true;
+  });
+
+  return hydrateDrawingDataForComments(rows, supabase);
 }
 
 /**
@@ -98,7 +180,7 @@ export async function createComment(
 
   const parsed = CreateCommentSchema.safeParse({
     threadId,
-    content,
+    content: content.trim(),
     userName,
     x: safeX,
     y: safeY,
@@ -110,45 +192,107 @@ export async function createComment(
 
   const supabase = await createClient();
 
-  // Count existing comments in this thread to derive sequential numbers
-  const { count } = await supabase
-    .from('markup_comments')
-    .select('*', { count: 'exact', head: true })
-    .eq('thread_id', threadId);
+  const nextNumber = await getNextPinNumber(supabase, threadId);
 
-  const nextNumber = (count ?? 0) + 1;
+  let drawingId: string | null = null;
+  if (safeDrawingData != null) {
+    const { data: drawingRow, error: drawingError } = await supabase
+      .from('markup_drawings')
+      .insert({
+        thread_id: threadId,
+        drawing_data: safeDrawingData,
+        created_by: userName,
+        metadata: { source: 'comment' },
+      })
+      .select('id')
+      .single();
+
+    if (drawingError) {
+      console.error('Error creating drawing row for comment:', drawingError);
+      return { success: false, error: drawingError.message };
+    }
+
+    drawingId = drawingRow.id;
+  }
 
   // id is TEXT PRIMARY KEY with no DB default — must be supplied by app layer
-  const newComment = {
+  const baseComment = {
     id: nanoid(),
     thread_id: threadId,
     user_name: userName,
-    content,
+    content: content.trim(),
     pin_number: nextNumber,
     comment_index: nextNumber,
     display_number: nextNumber,
     x_position: safeX,
     y_position: safeY,
     status: 'active',
-    ...(safeDrawingData != null ? { drawing_data: safeDrawingData } : {}),
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
 
-  const { data, error } = await supabase
+  // Preferred schema: comments reference markup_drawings via drawing_id and use type.
+  const typedPayload = {
+    ...baseComment,
+    type: drawingId ? 'drawing' : 'comment',
+    drawing_id: drawingId,
+    parent_comment_id: null,
+  };
+
+  const typedInsert = await supabase
     .from('markup_comments')
-    .insert(newComment)
+    .insert(typedPayload as any)
     .select()
     .single();
 
-  if (error) {
-    console.error('Error creating comment:', error);
-    return { success: false, error: error.message };
+  if (!typedInsert.error) {
+    const saved = typedInsert.data as DbComment;
+    if (safeDrawingData != null && saved.drawing_data == null) {
+      saved.drawing_data = safeDrawingData;
+    }
+
+    // Fire-and-forget — never awaited, never blocks the response
+    notifyAdminsOfNewComment(saved.thread_id, saved.content, saved.user_name).catch(() => {});
+    return { success: true, comment: saved };
   }
 
+  // Legacy fallback: older schemas still persist drawing JSON directly on comments.
+  const canFallbackToLegacy = isMissingColumnError(typedInsert.error, [
+    'type',
+    'drawing_id',
+    'parent_comment_id',
+  ]);
+
+  if (!canFallbackToLegacy) {
+    console.error('Error creating typed comment:', typedInsert.error);
+    return { success: false, error: typedInsert.error.message };
+  }
+
+  const legacyPayload = {
+    ...baseComment,
+    ...(safeDrawingData != null ? { drawing_data: safeDrawingData } : {}),
+  };
+
+  const legacyInsert = await supabase
+    .from('markup_comments')
+    .insert(legacyPayload as any)
+    .select()
+    .single();
+
+  if (drawingId) {
+    // Cleanup orphan drawing row in legacy mode where comments cannot store drawing_id.
+    await supabase.from('markup_drawings').delete().eq('id', drawingId);
+  }
+
+  if (legacyInsert.error) {
+    console.error('Error creating legacy comment:', legacyInsert.error);
+    return { success: false, error: legacyInsert.error.message };
+  }
+
+  const data = legacyInsert.data as DbComment;
   // Fire-and-forget — never awaited, never blocks the response
   notifyAdminsOfNewComment(data.thread_id, data.content, data.user_name).catch(() => {});
-  return { success: true, comment: data as DbComment };
+  return { success: true, comment: data };
 }
 
 async function notifyAdminsOfNewComment(threadId: string, content: string, userName: string) {

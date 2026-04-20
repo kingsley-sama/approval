@@ -200,6 +200,10 @@ export default function ProjectPage({ params, searchParams }: ProjectPageProps) 
   }, [projectId]);
 
   const handleRealtimeComment = useCallback((comment: DbComment) => {
+    if (comment.type === 'reply' || comment.parent_comment_id) {
+      return;
+    }
+
     setImagesState(prev => prev.map(img => {
       if (img.id !== comment.thread_id) return img;
       const alreadyExists = img.pins.some(p =>

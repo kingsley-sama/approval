@@ -29,6 +29,32 @@ export default async function SharePage({ params }: SharePageProps) {
 
   let resourceData: any;
 
+  const hydrateDrawingData = async (comments: any[]) => {
+    const visible = comments.filter((c: any) => c.type !== 'reply' && !c.parent_comment_id);
+    const drawingIds = Array.from(new Set(
+      visible
+        .map((c: any) => c.drawing_id)
+        .filter((id: unknown): id is string => typeof id === 'string' && id.length > 0),
+    ));
+
+    if (drawingIds.length === 0) return visible;
+
+    const { data: drawings } = await supabase
+      .from('markup_drawings')
+      .select('id, drawing_data')
+      .in('id', drawingIds);
+
+    const byId = new Map<string, any>((drawings || []).map((d: any) => [d.id, d.drawing_data]));
+
+    return visible.map((comment: any) => {
+      if (comment.drawing_data != null) return comment;
+      if (!comment.drawing_id) return comment;
+      const drawingData = byId.get(comment.drawing_id);
+      if (drawingData == null) return comment;
+      return { ...comment, drawing_data: drawingData };
+    });
+  };
+
   if (shareLink!.resourceType === 'thread') {
     // Single image/thread share
     const { data: thread, error } = await supabase
@@ -45,7 +71,7 @@ export default async function SharePage({ params }: SharePageProps) {
       .eq('thread_id', shareLink!.resourceId)
       .order('created_at', { ascending: true });
 
-    const allComments = comments || [];
+    const allComments = await hydrateDrawingData(comments || []);
     const attachmentsByComment = await getAttachmentsForComments(allComments.map((c: any) => c.id));
 
     resourceData = {
@@ -81,7 +107,10 @@ export default async function SharePage({ params }: SharePageProps) {
           .select('*')
           .eq('thread_id', t.id)
           .order('created_at', { ascending: true })
-          .then(({ data }) => ({ threadId: t.id, comments: data || [] }))
+          .then(async ({ data }) => ({
+            threadId: t.id,
+            comments: await hydrateDrawingData(data || []),
+          }))
       )
     );
 
