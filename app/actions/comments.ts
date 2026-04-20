@@ -3,7 +3,12 @@
 import { createClient } from '@/lib/supabase/server';
 import { getUser } from '@/lib/db/queries';
 import { requireUser } from '@/lib/auth/require-user';
-import { CreateCommentSchema, ResolveCommentSchema, DeleteCommentSchema } from '@/lib/validation/schemas';
+import {
+  CreateCommentSchema,
+  ResolveCommentSchema,
+  DeleteCommentSchema,
+  UpdateCommentPositionSchema,
+} from '@/lib/validation/schemas';
 import { revalidatePath } from 'next/cache';
 import { nanoid } from 'nanoid';
 import type { AttachmentRecord } from './storage';
@@ -33,6 +38,21 @@ export interface CreateCommentResult {
   success: boolean;
   comment?: DbComment;
   error?: string;
+}
+
+function clampPercent(value: number): number {
+  if (!Number.isFinite(value)) return 50;
+  return Math.max(0, Math.min(100, value));
+}
+
+function normalizeDrawingPayload(drawingData: any): any {
+  if (drawingData == null) return undefined;
+  try {
+    // Ensure the payload is JSON-serializable before inserting into JSONB.
+    return JSON.parse(JSON.stringify(drawingData));
+  } catch {
+    return undefined;
+  }
 }
 
 /** Get the currently logged-in user from the JWT session */
@@ -72,7 +92,18 @@ export async function createComment(
 ): Promise<CreateCommentResult> {
   await requireUser();
 
-  const parsed = CreateCommentSchema.safeParse({ threadId, content, userName, x, y, drawingData });
+  const safeX = clampPercent(x);
+  const safeY = clampPercent(y);
+  const safeDrawingData = normalizeDrawingPayload(drawingData);
+
+  const parsed = CreateCommentSchema.safeParse({
+    threadId,
+    content,
+    userName,
+    x: safeX,
+    y: safeY,
+    drawingData: safeDrawingData,
+  });
   if (!parsed.success) {
     return { success: false, error: 'Invalid input: ' + parsed.error.issues[0]?.message };
   }
@@ -96,10 +127,10 @@ export async function createComment(
     pin_number: nextNumber,
     comment_index: nextNumber,
     display_number: nextNumber,
-    x_position: x,
-    y_position: y,
+    x_position: safeX,
+    y_position: safeY,
     status: 'active',
-    ...(drawingData != null ? { drawing_data: drawingData } : {}),
+    ...(safeDrawingData != null ? { drawing_data: safeDrawingData } : {}),
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
@@ -178,6 +209,45 @@ export async function resolveComment(
 
   if (error) {
     console.error('Error resolving comment:', error);
+    return { success: false, error: error.message };
+  }
+
+  if (projectId) revalidatePath(`/projects/${projectId}`);
+  return { success: true };
+}
+
+/** Update pin coordinates after user drags a comment marker. */
+export async function updateCommentPosition(
+  commentId: string,
+  x: number,
+  y: number,
+  projectId?: string,
+): Promise<{ success: boolean; error?: string }> {
+  await requireUser();
+
+  const parsed = UpdateCommentPositionSchema.safeParse({
+    commentId,
+    x: clampPercent(x),
+    y: clampPercent(y),
+  });
+
+  if (!parsed.success) {
+    return { success: false, error: 'Invalid pin coordinates' };
+  }
+
+  const supabase = await createClient();
+
+  const { error } = await supabase
+    .from('markup_comments')
+    .update({
+      x_position: parsed.data.x,
+      y_position: parsed.data.y,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', parsed.data.commentId);
+
+  if (error) {
+    console.error('Error updating comment position:', error);
     return { success: false, error: error.message };
   }
 

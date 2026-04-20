@@ -17,6 +17,12 @@ export const DeleteCommentSchema = z.object({
   commentId: z.string().min(1),
 });
 
+export const UpdateCommentPositionSchema = z.object({
+  commentId: z.string().min(1),
+  x: z.number().min(0).max(100),
+  y: z.number().min(0).max(100),
+});
+
 export const CreateThreadSchema = z.object({
   projectId: z.string().uuid(),
   fileData: z.object({

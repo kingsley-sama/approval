@@ -37,12 +37,14 @@ interface Pin {
   author: string;
   timestamp: string;
   status: 'active' | 'resolved';
+  isPending?: boolean;
 }
 
 interface ImageViewerProps {
   pins: Pin[];
   selectedPin: string | null;
   onPinClick: (x: number, y: number, pinId?: string) => void;
+  onPinReposition?: (pinId: string, x: number, y: number) => void | Promise<void>;
   isFullscreen: boolean;
   onToggleFullscreen: () => void;
   hoveredPin: string | null;
@@ -64,6 +66,7 @@ function ImageViewerInner({
   pins,
   selectedPin,
   onPinClick,
+  onPinReposition,
   isFullscreen,
   onToggleFullscreen,
   hoveredPin,
@@ -84,6 +87,18 @@ function ImageViewerInner({
   const [zoom, setZoom] = useState<ZoomMode>('fit-window');
   const [activeTool, setActiveTool] = useState<DrawingTool | null>(null);
   const [renderedDimensions, setRenderedDimensions] = useState({ width: 0, height: 0 });
+  const [draggingPinId, setDraggingPinId] = useState<string | null>(null);
+  const [draggingPinPosition, setDraggingPinPosition] = useState<{ x: number; y: number } | null>(null);
+  const dragStateRef = useRef<{
+    pinId: string;
+    startClientX: number;
+    startClientY: number;
+    originX: number;
+    originY: number;
+    didMove: boolean;
+  } | null>(null);
+  const draggingPinPositionRef = useRef<{ x: number; y: number } | null>(null);
+  const suppressNextClickRef = useRef(false);
 
   const zoomOptions = [
     { label: 'Fit in Window', value: 'fit-window' as const },
@@ -94,7 +109,16 @@ function ImageViewerInner({
     { label: '200%', value: 200 },
   ];
 
+  const clampPercent = (value: number) => {
+    if (!Number.isFinite(value)) return 50;
+    return Math.max(0, Math.min(100, value));
+  };
+
   const getShapeCenter = (shape: Shape, rw: number, rh: number) => {
+    if (rw <= 0 || rh <= 0) {
+      return { x: 50, y: 50 };
+    }
+
     let px = 0, py = 0;
     if (shape.type === 'pen') {
       const xs = shape.points.filter((_, i) => i % 2 === 0);
@@ -108,7 +132,10 @@ function ImageViewerInner({
       px = (shape.points[0] + shape.points[2]) / 2;
       py = (shape.points[1] + shape.points[3]) / 2;
     }
-    return { x: (px / rw) * 100, y: (py / rh) * 100 };
+    return {
+      x: clampPercent((px / rw) * 100),
+      y: clampPercent((py / rh) * 100),
+    };
   };
 
   useEffect(() => {
@@ -156,6 +183,10 @@ function ImageViewerInner({
   }, [isFullscreen, onToggleFullscreen]);
 
   const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (suppressNextClickRef.current) {
+      suppressNextClickRef.current = false;
+      return;
+    }
     if (activeTool !== null) return;
     if (!imageRef.current) return;
     const target = e.target as HTMLElement;
@@ -164,6 +195,89 @@ function ImageViewerInner({
     const x = ((e.clientX - imgRect.left) / imgRect.width) * 100;
     const y = ((e.clientY - imgRect.top) / imgRect.height) * 100;
     onPinClick(Math.max(0, Math.min(100, x)), Math.max(0, Math.min(100, y)));
+  };
+
+  useEffect(() => {
+    if (!draggingPinId) return;
+
+    const handlePointerMove = (event: PointerEvent) => {
+      const dragState = dragStateRef.current;
+      if (!dragState || !imageRef.current) return;
+
+      const imgRect = imageRef.current.getBoundingClientRect();
+      if (imgRect.width <= 0 || imgRect.height <= 0) return;
+
+      const deltaX = ((event.clientX - dragState.startClientX) / imgRect.width) * 100;
+      const deltaY = ((event.clientY - dragState.startClientY) / imgRect.height) * 100;
+
+      const nextPosition = {
+        x: clampPercent(dragState.originX + deltaX),
+        y: clampPercent(dragState.originY + deltaY),
+      };
+
+      if (!dragState.didMove) {
+        const distance = Math.hypot(event.clientX - dragState.startClientX, event.clientY - dragState.startClientY);
+        if (distance > 3) {
+          dragState.didMove = true;
+          suppressNextClickRef.current = true;
+        }
+      }
+
+      draggingPinPositionRef.current = nextPosition;
+      setDraggingPinPosition(nextPosition);
+    };
+
+    const handlePointerUp = () => {
+      const dragState = dragStateRef.current;
+      if (!dragState) return;
+
+      const finalPosition = draggingPinPositionRef.current ?? {
+        x: dragState.originX,
+        y: dragState.originY,
+      };
+
+      const moved = dragState.didMove;
+      const pinId = dragState.pinId;
+
+      dragStateRef.current = null;
+      draggingPinPositionRef.current = null;
+      setDraggingPinId(null);
+      setDraggingPinPosition(null);
+
+      if (!moved) return;
+
+      onPinReposition?.(pinId, finalPosition.x, finalPosition.y);
+    };
+
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
+    window.addEventListener('pointercancel', handlePointerUp);
+
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+      window.removeEventListener('pointercancel', handlePointerUp);
+    };
+  }, [draggingPinId, onPinReposition]);
+
+  const handlePinPointerDown = (event: React.PointerEvent<HTMLDivElement>, pin: Pin) => {
+    if (activeTool !== null || pin.isPending) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    dragStateRef.current = {
+      pinId: pin.id,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      originX: pin.x,
+      originY: pin.y,
+      didMove: false,
+    };
+
+    draggingPinPositionRef.current = { x: pin.x, y: pin.y };
+    setDraggingPinId(pin.id);
+    setDraggingPinPosition({ x: pin.x, y: pin.y });
   };
 
   const getImageStyle = () => {
@@ -207,7 +321,7 @@ function ImageViewerInner({
             <ChevronLeft className="h-3.5 w-3.5" />
             Prev
           </Button>
-          <span className={`text-sm min-w-[60px] text-center ${isFullscreen ? 'text-zinc-400' : 'text-muted-foreground'}`}>
+          <span className={`text-sm min-w-15 text-center ${isFullscreen ? 'text-zinc-400' : 'text-muted-foreground'}`}>
             {currentImageIndex + 1} of {totalImages}
           </span>
           <Button
@@ -325,11 +439,21 @@ function ImageViewerInner({
             <div
               key={pin.id}
               data-pin={pin.id}
-              className="absolute transform -translate-x-1/2 -translate-y-1/2 cursor-pointer group z-20"
-              style={{ left: `${pin.x}%`, top: `${pin.y}%` }}
+              className={`absolute transform -translate-x-1/2 -translate-y-1/2 group z-20 touch-none ${pin.isPending ? 'cursor-not-allowed opacity-80' : draggingPinId === pin.id ? 'cursor-grabbing' : 'cursor-grab'}`}
+              style={{
+                left: `${draggingPinId === pin.id && draggingPinPosition ? draggingPinPosition.x : pin.x}%`,
+                top: `${draggingPinId === pin.id && draggingPinPosition ? draggingPinPosition.y : pin.y}%`,
+              }}
               onMouseEnter={() => onPinHover(pin.id)}
               onMouseLeave={() => onPinHover(null)}
+              onPointerDown={(event) => handlePinPointerDown(event, pin)}
               onClick={(e) => {
+                if (suppressNextClickRef.current) {
+                  suppressNextClickRef.current = false;
+                  e.preventDefault();
+                  e.stopPropagation();
+                  return;
+                }
                 e.stopPropagation();
                 onPinClick(pin.x, pin.y, pin.id);
               }}

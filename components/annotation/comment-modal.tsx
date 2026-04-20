@@ -1,11 +1,12 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { X, Paperclip, Link2, Search, FileText, ImageIcon, XCircle, ExternalLink, Send } from 'lucide-react';
+import { X, Paperclip, Link2, Search, FileText, ImageIcon, XCircle, ExternalLink, Send, Smile } from 'lucide-react';
 import { getProjectsForMention } from '@/app/actions/projects';
 import type { AttachmentRecord } from '@/app/actions/storage';
 import CommentBody from './comment-body';
 import { getRepliesForComment, createReply, type CommentReply } from '@/app/actions/replies';
+import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 
 interface Pin {
   id: string;
@@ -47,6 +48,10 @@ const ALLOWED_TYPES = new Set([
 ]);
 const MAX_BYTES = 20 * 1024 * 1024;
 const ELEVATED_ROLES = ['admin', 'pm'];
+const EMOJI_OPTIONS = [
+  '😀', '😁', '😂', '😊', '😍', '😎', '🤔', '🙌',
+  '👏', '👍', '👎', '🔥', '💯', '🎉', '❤️', '✅',
+] as const;
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -86,6 +91,7 @@ export default function CommentModal({
   // Attachment state
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
 
   const modalRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -186,6 +192,14 @@ export default function CommentModal({
     setTimeout(() => searchRef.current?.focus(), 50);
   }, [showLinkPicker]);
 
+  const hasStartedTyping = comment.length > 0;
+
+  useEffect(() => {
+    if (!hasStartedTyping) {
+      setShowEmojiPicker(false);
+    }
+  }, [hasStartedTyping]);
+
   // ── submit ───────────────────────────────────────────────────────────────────
   const handleSubmit = async () => {
     if (!comment.trim() || !isNewPin) return;
@@ -224,6 +238,27 @@ export default function CommentModal({
     }
     setShowLinkPicker(false);
     setProjectSearch('');
+  };
+
+  const insertEmoji = (emoji: string) => {
+    const textarea = textareaRef.current;
+    if (!textarea) {
+      setComment(prev => `${prev}${emoji}`);
+      setShowEmojiPicker(false);
+      return;
+    }
+
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const newValue = comment.slice(0, start) + emoji + comment.slice(end);
+    setComment(newValue);
+    setShowEmojiPicker(false);
+
+    requestAnimationFrame(() => {
+      textarea.focus();
+      const nextCursor = start + emoji.length;
+      textarea.setSelectionRange(nextCursor, nextCursor);
+    });
   };
 
   // ── file selection ───────────────────────────────────────────────────────────
@@ -313,7 +348,7 @@ export default function CommentModal({
           )}
           <button
             onClick={onClose}
-            className="p-0.5 hover:bg-gray-100 rounded text-gray-600 flex-shrink-0 transition-colors"
+            className="p-0.5 hover:bg-gray-100 rounded text-gray-600 shrink-0 transition-colors"
           >
             <X size={14} />
           </button>
@@ -395,7 +430,7 @@ export default function CommentModal({
                 <div className="max-h-36 overflow-y-auto space-y-2 mb-2 pr-0.5">
                   {replies.map(reply => (
                     <div key={reply.id} className="flex gap-1.5">
-                      <div className="flex-shrink-0 w-5 h-5 rounded-full bg-primary/20 flex items-center justify-center text-[9px] font-bold text-primary uppercase">
+                      <div className="shrink-0 w-5 h-5 rounded-full bg-primary/20 flex items-center justify-center text-[9px] font-bold text-primary uppercase">
                         {reply.user_name.charAt(0)}
                       </div>
                       <div className="flex-1 min-w-0">
@@ -405,7 +440,7 @@ export default function CommentModal({
                             {new Date(reply.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                           </span>
                         </div>
-                        <p className={`text-[11px] text-gray-700 leading-snug break-words ${reply.id.startsWith('opt_') ? 'opacity-60' : ''}`}>
+                        <p className={`text-[11px] text-gray-700 leading-snug wrap-break-word ${reply.id.startsWith('opt_') ? 'opacity-60' : ''}`}>
                           {reply.content}
                         </p>
                       </div>
@@ -521,6 +556,44 @@ export default function CommentModal({
         {/* ── Toolbar ── */}
         <div className="flex gap-0.5 items-center justify-between">
           <div className="flex gap-0.5">
+            {isNewPin && hasStartedTyping && (
+              <Popover
+                open={showEmojiPicker}
+                onOpenChange={(open) => {
+                  setShowEmojiPicker(open);
+                  if (open) setShowLinkPicker(false);
+                }}
+              >
+                <PopoverTrigger asChild>
+                  <button
+                    className={`p-1 rounded transition-colors duration-150 ${
+                      showEmojiPicker
+                        ? 'bg-blue-100 text-blue-600'
+                        : 'hover:bg-gray-100 text-gray-600'
+                    }`}
+                    title="Add emoji"
+                    type="button"
+                  >
+                    <Smile size={14} />
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent align="start" side="top" className="w-52 p-2">
+                  <div className="grid grid-cols-8 gap-1">
+                    {EMOJI_OPTIONS.map((emoji) => (
+                      <button
+                        key={emoji}
+                        type="button"
+                        onClick={() => insertEmoji(emoji)}
+                        className="h-7 w-7 rounded text-base leading-none hover:bg-gray-100 transition-colors"
+                        title={`Insert ${emoji}`}
+                      >
+                        {emoji}
+                      </button>
+                    ))}
+                  </div>
+                </PopoverContent>
+              </Popover>
+            )}
             {canLink && (
               <button
                 onClick={() => setShowLinkPicker(v => !v)}

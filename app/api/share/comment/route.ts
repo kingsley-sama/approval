@@ -10,14 +10,28 @@ import { checkRateLimit } from '@/lib/rate-limit';
 import { z } from 'zod';
 import { nanoid } from 'nanoid';
 
+function clampPercent(value: number): number {
+  if (!Number.isFinite(value)) return 50;
+  return Math.max(0, Math.min(100, value));
+}
+
+function normalizeDrawingPayload(drawingData: unknown): unknown {
+  if (drawingData == null) return undefined;
+  try {
+    return JSON.parse(JSON.stringify(drawingData));
+  } catch {
+    return undefined;
+  }
+}
+
 const CommentSchema = z.object({
   token: z.string().min(1),
   threadId: z.string().uuid(),
   userName: z.string().min(1).max(150),
   content: z.string().min(1).max(5000),
-  xPosition: z.number().min(0).max(100).optional().default(50),
-  yPosition: z.number().min(0).max(100).optional().default(50),
-  drawingData: z.any().optional(),
+  xPosition: z.coerce.number().optional().default(50).transform(clampPercent),
+  yPosition: z.coerce.number().optional().default(50).transform(clampPercent),
+  drawingData: z.any().optional().transform(normalizeDrawingPayload),
 });
 
 export async function POST(request: NextRequest) {

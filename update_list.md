@@ -1,0 +1,2 @@
+- The PMs mentioned that unit prices for orders should come from. I believe that the proposal automation might contain that informations since it is usually created before the orders . I would like to verify if the prices for the order types are usually consistent with the the unit prices used by the pms
+- I want to discuss  the current state of the proposal interface and some of the constraints that causes delay also what I can do or improve on it to make it ready for use. Because I noticed we might not have created any prodcution ready proposals with it yet.

@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import ImageViewer from '@/components/annotation/image-viewer';
 import CommentModal from '@/components/annotation/comment-modal';
 import { getProjectThreads } from '@/app/actions/threads';
-import { getThreadComments, resolveComment, getCurrentUser, DbComment } from '@/app/actions/comments';
+import { getThreadComments, resolveComment, getCurrentUser, DbComment, updateCommentPosition } from '@/app/actions/comments';
 import { getAttachmentUploadUrl, registerAttachment, getAttachmentsForComments } from '@/app/actions/storage';
 import { useCommentQueue } from '@/hooks/use-comment-queue';
 import { useRealtimeComments } from '@/hooks/use-realtime-comments';
@@ -365,6 +365,60 @@ export default function ProjectPage({ params, searchParams }: ProjectPageProps) 
     }
   }, [pins, handleImageClick]);
 
+  const handlePinReposition = useCallback(async (pinId: string, x: number, y: number) => {
+    // Local optimistic comments are not in the DB yet.
+    if (pinId.startsWith('local_') || !currentImageId) return;
+
+    const imageBeforeUpdate = imagesState.find(img => img.id === currentImageId);
+    const pinBeforeUpdate = imageBeforeUpdate?.pins.find(pin => pin.id === pinId);
+    if (!pinBeforeUpdate) return;
+
+    const previousPosition = { x: pinBeforeUpdate.x, y: pinBeforeUpdate.y };
+
+    setImagesState(prev => prev.map(img =>
+      img.id === currentImageId
+        ? {
+            ...img,
+            pins: img.pins.map(pin =>
+              pin.id === pinId
+                ? { ...pin, x, y }
+                : pin
+            ),
+          }
+        : img
+    ));
+
+    if (selectedPin === pinId) {
+      setModalPosition({ x, y });
+    }
+
+    const result = await updateCommentPosition(pinId, x, y, projectId);
+    if (!result.success) {
+      setImagesState(prev => prev.map(img =>
+        img.id === currentImageId
+          ? {
+              ...img,
+              pins: img.pins.map(pin =>
+                pin.id === pinId
+                  ? { ...pin, x: previousPosition.x, y: previousPosition.y }
+                  : pin
+              ),
+            }
+          : img
+      ));
+
+      if (selectedPin === pinId) {
+        setModalPosition(previousPosition);
+      }
+
+      toast({
+        title: 'Unable to move pin',
+        description: result.error ?? 'Pin position could not be saved. Please try again.',
+        variant: 'destructive',
+      });
+    }
+  }, [currentImageId, imagesState, projectId, selectedPin, toast]);
+
   return (
     <div className={`h-screen bg-background text-foreground flex flex-col ${isFullscreen ? 'fixed inset-0' : ''}`}>
       <ProjectTopNav
@@ -446,6 +500,7 @@ export default function ProjectPage({ params, searchParams }: ProjectPageProps) 
             currentImageName={currentImage?.name}
             onShapeComplete={handleShapeComplete}
             onPinClick={handlePinClick}
+            onPinReposition={handlePinReposition}
             isFullscreen={isFullscreen}
             onToggleFullscreen={() => setIsFullscreen(!isFullscreen)}
             hoveredPin={hoveredPin}

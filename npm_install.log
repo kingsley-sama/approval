@@ -1,0 +1,38 @@
+npm error code ERESOLVE
+npm error ERESOLVE could not resolve
+npm error
+npm error While resolving: next-themes@0.3.0
+npm error Found: react@19.2.0
+npm error node_modules/react
+npm error   peer react@">=16.8.0" from @floating-ui/react-dom@2.1.8
+npm error   node_modules/@floating-ui/react-dom
+npm error     @floating-ui/react-dom@"^2.0.0" from @radix-ui/react-popper@1.2.1
+npm error     node_modules/@radix-ui/react-popper
+npm error       @radix-ui/react-popper@"1.2.1" from @radix-ui/react-hover-card@1.1.4
+npm error       node_modules/@radix-ui/react-hover-card
+npm error         @radix-ui/react-hover-card@"1.1.4" from the root project
+npm error       4 more (@radix-ui/react-menu, @radix-ui/react-popover, ...)
+npm error   peer react@"^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc" from @radix-ui/react-accordion@1.2.2
+npm error   node_modules/@radix-ui/react-accordion
+npm error     @radix-ui/react-accordion@"1.2.2" from the root project
+npm error   76 more (@radix-ui/react-alert-dialog, @radix-ui/react-arrow, ...)
+npm error
+npm error Could not resolve dependency:
+npm error peer react@"^16.8 || ^17 || ^18" from next-themes@0.3.0
+npm error node_modules/next-themes
+npm error   next-themes@"^0.3.0" from the root project
+npm error
+npm error Conflicting peer dependency: react@18.3.1
+npm error node_modules/react
+npm error   peer react@"^16.8 || ^17 || ^18" from next-themes@0.3.0
+npm error   node_modules/next-themes
+npm error     next-themes@"^0.3.0" from the root project
+npm error
+npm error Fix the upstream dependency conflict, or retry
+npm error this command with --force or --legacy-peer-deps
+npm error to accept an incorrect (and potentially broken) dependency resolution.
+npm error
+npm error
+npm error For a full report see:
+npm error /home/kingsley-sama/.npm/_logs/2026-04-20T13_23_39_993Z-eresolve-report.txt
+npm error A complete log of this run can be found in: /home/kingsley-sama/.npm/_logs/2026-04-20T13_23_39_993Z-debug-0.log
