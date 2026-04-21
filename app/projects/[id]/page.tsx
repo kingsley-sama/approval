@@ -452,12 +452,6 @@ export default function ProjectPage({ params, searchParams }: ProjectPageProps) 
           // Switch to the image containing this pin if necessary
           const img = imagesState.find(i => i.pins.some(p => p.id === pinId));
           if (img && img.id !== currentImageId) handleSwitchImage(img.id);
-          const pin = img?.pins.find(p => p.id === pinId) ?? pins.find(p => p.id === pinId);
-          if (pin) {
-            setModalPosition({ x: pin.x, y: pin.y });
-            setIsNewPin(false);
-            setShowModal(true);
-          }
         }}
         onResolveComment={handleResolveComment}
         projectId={projectId}

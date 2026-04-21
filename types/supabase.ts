@@ -19,10 +19,13 @@ export type Database = {
           comment_index: number
           content: string
           created_at: string | null
+          drawing_id: string | null
           drawing_data: Json | null
+          parent_comment_id: string | null
           id: string
           pin_number: number
           thread_id: string
+          type: string
           updated_at: string | null
           user_name: string
           x_position: number
@@ -34,10 +37,13 @@ export type Database = {
           comment_index: number
           content: string
           created_at?: string | null
+          drawing_id?: string | null
           drawing_data?: Json | null
+          parent_comment_id?: string | null
           id: string
           pin_number: number
           thread_id: string
+          type?: string
           updated_at?: string | null
           user_name: string
           x_position?: number
@@ -49,10 +55,13 @@ export type Database = {
           comment_index?: number
           content?: string
           created_at?: string | null
+          drawing_id?: string | null
           drawing_data?: Json | null
+          parent_comment_id?: string | null
           id?: string
           pin_number?: number
           thread_id?: string
+          type?: string
           updated_at?: string | null
           user_name?: string
           x_position?: number
