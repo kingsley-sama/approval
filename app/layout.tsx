@@ -18,11 +18,16 @@ const manrope = Manrope({
 })
 
 export const metadata: Metadata = {
-  title: 'MarkUp - Annotation & Project Management',
-  description: 'Collaborate on design projects with precision and ease',
-  generator: 'v0.app',
+  title: 'Revision - Annotation & Approval Tool for feedback on renders',
+  description: 'Give feedback on renders with ease using Revision, the annotation and approval tool designed for artists, clients, and teams.',
+  generator: 'Next.js',
   icons: {
     icon: [
+      {
+        url: '/favicon.ico',
+        sizes: 'any',
+        type: 'image/x-icon',
+      },
       {
         url: '/icon-light-32x32.png',
         media: '(prefers-color-scheme: light)',
@@ -36,6 +41,7 @@ export const metadata: Metadata = {
         type: 'image/svg+xml',
       },
     ],
+    shortcut: '/favicon.ico',
     apple: '/apple-icon.png',
   },
 }

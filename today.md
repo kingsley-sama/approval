@@ -1,0 +1,4 @@
+- markup full screen
+- Linux foundateion course
+- Lidias database
+- setting up my 
