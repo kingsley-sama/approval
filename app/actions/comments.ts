@@ -35,6 +35,7 @@ export interface DbComment {
   drawing_id?: string | null;
   drawing_data?: any; // null = plain pin; non-null = drawing annotation
   attachments?: (AttachmentRecord & { signedUrl: string })[];
+  reply_count?: number;
 }
 
 export interface CreateCommentResult {
@@ -149,13 +150,30 @@ export async function getThreadComments(threadId: string): Promise<DbComment[]> 
     return [];
   }
 
-  const rows = ((data as DbComment[]) || []).filter((comment) => {
-    // Replies are now stored in markup_comments when `type='reply'`.
-    // Exclude them from pin lists to avoid rendering them as annotation markers.
-    if (comment.type === 'reply') return false;
-    if (comment.parent_comment_id) return false;
-    return true;
-  });
+  const allRows = (data as DbComment[]) || [];
+
+  // Count replies per parent so we can show a "has replies" indicator
+  // in the sidebar without an extra round-trip.
+  const replyCountByParent = new Map<string, number>();
+  for (const row of allRows) {
+    const parentId = row.parent_comment_id;
+    if (!parentId) continue;
+    if (row.type !== 'reply') continue;
+    replyCountByParent.set(parentId, (replyCountByParent.get(parentId) ?? 0) + 1);
+  }
+
+  const rows = allRows
+    .filter((comment) => {
+      // Replies are now stored in markup_comments when `type='reply'`.
+      // Exclude them from pin lists to avoid rendering them as annotation markers.
+      if (comment.type === 'reply') return false;
+      if (comment.parent_comment_id) return false;
+      return true;
+    })
+    .map((comment) => ({
+      ...comment,
+      reply_count: replyCountByParent.get(comment.id) ?? 0,
+    }));
 
   return hydrateDrawingDataForComments(rows, supabase);
 }

@@ -281,12 +281,16 @@ function ImageViewerInner({
   };
 
   const getImageStyle = () => {
+    // baseWidth/baseHeight = width/height of the viewport area surrounding the image.
+    // For fit-window we further subtract the wrapper's px-6 / py-8 padding so the
+    // image is bounded by the *padded* area, leaving visible gutters on all four sides.
     const baseWidth = isFullscreen ? '100vw' : 'calc(100vw - 600px)';
-    // Subtract ~48px toolbar height so the image never pushes the toolbar off-screen
-    const baseHeight = isFullscreen ? 'calc(100vh - 100px)' : 'calc(100vh - 160px)';
+    const fitWidth = isFullscreen ? '100vw' : 'calc(100vw - 600px - 48px)';
+    // 56px top nav + ~45px viewer toolbar + 64px py-8 (top + bottom) = ~165px
+    const fitHeight = isFullscreen ? 'calc(100vh - 100px)' : 'calc(100vh - 180px)';
 
     if (zoom === 'fit-horizontal') return { width: baseWidth, height: 'auto' };
-    if (zoom === 'fit-window') return { maxWidth: baseWidth, maxHeight: baseHeight, width: 'auto', height: 'auto' };
+    if (zoom === 'fit-window') return { maxWidth: fitWidth, maxHeight: fitHeight, width: 'auto', height: 'auto' };
     if (typeof zoom === 'number') return { width: `${zoom}vw`, height: 'auto' };
   };
 

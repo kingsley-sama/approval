@@ -63,6 +63,7 @@ export default function ProjectPage({ params, searchParams }: ProjectPageProps) 
     status: c.status === 'resolved' ? 'resolved' : 'active',
     drawingData: c.drawing_data ?? undefined,
     attachments: c.attachments ?? [],
+    replyCount: c.reply_count ?? 0,
   });
 
   const pendingToPin = (p: { localId: string; pinNumber: number; x: number; y: number; content: string; userName: string; createdAt: string; drawingData?: any }): Pin => ({

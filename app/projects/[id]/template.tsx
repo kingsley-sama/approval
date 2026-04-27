@@ -36,6 +36,7 @@ export interface ProjectPin {
 	isPending?: boolean;
 	drawingData?: Shape;
 	attachments?: (AttachmentRecord & { signedUrl: string })[];
+	replyCount?: number;
 }
 
 export interface ProjectImageData {

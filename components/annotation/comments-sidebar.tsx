@@ -6,6 +6,13 @@ import type { AttachmentRecord } from '@/app/actions/storage';
 import CommentBody from './comment-body';
 import { createReply, getRepliesForComment, type CommentReply } from '@/app/actions/replies';
 import { getCurrentUser } from '@/app/actions/comments';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+
+const EMOJI_OPTIONS = [
+  '😀', '😂', '😍', '😎', '🤔', '😅', '😢', '😡',
+  '👍', '👎', '🙌', '👏', '🙏', '💪', '👀', '✋',
+  '❤️', '🔥', '✨', '🎉', '💯', '✅', '❌', '⚠️',
+];
 
 interface Pin {
   id: string;
@@ -17,6 +24,7 @@ interface Pin {
   timestamp: string;
   status: 'active' | 'resolved';
   attachments?: (AttachmentRecord & { signedUrl: string })[];
+  replyCount?: number;
 }
 
 interface ImageData {
@@ -138,7 +146,7 @@ function ThreadDetail({ pin, onBack, onResolve, readOnly }: ThreadDetailProps) {
               Thread
             </span>
             <span className="flex items-center justify-center size-4 rounded-full bg-muted text-[10px] font-semibold text-foreground">
-              1
+              {pin.number}
             </span>
           </div>
         </div>
@@ -260,19 +268,37 @@ function ThreadDetail({ pin, onBack, onResolve, readOnly }: ThreadDetailProps) {
             placeholder={readOnly ? 'Read-only thread' : 'Type a reply...'}
             disabled={readOnly || isSendingReply}
             className="w-full bg-transparent text-[13px] text-foreground placeholder:text-muted-foreground/60 focus:outline-none"
-            style={{ fontFamily: 'var(--font-serif)' }}
+            style={{ fontFamily: 'var(--font-body)' }}
           />
 
           <div className="flex items-center justify-between mt-2">
             <div className="flex items-center gap-1">
-              <button
-                type="button"
-                aria-label="Add emoji"
-                disabled
-                className="size-7 flex items-center justify-center text-muted-foreground/60 rounded-full"
-              >
-                <Smile className="size-3.5" strokeWidth={1.5} />
-              </button>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label="Add emoji"
+                    disabled={readOnly || isSendingReply}
+                    className="size-7 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-full transition-colors disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
+                  >
+                    <Smile className="size-3.5" strokeWidth={1.5} />
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent align="start" sideOffset={6} className="w-auto p-2">
+                  <div className="grid grid-cols-8 gap-1">
+                    {EMOJI_OPTIONS.map(emoji => (
+                      <button
+                        key={emoji}
+                        type="button"
+                        onClick={() => setReply(prev => prev + emoji)}
+                        className="size-7 flex items-center justify-center text-base hover:bg-muted rounded transition-colors"
+                      >
+                        {emoji}
+                      </button>
+                    ))}
+                  </div>
+                </PopoverContent>
+              </Popover>
               <button
                 type="button"
                 aria-label="Attach file"
@@ -429,10 +455,19 @@ export default function CommentsSidebar({
             </div>
           )}
           {!readOnly && (
-            <div className="mt-2 flex">
+            <div className="mt-2 flex items-center justify-end gap-1.5">
+              {(pin.replyCount ?? 0) > 0 && (
+                <span
+                  className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded bg-blue-50 text-blue-700"
+                  title={`${pin.replyCount} ${pin.replyCount === 1 ? 'reply' : 'replies'}`}
+                >
+                  <MessageSquare size={12} strokeWidth={1.75} />
+                  {pin.replyCount}
+                </span>
+              )}
               <button
                 onClick={e => { e.stopPropagation(); onResolve(pin.id); }}
-                className={`ml-auto text-[11px] px-2 py-0.5 rounded flex items-center gap-1 transition-colors ${
+                className={`text-[11px] px-2 py-0.5 rounded flex items-center gap-1 transition-colors ${
                   pin.status === 'resolved'
                     ? 'bg-green-100 text-green-700 hover:bg-green-200'
                     : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
