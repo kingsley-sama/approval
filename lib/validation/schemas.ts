@@ -23,6 +23,11 @@ export const UpdateCommentPositionSchema = z.object({
   y: z.number().min(0).max(100),
 });
 
+export const UpdateCommentContentSchema = z.object({
+  commentId: z.string().min(1),
+  content: z.string().min(1).max(5000),
+});
+
 export const CreateThreadSchema = z.object({
   projectId: z.string().uuid(),
   fileData: z.object({
@@ -35,6 +40,11 @@ export const CreateThreadSchema = z.object({
 export const CreateProjectSchema = z.object({
   name: z.string().min(1).max(300),
   description: z.string().max(5000).optional(),
+});
+
+export const RenameProjectSchema = z.object({
+  projectId: z.string().uuid(),
+  name: z.string().trim().min(1).max(300),
 });
 
 export const SignedUploadUrlSchema = z.object({

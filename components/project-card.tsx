@@ -8,6 +8,7 @@ import {
   LinkIcon,
   MessageCircleIcon,
   MoreHorizontal,
+  Pencil,
   Share2,
   Square,
   SquareCheck,
@@ -83,6 +84,7 @@ type ProjectCardProps = {
   onOpen: (project: Project) => void
   onDuplicate: (project: Project) => void
   onDelete: (projectId: string) => void
+  onRename?: (project: Project) => void
   isAdmin?: boolean
   isSelected?: boolean
   onSelect?: (projectId: string) => void
@@ -98,13 +100,14 @@ const Tip: React.FC<{ label: string; children: React.ReactNode }> = ({ label, ch
   </div>
 )
 
-export default function ProjectCard({ project, onOpen, onDuplicate, onDelete, isAdmin = false, isSelected = false, onSelect, index = 0 }: ProjectCardProps) {
+export default function ProjectCard({ project, onOpen, onDuplicate, onDelete, onRename, isAdmin = false, isSelected = false, onSelect, index = 0 }: ProjectCardProps) {
   const [isHovered, setIsHovered] = React.useState(false)
   const [activeIndex, setActiveIndex] = React.useState(0)
   const [menuOpen, setMenuOpen] = React.useState(false)
   const menuRef = React.useRef<HTMLDivElement>(null)
 
   const MENU_ITEMS = [
+    { label: 'Rename project',   icon: Pencil,    destructive: false, action: () => onRename?.(project) },
     { label: 'Project settings', icon: Settings2, destructive: false, action: () => {} },
     { label: 'Archive canvas',   icon: Archive,   destructive: false, action: () => {} },
     { label: 'Delete Project',   icon: Trash2,    destructive: true,  action: () => onDelete(project.id) },

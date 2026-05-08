@@ -432,7 +432,6 @@ function ImageViewerInner({
                 onShapeComplete={(shape) => {
                   const center = getShapeCenter(shape, renderedDimensions.width, renderedDimensions.height);
                   onShapeComplete(shape, center);
-                  setActiveTool(null);
                 }}
               />
             </div>

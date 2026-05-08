@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import ImageViewer from '@/components/annotation/image-viewer';
 import CommentModal from '@/components/annotation/comment-modal';
 import { getProjectThreads } from '@/app/actions/threads';
-import { getThreadComments, resolveComment, getCurrentUser, DbComment, updateCommentPosition } from '@/app/actions/comments';
+import { getThreadComments, resolveComment, getCurrentUser, DbComment, updateCommentPosition, updateComment } from '@/app/actions/comments';
 import { getAttachmentUploadUrl, registerAttachment, getAttachmentsForComments } from '@/app/actions/storage';
 import { useCommentQueue } from '@/hooks/use-comment-queue';
 import { useRealtimeComments } from '@/hooks/use-realtime-comments';
@@ -286,6 +286,44 @@ export default function ProjectPage({ params, searchParams }: ProjectPageProps) 
     drainQueue(syncCallbacks.onSynced, syncCallbacks.onFailed);
   };
 
+  const handleEditComment = useCallback(async (commentId: string, newText: string) => {
+    const trimmed = newText.trim();
+    if (!trimmed) return { success: false, error: 'Comment cannot be empty' };
+
+    let previousContent = '';
+    setImagesState(prev => prev.map(img => {
+      if (!img.pins.some(p => p.id === commentId)) return img;
+      return {
+        ...img,
+        pins: img.pins.map(pin => {
+          if (pin.id !== commentId) return pin;
+          previousContent = pin.content;
+          return { ...pin, content: trimmed };
+        }),
+      };
+    }));
+
+    const result = await updateComment(commentId, trimmed, projectId);
+    if (!result.success) {
+      // Roll back on failure
+      setImagesState(prev => prev.map(img => {
+        if (!img.pins.some(p => p.id === commentId)) return img;
+        return {
+          ...img,
+          pins: img.pins.map(pin =>
+            pin.id === commentId ? { ...pin, content: previousContent } : pin
+          ),
+        };
+      }));
+      toast({
+        title: 'Failed to update comment',
+        description: result.error ?? 'Please try again.',
+        variant: 'destructive',
+      });
+    }
+    return result;
+  }, [projectId, toast]);
+
   const handleAddAttachmentToComment = async (commentId: string, files: File[]) => {
     await uploadAttachmentsForComment(commentId, projectId, files);
     const updated = await getAttachmentsForComments([commentId]);
@@ -529,6 +567,7 @@ export default function ProjectPage({ params, searchParams }: ProjectPageProps) 
           isNewPin={isNewPin}
           isFullscreen={isFullscreen}
           onAddAttachment={!isNewPin ? handleAddAttachmentToComment : undefined}
+          onEditComment={!isNewPin ? handleEditComment : undefined}
         />
       )}
     </div>

@@ -6,9 +6,10 @@ import ProjectDuplicator from '@/components/project-duplicator'
 import CreateProjectModal from '@/components/create-project-modal'
 import ProjectCard, { type Project } from '@/components/project-card'
 import { getProjectPageData, deleteProject } from '@/app/actions/projects'
+import { renameProject } from '@/app/actions/update-project'
 import { formatDistanceToNow } from 'date-fns'
 import { getOptimizedImageUrl, IMAGE_SIZES } from '@/lib/image-url'
-import { Filter, ArrowUpDown, Search, Upload, Folder, Trash2, X, CheckSquare, AlertTriangle } from 'lucide-react'
+import { Filter, ArrowUpDown, Search, Upload, Folder, Trash2, X, CheckSquare, AlertTriangle, Pencil } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -37,6 +38,10 @@ export default function ProjectsPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [isBulkDeleting, setIsBulkDeleting] = useState(false)
   const [deleteModal, setDeleteModal] = useState<{ type: 'single'; projectId: string; projectName: string } | { type: 'bulk'; ids: string[] } | null>(null)
+  const [renameTarget, setRenameTarget] = useState<{ id: string; title: string } | null>(null)
+  const [renameValue, setRenameValue] = useState('')
+  const [isRenaming, setIsRenaming] = useState(false)
+  const [renameError, setRenameError] = useState<string | null>(null)
 
   const filteredProjects = projects
     .filter(p => p.title.toLowerCase().includes(searchQuery.toLowerCase()))
@@ -105,6 +110,35 @@ export default function ProjectsPage() {
 
   const handleBulkDelete = () => {
     setDeleteModal({ type: 'bulk', ids: Array.from(selectedIds) })
+  }
+
+  const handleRenameRequest = (project: Project) => {
+    setRenameTarget({ id: project.id, title: project.title })
+    setRenameValue(project.title)
+    setRenameError(null)
+  }
+
+  const handleConfirmRename = async () => {
+    if (!renameTarget) return
+    const trimmed = renameValue.trim()
+    if (!trimmed) {
+      setRenameError('Name cannot be empty')
+      return
+    }
+    if (trimmed === renameTarget.title) {
+      setRenameTarget(null)
+      return
+    }
+    setIsRenaming(true)
+    setRenameError(null)
+    const result = await renameProject(renameTarget.id, trimmed)
+    setIsRenaming(false)
+    if (!result.success) {
+      setRenameError(result.error ?? 'Failed to rename project')
+      return
+    }
+    setProjects(prev => prev.map(p => p.id === renameTarget.id ? { ...p, title: trimmed } : p))
+    setRenameTarget(null)
   }
 
   const handleConfirmDelete = async () => {
@@ -264,6 +298,7 @@ export default function ProjectsPage() {
                 onOpen={handleOpen}
                 onDuplicate={setDuplicatingProject}
                 onDelete={handleDelete}
+                onRename={isAdmin ? handleRenameRequest : undefined}
                 isAdmin={isAdmin}
                 isSelected={selectedIds.has(project.id)}
                 onSelect={handleToggleSelect}
@@ -273,6 +308,56 @@ export default function ProjectsPage() {
           </div>
         )}
       </div>
+
+      <Dialog
+        open={!!renameTarget}
+        onOpenChange={(open) => {
+          if (!open && !isRenaming) {
+            setRenameTarget(null)
+            setRenameError(null)
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-[420px]">
+          <DialogHeader>
+            <div className="flex items-center gap-3 mb-1">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
+                <Pencil className="h-5 w-5 text-primary" />
+              </div>
+              <DialogTitle>Rename project</DialogTitle>
+            </div>
+            <DialogDescription className="pl-[52px]">
+              Choose a new name for this project. This will update the project everywhere it's referenced.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="pl-[52px] pr-1">
+            <Input
+              autoFocus
+              value={renameValue}
+              onChange={(e) => { setRenameValue(e.target.value); if (renameError) setRenameError(null) }}
+              onKeyDown={(e) => { if (e.key === 'Enter' && !isRenaming) handleConfirmRename() }}
+              placeholder="Project name"
+              maxLength={300}
+              disabled={isRenaming}
+            />
+            {renameError && (
+              <p className="mt-2 text-xs text-destructive">{renameError}</p>
+            )}
+          </div>
+          <DialogFooter className="mt-2">
+            <Button
+              variant="outline"
+              onClick={() => { setRenameTarget(null); setRenameError(null) }}
+              disabled={isRenaming}
+            >
+              Cancel
+            </Button>
+            <Button onClick={handleConfirmRename} disabled={isRenaming || !renameValue.trim()}>
+              {isRenaming ? 'Saving…' : 'Save'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={!!deleteModal} onOpenChange={(open) => !open && setDeleteModal(null)}>
         <DialogContent className="sm:max-w-[420px]">

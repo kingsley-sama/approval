@@ -5,18 +5,27 @@
  */
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
+import { useRouter } from 'next/navigation';
 import ImageViewer from '@/components/annotation/image-viewer';
 import CommentModal from '@/components/annotation/comment-modal';
 import CommentsSidebar from '@/components/annotation/comments-sidebar';
 import ThumbnailsSidebar from '@/components/annotation/thumbnails-sidebar';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 import type { ShareLink } from '@/app/actions/share-links';
 import type { Shape } from '@/types/drawing';
 import type { AttachmentRecord } from '@/app/actions/storage';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, CheckCircle2 } from 'lucide-react';
 
 interface Pin {
   id: string;
@@ -104,6 +113,15 @@ export default function ShareViewer({ shareLink, resourceData, token }: ShareVie
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [hoveredPin, setHoveredPin] = useState<string | null>(null);
+
+  const [hasAddedComment, setHasAddedComment] = useState(false);
+  const [ownCommentCount, setOwnCommentCount] = useState(0);
+  const [reviewIntent, setReviewIntent] = useState<'leave' | 'done' | null>(null);
+  const [reviewSubmitted, setReviewSubmitted] = useState(false);
+  const [thanksOpen, setThanksOpen] = useState(false);
+  const pendingNavigationRef = useRef(false);
+  const allowNavigationRef = useRef(false);
+  const router = useRouter();
 
   useEffect(() => {
     try {
@@ -206,6 +224,8 @@ export default function ShareViewer({ shareLink, resourceData, token }: ShareVie
           ),
         );
         setSelectedPin(realPin.id);
+        setHasAddedComment(true);
+        setOwnCommentCount(c => c + 1);
       } else {
         throw new Error(result.error || 'Save failed');
       }
@@ -233,6 +253,102 @@ export default function ShareViewer({ shareLink, resourceData, token }: ShareVie
       ? resourceData.project?.project_name
       : resourceData.thread?.markup_projects?.project_name || 'Shared Project';
 
+  // Fire-and-forget: kick off the email request in the background. We don't
+  // await it from the click handler so the user gets immediate feedback.
+  const submitReviewCompleteBackground = useCallback(() => {
+    fetch('/api/share/review-complete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token,
+        reviewerName: guestName || 'Guest',
+        commentCount: ownCommentCount,
+      }),
+      keepalive: true,
+    })
+      .then(async (res) => {
+        if (!res.ok) {
+          const result = await res.json().catch(() => ({}));
+          throw new Error(result?.error || `Request failed (${res.status})`);
+        }
+      })
+      .catch((e) => {
+        console.error('[review-complete] notify failed', e);
+        toast({
+          title: 'Notification may not have been sent',
+          description: e?.message || 'You can let the team know directly.',
+          variant: 'destructive',
+        });
+      });
+  }, [token, guestName, ownCommentCount, toast]);
+
+  const closeReviewModal = useCallback(() => {
+    setReviewIntent(null);
+  }, []);
+
+  const handleLeaveAttempt = useCallback((e: React.MouseEvent) => {
+    if (!hasAddedComment || reviewSubmitted || allowNavigationRef.current) return;
+    e.preventDefault();
+    setReviewIntent('leave');
+  }, [hasAddedComment, reviewSubmitted]);
+
+  const handleDoneClick = useCallback(() => {
+    if (reviewSubmitted) return;
+    setReviewIntent('done');
+  }, [reviewSubmitted]);
+
+  const handleConfirmDone = useCallback(() => {
+    pendingNavigationRef.current = reviewIntent === 'leave';
+    setReviewIntent(null);
+    setReviewSubmitted(true);
+    setThanksOpen(true);
+    submitReviewCompleteBackground();
+  }, [reviewIntent, submitReviewCompleteBackground]);
+
+  const handleThanksClose = useCallback(() => {
+    setThanksOpen(false);
+    if (pendingNavigationRef.current) {
+      pendingNavigationRef.current = false;
+      allowNavigationRef.current = true;
+      router.push('/projects');
+    }
+  }, [router]);
+
+  const handleLeaveAnyway = useCallback(() => {
+    setReviewIntent(null);
+    allowNavigationRef.current = true;
+    router.push('/projects');
+  }, [router]);
+
+  // Native browser-close warning when there are unconfirmed comments
+  useEffect(() => {
+    if (!hasAddedComment || reviewSubmitted) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [hasAddedComment, reviewSubmitted]);
+
+  // Browser back-button guard: push a sentinel state and re-push on popstate
+  useEffect(() => {
+    if (!hasAddedComment || reviewSubmitted) return;
+    if (typeof window === 'undefined') return;
+
+    const SENTINEL = { __reviewGuard: true };
+    window.history.pushState(SENTINEL, '', window.location.href);
+
+    const onPopState = () => {
+      if (allowNavigationRef.current) return;
+      window.history.pushState(SENTINEL, '', window.location.href);
+      setReviewIntent('leave');
+    };
+
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, [hasAddedComment, reviewSubmitted]);
+
   const activeCount = threads.flatMap(t => t.pins).filter(p => p.status !== 'resolved').length;
   const resolvedCount = threads.flatMap(t => t.pins).filter(p => p.status === 'resolved').length;
 
@@ -243,31 +359,40 @@ export default function ShareViewer({ shareLink, resourceData, token }: ShareVie
   // ── Guest name gate (only if commenting is enabled and name not yet set) ──────
   if (canComment && !nameConfirmed) {
     return (
-      <div className="h-screen flex items-center justify-center bg-gray-50">
-        <div className="bg-white rounded-2xl shadow-lg p-8 w-full max-w-sm space-y-5">
-          <div>
-            <h2 className="text-lg font-semibold mb-1">Enter your name</h2>
-            <p className="text-sm text-muted-foreground">
-              This will appear alongside your comments on{' '}
-              <span className="font-medium text-foreground">{projectName}</span>.
-            </p>
+      <div className="h-screen flex items-center justify-center bg-muted/30 px-4">
+        <div className="bg-background rounded-3xl shadow-xl border border-border/60 w-full max-w-sm overflow-hidden">
+          <div className="h-1 bg-accent" />
+          <div className="p-8 space-y-5">
+            <div className="flex items-center gap-3">
+              <div className="relative w-11 h-11 rounded-full bg-primary/5 ring-1 ring-primary/15 flex items-center justify-center text-primary shrink-0">
+                <CheckCircle2 className="h-5 w-5" />
+                <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-accent ring-2 ring-background" />
+              </div>
+              <div className="min-w-0">
+                <h2 className="text-base font-semibold leading-tight text-primary">Enter your name</h2>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Shown with your comments on{' '}
+                  <span className="font-medium text-foreground">{projectName}</span>
+                </p>
+              </div>
+            </div>
+            <input
+              type="text"
+              className="w-full border border-border rounded-full px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
+              placeholder="Your name"
+              value={nameInput}
+              onChange={e => setNameInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && confirmName()}
+              autoFocus
+            />
+            <button
+              onClick={confirmName}
+              disabled={!nameInput.trim()}
+              className="w-full py-2.5 bg-primary text-primary-foreground rounded-full text-sm font-semibold shadow-sm ring-1 ring-accent/30 hover:shadow-md hover:ring-accent/50 active:scale-[0.98] disabled:opacity-40 disabled:hover:shadow-sm disabled:active:scale-100 transition-all"
+            >
+              Continue
+            </button>
           </div>
-          <input
-            type="text"
-            className="w-full border border-border rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary"
-            placeholder="Your name"
-            value={nameInput}
-            onChange={e => setNameInput(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && confirmName()}
-            autoFocus
-          />
-          <button
-            onClick={confirmName}
-            disabled={!nameInput.trim()}
-            className="w-full py-2 bg-primary text-primary-foreground rounded-lg text-sm font-semibold hover:opacity-90 disabled:opacity-40 transition-opacity"
-          >
-            Continue
-          </button>
         </div>
       </div>
     );
@@ -283,6 +408,7 @@ export default function ShareViewer({ shareLink, resourceData, token }: ShareVie
           <div className="flex items-center gap-3">
             <Link
               href="/projects"
+              onClick={handleLeaveAttempt}
               className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
             >
               <ArrowLeft className="h-4 w-4" />
@@ -317,6 +443,24 @@ export default function ShareViewer({ shareLink, resourceData, token }: ShareVie
             </span>
             {nameConfirmed && canComment && (
               <>
+                <span className="w-px h-4 bg-border" />
+                {reviewSubmitted ? (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/5 text-primary text-xs font-semibold ring-1 ring-primary/15">
+                    <span className="w-1.5 h-1.5 rounded-full bg-accent" />
+                    Review submitted
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleDoneClick}
+                    className="group inline-flex items-center gap-2 pl-2 pr-3.5 py-1.5 rounded-full bg-primary text-primary-foreground text-xs font-semibold shadow-sm ring-1 ring-accent/30 hover:shadow-md hover:ring-accent/50 active:scale-[0.98] transition-all"
+                  >
+                    <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-accent text-accent-foreground">
+                      <CheckCircle2 className="h-3 w-3" />
+                    </span>
+                    Done reviewing
+                  </button>
+                )}
                 <span className="w-px h-4 bg-border" />
                 <div className="flex items-center gap-2 text-muted-foreground">
                   <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center text-xs font-semibold text-primary">
@@ -429,6 +573,111 @@ export default function ShareViewer({ shareLink, resourceData, token }: ShareVie
           />
         )}
       </div>
+
+      {/* Review-complete confirmation */}
+      <Dialog
+        open={reviewIntent !== null}
+        onOpenChange={(open) => { if (!open) closeReviewModal(); }}
+      >
+        <DialogContent className="sm:max-w-md rounded-2xl border-border/60 p-0 overflow-hidden">
+          <div className="h-1 bg-accent" />
+          <div className="p-6 space-y-4">
+            <DialogHeader>
+              <div className="flex items-center gap-3.5">
+                <div className="relative w-11 h-11 rounded-full bg-primary/5 ring-1 ring-primary/15 flex items-center justify-center text-primary shrink-0">
+                  <CheckCircle2 className="h-5 w-5" />
+                  <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-accent ring-2 ring-background" />
+                </div>
+                <div className="min-w-0 text-left">
+                  <DialogTitle className="text-base text-primary">
+                    {reviewIntent === 'leave' ? 'Are you done reviewing?' : 'Mark review as complete?'}
+                  </DialogTitle>
+                  <DialogDescription className="mt-0.5">
+                    {ownCommentCount > 0 ? (
+                      <>
+                        You&apos;ve left {ownCommentCount}{' '}
+                        {ownCommentCount === 1 ? 'comment' : 'comments'} on{' '}
+                        <span className="font-medium text-foreground">{projectName}</span>.
+                      </>
+                    ) : (
+                      <>
+                        Confirm you&apos;ve finished reviewing{' '}
+                        <span className="font-medium text-foreground">{projectName}</span>.
+                      </>
+                    )}
+                  </DialogDescription>
+                </div>
+              </div>
+            </DialogHeader>
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              Letting us know helps the team start working on your feedback right away.
+              You can always come back later and add more.
+            </p>
+            <DialogFooter className="flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={closeReviewModal}
+                className="px-5 py-2 text-sm font-medium rounded-full border border-border bg-background hover:bg-muted active:scale-[0.98] transition-all"
+              >
+                Cancel
+              </button>
+              {reviewIntent === 'leave' && (
+                <button
+                  type="button"
+                  onClick={handleLeaveAnyway}
+                  className="px-5 py-2 text-sm font-medium rounded-full text-muted-foreground hover:text-foreground hover:bg-muted active:scale-[0.98] transition-all"
+                >
+                  Leave without confirming
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={handleConfirmDone}
+                className="px-5 py-2 text-sm font-semibold rounded-full bg-primary text-primary-foreground shadow-sm ring-1 ring-accent/30 hover:shadow-md hover:ring-accent/50 active:scale-[0.98] transition-all"
+              >
+                Yes, I&apos;m done
+              </button>
+            </DialogFooter>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Thank-you confirmation (shown after Yes, I'm done) */}
+      <Dialog
+        open={thanksOpen}
+        onOpenChange={(open) => { if (!open) handleThanksClose(); }}
+      >
+        <DialogContent className="sm:max-w-md rounded-2xl border-border/60 p-0 overflow-hidden">
+          <div className="h-1 bg-accent" />
+          <div className="p-6 space-y-4 text-center">
+            <DialogHeader>
+              <div className="flex flex-col items-center gap-3">
+                <div className="relative w-14 h-14 rounded-full bg-primary/5 ring-1 ring-primary/15 flex items-center justify-center text-primary">
+                  <CheckCircle2 className="h-7 w-7" />
+                  <span className="absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full bg-accent ring-2 ring-background" />
+                </div>
+                <DialogTitle className="text-lg text-primary">
+                  Thank you for your feedback
+                </DialogTitle>
+                <DialogDescription>
+                  Your review of{' '}
+                  <span className="font-medium text-foreground">{projectName}</span>{' '}
+                  has been marked complete. The team will take it from here.
+                </DialogDescription>
+              </div>
+            </DialogHeader>
+            <DialogFooter className="sm:justify-center pt-2">
+              <button
+                type="button"
+                onClick={handleThanksClose}
+                className="px-6 py-2 text-sm font-semibold rounded-full bg-primary text-primary-foreground shadow-sm ring-1 ring-accent/30 hover:shadow-md hover:ring-accent/50 active:scale-[0.98] transition-all"
+              >
+                {pendingNavigationRef.current ? 'Continue' : 'Close'}
+              </button>
+            </DialogFooter>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Comment modal */}
       {showModal && (

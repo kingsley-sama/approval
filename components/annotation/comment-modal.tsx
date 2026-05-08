@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { X, Paperclip, Link2, Search, FileText, ImageIcon, XCircle, ExternalLink, Send, Smile } from 'lucide-react';
+import { X, Paperclip, Link2, Search, FileText, ImageIcon, XCircle, ExternalLink, Send, Smile, Pencil } from 'lucide-react';
 import { getProjectsForMention } from '@/app/actions/projects';
 import type { AttachmentRecord } from '@/app/actions/storage';
 import CommentBody from './comment-body';
@@ -41,6 +41,7 @@ interface CommentModalProps {
   isFullscreen?: boolean;
   disableAttachments?: boolean;
   onAddAttachment?: (commentId: string, files: File[]) => Promise<void>;
+  onEditComment?: (commentId: string, newText: string) => Promise<{ success: boolean; error?: string }>;
 }
 
 const ALLOWED_TYPES = new Set([
@@ -70,11 +71,18 @@ export default function CommentModal({
   isFullscreen,
   disableAttachments = false,
   onAddAttachment,
+  onEditComment,
 }: CommentModalProps) {
   const [comment, setComment] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
   const [modalStyle, setModalStyle] = useState<React.CSSProperties>({});
+
+  // Edit mode (existing pin only)
+  const [isEditing, setIsEditing] = useState(false);
+  const [editText, setEditText] = useState('');
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
 
   // Reply state
   const [replies, setReplies] = useState<CommentReply[]>([]);
@@ -106,6 +114,54 @@ export default function CommentModal({
     if (!existingPin || isNewPin) return;
     getRepliesForComment(existingPin.id).then(setReplies);
   }, [existingPin?.id, isNewPin]);
+
+  // Reset edit state whenever the open pin changes
+  useEffect(() => {
+    setIsEditing(false);
+    setEditText(existingPin?.content ?? '');
+    setEditError(null);
+  }, [existingPin?.id, existingPin?.content]);
+
+  const canEditExisting =
+    !!existingPin &&
+    !!onEditComment &&
+    (ELEVATED_ROLES.includes(userRole) ||
+      (existingPin.author?.trim().toLowerCase() === currentUser.trim().toLowerCase()));
+
+  const handleStartEdit = () => {
+    if (!existingPin) return;
+    setEditText(existingPin.content);
+    setEditError(null);
+    setIsEditing(true);
+  };
+
+  const handleCancelEdit = () => {
+    setIsEditing(false);
+    setEditText(existingPin?.content ?? '');
+    setEditError(null);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!existingPin || !onEditComment) return;
+    const trimmed = editText.trim();
+    if (!trimmed) {
+      setEditError('Comment cannot be empty');
+      return;
+    }
+    if (trimmed === existingPin.content.trim()) {
+      setIsEditing(false);
+      return;
+    }
+    setIsSavingEdit(true);
+    setEditError(null);
+    const result = await onEditComment(existingPin.id, trimmed);
+    setIsSavingEdit(false);
+    if (result.success) {
+      setIsEditing(false);
+    } else {
+      setEditError(result.error ?? 'Failed to save changes');
+    }
+  };
 
   // ── scroll replies to bottom when new ones arrive ───────────────────────────
   useEffect(() => {
@@ -357,9 +413,60 @@ export default function CommentModal({
         {/* ── Body ── */}
         {existingPin && !isNewPin ? (
           <>
-            <div className="text-sm text-gray-700 px-1 py-1 bg-gray-50 rounded border border-gray-200 mb-1.5">
-              <CommentBody content={existingPin.content} />
-            </div>
+            {isEditing ? (
+              <div className="mb-1.5">
+                <textarea
+                  value={editText}
+                  onChange={e => setEditText(e.target.value)}
+                  onKeyDown={e => {
+                    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                      e.preventDefault();
+                      handleSaveEdit();
+                    }
+                    if (e.key === 'Escape') {
+                      e.preventDefault();
+                      handleCancelEdit();
+                    }
+                  }}
+                  autoFocus
+                  disabled={isSavingEdit}
+                  className="w-full px-2 py-1.5 border border-border rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white resize-none"
+                  rows={3}
+                />
+                {editError && (
+                  <p className="text-[10px] text-red-500 mt-1 px-1">{editError}</p>
+                )}
+                <div className="flex items-center justify-end gap-1 mt-1">
+                  <button
+                    onClick={handleCancelEdit}
+                    disabled={isSavingEdit}
+                    className="px-2 py-0.5 text-xs text-gray-600 hover:bg-gray-100 rounded transition-colors disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleSaveEdit}
+                    disabled={isSavingEdit || !editText.trim()}
+                    className="px-2.5 py-0.5 bg-blue-600 text-white rounded text-xs font-medium hover:bg-blue-700 transition-colors disabled:opacity-50"
+                  >
+                    {isSavingEdit ? 'Saving...' : 'Save'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="group relative text-sm text-gray-700 px-1 py-1 bg-gray-50 rounded border border-gray-200 mb-1.5">
+                <CommentBody content={existingPin.content} />
+                {canEditExisting && (
+                  <button
+                    onClick={handleStartEdit}
+                    title="Edit comment"
+                    className="absolute top-1 right-1 p-0.5 rounded text-gray-400 hover:text-gray-700 hover:bg-white opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    <Pencil size={11} />
+                  </button>
+                )}
+              </div>
+            )}
             {existingPin.attachments && existingPin.attachments.length > 0 && (
               <div className="mb-1.5 space-y-1">
                 <div className="flex flex-wrap gap-1">

@@ -8,6 +8,7 @@ import {
   ResolveCommentSchema,
   DeleteCommentSchema,
   UpdateCommentPositionSchema,
+  UpdateCommentContentSchema,
 } from '@/lib/validation/schemas';
 import { revalidatePath } from 'next/cache';
 import { nanoid } from 'nanoid';
@@ -415,6 +416,57 @@ export async function updateCommentPosition(
 
   if (projectId) revalidatePath(`/projects/${projectId}`);
   return { success: true };
+}
+
+/** Update a comment's text content. Author or admin only. */
+export async function updateComment(
+  commentId: string,
+  content: string,
+  projectId?: string,
+): Promise<{ success: boolean; comment?: DbComment; error?: string }> {
+  const user = await requireUser();
+
+  const parsed = UpdateCommentContentSchema.safeParse({
+    commentId,
+    content: content.trim(),
+  });
+  if (!parsed.success) {
+    return { success: false, error: 'Invalid input: ' + parsed.error.issues[0]?.message };
+  }
+
+  const supabase = await createClient();
+
+  const { data: existing, error: fetchErr } = await supabase
+    .from('markup_comments')
+    .select('user_name')
+    .eq('id', parsed.data.commentId)
+    .single();
+
+  if (fetchErr || !existing) {
+    return { success: false, error: 'Comment not found' };
+  }
+
+  const authorName = existing.user_name?.trim().toLowerCase() ?? '';
+  const currentName = (user.name || user.email || '').trim().toLowerCase();
+  const isAdmin = user.role === 'admin';
+  if (!isAdmin && authorName !== currentName) {
+    return { success: false, error: 'You can only edit your own comments' };
+  }
+
+  const { data, error } = await supabase
+    .from('markup_comments')
+    .update({ content: parsed.data.content, updated_at: new Date().toISOString() })
+    .eq('id', parsed.data.commentId)
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Error updating comment:', error);
+    return { success: false, error: error.message };
+  }
+
+  if (projectId) revalidatePath(`/projects/${projectId}`);
+  return { success: true, comment: data as DbComment };
 }
 
 /** Delete a comment */
