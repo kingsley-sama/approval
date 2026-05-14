@@ -277,7 +277,7 @@ export default function ShareViewer({ shareLink, resourceData, token }: ShareVie
           content: text,
           xPosition: savedPos.x,
           yPosition: savedPos.y,
-          drawingData: savedShape ?? null,
+          drawingData: savedShapes.length > 0 ? savedShapes : null,
         }),
       });
       const result = await res.json();
@@ -594,7 +594,7 @@ export default function ShareViewer({ shareLink, resourceData, token }: ShareVie
             pins={pins}
             selectedPin={selectedPin}
             drawnShapes={drawnShapes}
-            pendingShape={pendingShape}
+            pendingShapes={pendingShapes}
             onShapeComplete={canDraw && nameConfirmed ? handleShapeComplete : () => {}}
             onPinClick={(x, y, pinId) => {
               if (pinId) {
@@ -761,7 +761,7 @@ export default function ShareViewer({ shareLink, resourceData, token }: ShareVie
             setShowModal(false);
             setIsNewPin(false);
             setPendingPinPos(null);
-            setPendingShape(null);
+            setPendingShapes([]);
           }}
           onSubmit={canComment ? handleAddComment : async () => {}}
           onEditComment={canComment ? handleEditComment : undefined}
