@@ -55,7 +55,7 @@ interface ImageViewerProps {
   currentImageUrl: string;
   currentImageName?: string;
   drawnShapes: Shape[];
-  pendingShape: Shape | null;
+  pendingShapes: Shape[];
   onShapeComplete: (shape: Shape, center: { x: number; y: number }) => void;
   showDrawingTools?: boolean;
 }
@@ -77,7 +77,7 @@ function ImageViewerInner({
   currentImageUrl,
   currentImageName,
   drawnShapes,
-  pendingShape,
+  pendingShapes,
   onShapeComplete,
   showDrawingTools = true,
 }: ImageViewerProps) {
@@ -168,8 +168,8 @@ function ImageViewerInner({
   }, [zoom, isFullscreen, currentImageUrl, imageDimensions]);
 
   const shapes = useMemo(
-    () => [...drawnShapes, ...(pendingShape ? [pendingShape] : [])],
-    [drawnShapes, pendingShape]
+    () => [...drawnShapes, ...pendingShapes],
+    [drawnShapes, pendingShapes]
   );
 
   // Exit fullscreen on Escape key

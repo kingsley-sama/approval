@@ -36,7 +36,7 @@ interface Pin {
   author: string;
   timestamp: string;
   status: 'active' | 'resolved';
-  drawingData?: Shape;
+  drawingData?: Shape | Shape[];
   attachments?: (AttachmentRecord & { signedUrl: string })[];
 }
 
@@ -107,7 +107,7 @@ export default function ShareViewer({ shareLink, resourceData, token }: ShareVie
   const [showModal, setShowModal] = useState(false);
   const [modalPosition, setModalPosition] = useState({ x: 0, y: 0 });
   const [pendingPinPos, setPendingPinPos] = useState<{ x: number; y: number } | null>(null);
-  const [pendingShape, setPendingShape] = useState<Shape | null>(null);
+  const [pendingShapes, setPendingShapes] = useState<Shape[]>([]);
   const [selectedPin, setSelectedPin] = useState<string | null>(null);
   const [isNewPin, setIsNewPin] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -150,7 +150,9 @@ export default function ShareViewer({ shareLink, resourceData, token }: ShareVie
 
   const currentThread = threads[currentIndex];
   const pins = currentThread?.pins || [];
-  const drawnShapes: Shape[] = pins.filter(p => p.drawingData).map(p => p.drawingData!);
+  const drawnShapes: Shape[] = pins.flatMap(p =>
+    !p.drawingData ? [] : Array.isArray(p.drawingData) ? p.drawingData : [p.drawingData]
+  );
 
   const handleImageClick = (x: number, y: number) => {
     if (!canComment || !nameConfirmed) return;
@@ -163,13 +165,78 @@ export default function ShareViewer({ shareLink, resourceData, token }: ShareVie
 
   const handleShapeComplete = (shape: Shape, center: { x: number; y: number }) => {
     if (!canComment || !nameConfirmed) return;
-    setPendingShape(shape);
-    setPendingPinPos(center);
-    setModalPosition(center);
-    setSelectedPin(null);
-    setIsNewPin(true);
-    setShowModal(true);
+    setPendingShapes(prev => [...prev, shape]);
+    setPendingPinPos(prev => prev ?? center);
+    setModalPosition(prev => (showModal ? prev : center));
+    if (!showModal) {
+      setSelectedPin(null);
+      setIsNewPin(true);
+      setShowModal(true);
+    }
   };
+
+  const handleEditComment = useCallback(async (commentId: string, newText: string) => {
+    const trimmed = newText.trim();
+    if (!trimmed) return { success: false, error: 'Comment cannot be empty' };
+    if (!guestName) return { success: false, error: 'Please confirm your name first' };
+
+    let previousContent = '';
+    setThreads(prev => prev.map(t => {
+      if (!t.pins.some(p => p.id === commentId)) return t;
+      return {
+        ...t,
+        pins: t.pins.map(pin => {
+          if (pin.id !== commentId) return pin;
+          previousContent = pin.content;
+          return { ...pin, content: trimmed };
+        }),
+      };
+    }));
+
+    try {
+      const res = await fetch('/api/share/comment/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token,
+          commentId,
+          userName: guestName,
+          content: trimmed,
+        }),
+      });
+      const result = await res.json();
+      if (!result.success) {
+        setThreads(prev => prev.map(t => {
+          if (!t.pins.some(p => p.id === commentId)) return t;
+          return {
+            ...t,
+            pins: t.pins.map(p => p.id === commentId ? { ...p, content: previousContent } : p),
+          };
+        }));
+        toast({
+          title: 'Failed to update comment',
+          description: result.error ?? 'Please try again.',
+          variant: 'destructive',
+        });
+        return { success: false, error: result.error ?? 'Failed to update comment' };
+      }
+      return { success: true };
+    } catch (e: any) {
+      setThreads(prev => prev.map(t => {
+        if (!t.pins.some(p => p.id === commentId)) return t;
+        return {
+          ...t,
+          pins: t.pins.map(p => p.id === commentId ? { ...p, content: previousContent } : p),
+        };
+      }));
+      toast({
+        title: 'Failed to update comment',
+        description: e?.message || 'Please try again.',
+        variant: 'destructive',
+      });
+      return { success: false, error: e?.message ?? 'Failed to update comment' };
+    }
+  }, [guestName, token, toast]);
 
   const handleAddComment = async (text: string) => {
     if (!currentThread || !pendingPinPos) return;
@@ -185,7 +252,7 @@ export default function ShareViewer({ shareLink, resourceData, token }: ShareVie
       author: guestName || 'Guest',
       timestamp: new Date().toLocaleDateString(),
       status: 'active',
-      drawingData: pendingShape ?? undefined,
+      drawingData: pendingShapes.length > 0 ? pendingShapes : undefined,
     };
     setThreads(prev =>
       prev.map((t, i) => i === currentIndex ? { ...t, pins: [...t.pins, optimisticPin] } : t),
@@ -194,9 +261,9 @@ export default function ShareViewer({ shareLink, resourceData, token }: ShareVie
     setShowModal(false);
     setIsNewPin(false);
     const savedPos = pendingPinPos;
-    const savedShape = pendingShape;
+    const savedShapes = pendingShapes;
     setPendingPinPos(null);
-    setPendingShape(null);
+    setPendingShapes([]);
 
     setIsSubmitting(true);
     try {
@@ -515,6 +582,9 @@ export default function ShareViewer({ shareLink, resourceData, token }: ShareVie
             }}
             onResolve={() => {}}
             readOnly
+            onEditComment={canComment ? handleEditComment : undefined}
+            currentUser={guestName || 'Guest'}
+            userRole="member"
           />
         )}
 
@@ -694,6 +764,7 @@ export default function ShareViewer({ shareLink, resourceData, token }: ShareVie
             setPendingShape(null);
           }}
           onSubmit={canComment ? handleAddComment : async () => {}}
+          onEditComment={canComment ? handleEditComment : undefined}
           isFullscreen={isFullscreen}
           disableAttachments
         />

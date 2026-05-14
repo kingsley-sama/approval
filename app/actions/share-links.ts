@@ -37,7 +37,6 @@ export interface ShareLink {
   permissions: SharePermission;
   createdBy: string;
   createdAt: string;
-  expiresAt: string | null;
   isActive: boolean;
   accessCount: number;
   lastAccessedAt: string | null;
@@ -49,7 +48,6 @@ const CreateShareLinkSchema = z.object({
   resourceId: z.string().uuid(),
   permissions: z.enum(['view', 'comment', 'draw_and_comment']),
   createdBy: z.string().min(1),
-  expiresInDays: z.number().min(1).max(365).optional(),
 });
 
 export type CreateShareLinkInput = z.infer<typeof CreateShareLinkSchema>;
@@ -95,11 +93,6 @@ export async function createShareLink(
       };
     }
 
-    // Calculate expiration if specified
-    const expiresAt = validated.expiresInDays
-      ? new Date(Date.now() + validated.expiresInDays * 24 * 60 * 60 * 1000).toISOString()
-      : null;
-
     // Generate unique token
     const token = generateShareToken();
 
@@ -112,7 +105,6 @@ export async function createShareLink(
         resource_id: validated.resourceId,
         permissions: validated.permissions,
         created_by: validated.createdBy,
-        expires_at: expiresAt,
       })
       .select()
       .single();
@@ -133,7 +125,6 @@ export async function createShareLink(
       permissions: data.permissions,
       createdBy: data.created_by,
       createdAt: data.created_at,
-      expiresAt: data.expires_at,
       isActive: data.is_active,
       accessCount: data.access_count,
       lastAccessedAt: data.last_accessed_at,
@@ -182,11 +173,6 @@ export async function validateShareToken(
       return { success: false, error: 'This share link has been revoked' };
     }
 
-    // Check expiry
-    if (row.expires_at && new Date(row.expires_at) < new Date()) {
-      return { success: false, error: 'This share link has expired' };
-    }
-
     // Increment access count (fire-and-forget — don't block on failure)
     void supabase
       .from('share_links')
@@ -204,7 +190,6 @@ export async function validateShareToken(
       permissions: row.permissions,
       createdBy: row.created_by,
       createdAt: row.created_at,
-      expiresAt: row.expires_at,
       isActive: row.is_active,
       accessCount: row.access_count ?? 0,
       lastAccessedAt: row.last_accessed_at,
@@ -263,7 +248,7 @@ export interface SharedProjectSummary {
 
 /**
  * Given a list of tokens (from localStorage), returns project summaries for
- * each valid, active, non-expired share link — used by the guest dashboard.
+ * each valid, active share link — used by the guest dashboard.
  */
 export async function getSharedProjectSummaries(
   tokens: string[]
@@ -281,7 +266,6 @@ export async function getSharedProjectSummaries(
           .single();
 
         if (error || !row) return null;
-        if (row.expires_at && new Date(row.expires_at) < new Date()) return null;
 
         let projectName = 'Shared Project';
         let thumbnailUrl: string | null = null;
@@ -366,7 +350,6 @@ export async function getShareLinksForResource(
       permissions: d.permissions,
       createdBy: d.created_by,
       createdAt: d.created_at,
-      expiresAt: d.expires_at,
       isActive: d.is_active,
       accessCount: d.access_count,
       lastAccessedAt: d.last_accessed_at,

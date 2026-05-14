@@ -1,5 +1,4 @@
 import { Resend } from 'resend';
-import NewCommentEmail from '@/emails/new-comment';
 import ReviewCompleteEmail from '@/emails/review-complete';
 
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
@@ -62,41 +61,6 @@ const APP_URL =
   normalizeUrl(process.env.VERCEL_PROJECT_PRODUCTION_URL) ??
   normalizeUrl(process.env.VERCEL_URL) ??
   'http://localhost:3000';
-
-export interface NewCommentEmailOptions {
-  to: string[];
-  commenterName: string;
-  commentPreview: string;
-  projectName: string;
-  projectId: string;
-}
-
-export async function sendNewCommentEmail(opts: NewCommentEmailOptions): Promise<void> {
-  if (!resend || !opts.to.length) return;
-
-  const preview = opts.commentPreview
-    .replace(/@\[[^\]]+\]\([^)]+\)/g, '@mention')
-    .slice(0, 240);
-
-  const projectUrl = `${APP_URL}/projects/${opts.projectId}`;
-
-  const { error } = await resend.emails.send({
-    from: FROM_ADDRESS,
-    to: opts.to,
-    replyTo: REPLY_TO,
-    subject: `New comment on "${opts.projectName}"`,
-    react: NewCommentEmail({
-      commenterName: opts.commenterName,
-      commentPreview: preview,
-      projectName: opts.projectName,
-      projectUrl,
-    }),
-  });
-
-  if (error) {
-    console.error('[email] sendNewCommentEmail failed', error);
-  }
-}
 
 export interface ReviewCompleteEmailOptions {
   to?: string[];

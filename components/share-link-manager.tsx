@@ -33,7 +33,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
-import { Share } from 'lucide-react';
+import { Share, Check, Copy } from 'lucide-react';
 
 interface ShareLinkManagerProps {
   resourceType: ShareResourceType;
@@ -56,9 +56,9 @@ export default function ShareLinkManager({
   
   // Form state
   const [permission, setPermission] = useState<SharePermission>('view');
-  const [expiresInDays, setExpiresInDays] = useState<number | undefined>(30);
   const [generatedUrl, setGeneratedUrl] = useState('');
   const [error, setError] = useState('');
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -85,7 +85,6 @@ export default function ShareLinkManager({
       resourceId,
       permissions: permission,
       createdBy,
-      expiresInDays,
     });
 
     if (result.success && result.url) {
@@ -113,9 +112,24 @@ export default function ShareLinkManager({
     setIsLoading(false);
   };
 
-  const copyToClipboard = (url: string) => {
-    navigator.clipboard.writeText(url);
-    alert('Link copied to clipboard!');
+  const copyToClipboard = async (url: string, key: string) => {
+    try {
+      await navigator.clipboard.writeText(url);
+    } catch {
+      // Fallback for browsers blocking clipboard API
+      const ta = document.createElement('textarea');
+      ta.value = url;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand('copy'); } catch {}
+      document.body.removeChild(ta);
+    }
+    setCopiedKey(key);
+    setTimeout(() => {
+      setCopiedKey(prev => (prev === key ? null : prev));
+    }, 1800);
   };
 
   const getPermissionLabel = (perm: SharePermission) => {
@@ -170,19 +184,6 @@ export default function ShareLinkManager({
               </Select>
             </div>
 
-            <div>
-              <Label htmlFor="expires">Expires In (days)</Label>
-              <Input
-                id="expires"
-                type="number"
-                min={1}
-                max={365}
-                value={expiresInDays || ''}
-                onChange={(e) => setExpiresInDays(e.target.value ? Number(e.target.value) : undefined)}
-                placeholder="Never expires (leave empty)"
-              />
-            </div>
-
             <Button onClick={handleCreateLink} disabled={isLoading}>
               {isLoading ? 'Creating...' : 'Generate Share Link'}
             </Button>
@@ -195,11 +196,16 @@ export default function ShareLinkManager({
                 <div className="flex gap-2">
                   <Input value={generatedUrl} readOnly className="flex-1" />
                   <Button
-                    onClick={() => copyToClipboard(generatedUrl)}
+                    onClick={() => copyToClipboard(generatedUrl, 'generated')}
                     variant="outline"
                     size="sm"
+                    aria-live="polite"
                   >
-                    Copy
+                    {copiedKey === 'generated' ? (
+                      <><Check className="h-3.5 w-3.5 mr-1" />Copied</>
+                    ) : (
+                      <><Copy className="h-3.5 w-3.5 mr-1" />Copy</>
+                    )}
                   </Button>
                 </div>
               </div>
@@ -240,12 +246,18 @@ export default function ShareLinkManager({
                         <>
                           <Button
                             onClick={() => copyToClipboard(
-                              `${typeof window !== 'undefined' ? window.location.origin : ''}/share/${link.token}`
+                              `${typeof window !== 'undefined' ? window.location.origin : ''}/share/${link.token}`,
+                              link.id,
                             )}
                             variant="ghost"
                             size="sm"
+                            aria-live="polite"
                           >
-                            Copy
+                            {copiedKey === link.id ? (
+                              <><Check className="h-3.5 w-3.5 mr-1" />Copied</>
+                            ) : (
+                              <><Copy className="h-3.5 w-3.5 mr-1" />Copy</>
+                            )}
                           </Button>
                           <Button
                             onClick={() => handleRevokeLink(link.id)}
@@ -261,9 +273,6 @@ export default function ShareLinkManager({
                   </div>
                   <div className="text-xs text-gray-600 space-y-1">
                     <p>Created: {new Date(link.createdAt).toLocaleString()}</p>
-                    {link.expiresAt && (
-                      <p>Expires: {new Date(link.expiresAt).toLocaleString()}</p>
-                    )}
                     <p>Accessed: {link.accessCount} times</p>
                     {link.lastAccessedAt && (
                       <p>Last access: {new Date(link.lastAccessedAt).toLocaleString()}</p>

@@ -48,6 +48,12 @@ export default function AppSidebar({ user }: AppSidebarProps) {
   const pathname = usePathname()
   const navItems = user?.role === 'admin' ? adminNavItems : memberNavItems
 
+  const activeHref = navItems
+    .filter(item => pathname === item.href || pathname.startsWith(item.href + '/'))
+    .reduce<string | null>((best, item) => (
+      best && best.length >= item.href.length ? best : item.href
+    ), null)
+
   return (
     <Sidebar collapsible="icon" className="border-r border-border">
       {/* Header */}
@@ -82,7 +88,7 @@ export default function AppSidebar({ user }: AppSidebarProps) {
           <SidebarGroupContent>
             <SidebarMenu>
               {navItems.map((item) => {
-                const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
+                const isActive = item.href === activeHref
                 return (
                   <SidebarMenuItem key={item.title}>
                     <SidebarMenuButton asChild isActive={isActive} tooltip={item.title}>

@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server';
 import { nanoid } from 'nanoid';
+import { getAttachmentsForComments, type AttachmentRecord } from './storage';
 
 export interface CommentReply {
   id: string;
@@ -9,6 +10,7 @@ export interface CommentReply {
   user_name: string;
   content: string;
   created_at: string;
+  attachments?: (AttachmentRecord & { signedUrl: string })[];
 }
 
 function isMissingColumnError(error: any, expectedColumns: string[]): boolean {
@@ -44,21 +46,27 @@ export async function getRepliesForComment(commentId: string): Promise<CommentRe
     .eq('type', 'reply')
     .order('created_at', { ascending: true });
 
+  let replies: CommentReply[];
   if (!typedResult.error) {
-    return (typedResult.data || []).map(mapCommentRowToReply);
+    replies = (typedResult.data || []).map(mapCommentRowToReply);
+  } else {
+    const { data, error } = await supabase
+      .from('comment_replies')
+      .select('*')
+      .eq('comment_id', commentId)
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      console.error('Error loading replies:', typedResult.error, error);
+      return [];
+    }
+    replies = (data as CommentReply[]) || [];
   }
 
-  const { data, error } = await supabase
-    .from('comment_replies')
-    .select('*')
-    .eq('comment_id', commentId)
-    .order('created_at', { ascending: true });
+  if (replies.length === 0) return replies;
 
-  if (error) {
-    console.error('Error loading replies:', typedResult.error, error);
-    return [];
-  }
-  return (data as CommentReply[]) || [];
+  const attachmentsByReply = await getAttachmentsForComments(replies.map(r => r.id));
+  return replies.map(r => ({ ...r, attachments: attachmentsByReply[r.id] ?? [] }));
 }
 
 export async function createReply(

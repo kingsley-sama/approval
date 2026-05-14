@@ -9,7 +9,7 @@ import { getProjectPageData, deleteProject } from '@/app/actions/projects'
 import { renameProject } from '@/app/actions/update-project'
 import { formatDistanceToNow } from 'date-fns'
 import { getOptimizedImageUrl, IMAGE_SIZES } from '@/lib/image-url'
-import { Filter, ArrowUpDown, Search, Upload, Folder, Trash2, X, CheckSquare, AlertTriangle, Pencil } from 'lucide-react'
+import { Filter, ArrowUpDown, Search, Upload, Folder, FolderPlus, Trash2, X, CheckSquare, AlertTriangle, Pencil } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -20,6 +20,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 
 const cardColors = [
   'bg-orange-50', 'bg-green-50', 'bg-blue-50', 'bg-purple-50',
@@ -238,25 +239,51 @@ export default function ProjectsPage() {
         <div className="flex items-center justify-between">
           <h1 className="text-lg font-semibold text-foreground font-display">Projects</h1>
           <div className="flex items-center gap-2">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 text-accent bg-accent/10 hover:text-foreground"
-              title="Clear search filter"
-              onClick={() => setSearchQuery('')}
-            >
-              <Filter className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 text-accent bg-accent/10 hover:text-foreground"
-              title="Sort by name"
-              onClick={() => setSortOrder(o => o === 'name' ? 'newest' : 'name')}
-            >
-              <ArrowUpDown className="h-4 w-4" />
-            </Button>
-            {isAdmin && <CreateProjectModal onProjectCreated={fetchProjects} />}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-accent bg-accent/10 hover:text-foreground"
+                  onClick={() => setSearchQuery('')}
+                >
+                  <Filter className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Clear search filter</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-accent bg-accent/10 hover:text-foreground"
+                  onClick={() => setSortOrder(o => o === 'name' ? 'newest' : 'name')}
+                >
+                  <ArrowUpDown className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{sortOrder === 'name' ? 'Sort by newest' : 'Sort by name'}</TooltipContent>
+            </Tooltip>
+            {isAdmin && (
+              <Tooltip>
+                <CreateProjectModal
+                  onProjectCreated={fetchProjects}
+                  trigger={
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-accent bg-accent/10 hover:text-foreground"
+                      >
+                        <FolderPlus className="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                  }
+                />
+                <TooltipContent>Create new project</TooltipContent>
+              </Tooltip>
+            )}
           </div>
         </div>
 

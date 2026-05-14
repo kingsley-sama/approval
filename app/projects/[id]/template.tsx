@@ -15,7 +15,6 @@ import {
   Download,
   Maximize2,
   Share,
-  Settings,
   Image as ImageIcon,
   Search,
   Filter,
@@ -34,7 +33,7 @@ export interface ProjectPin {
 	timestamp: string;
 	status: 'active' | 'resolved';
 	isPending?: boolean;
-	drawingData?: Shape;
+	drawingData?: Shape | Shape[];
 	attachments?: (AttachmentRecord & { signedUrl: string })[];
 	replyCount?: number;
 }
@@ -57,6 +56,17 @@ interface ProjectTopNavProps {
 	pins: ProjectPin[];
 	pendingCount: number;
 	isSyncing: boolean;
+	currentUser?: string;
+	sidebarsCollapsed?: boolean;
+	onToggleSidebars?: () => void;
+}
+
+function getInitials(name?: string): string {
+	if (!name) return '?';
+	const parts = name.trim().split(/\s+/).filter(Boolean);
+	if (parts.length === 0) return '?';
+	if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+	return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
 interface ProjectShellProps {
@@ -70,6 +80,10 @@ interface ProjectShellProps {
 	onSelectImage: (imageId: string) => void;
 	onUploadComplete: () => Promise<void>;
 	onCommentTabChange?: (tab: 'active' | 'resolved') => void;
+	onEditComment?: (commentId: string, newText: string) => Promise<{ success: boolean; error?: string }>;
+	currentUser?: string;
+	userRole?: string;
+	sidebarsCollapsed?: boolean;
 	children: React.ReactNode;
 }
 
@@ -84,8 +98,13 @@ export function ProjectTopNav({
 	pins,
 	pendingCount,
 	isSyncing,
+	currentUser,
+	sidebarsCollapsed,
+	onToggleSidebars,
 }: ProjectTopNavProps) {
 	const router = useRouter();
+	const userInitials = getInitials(currentUser);
+	const userLabel = currentUser?.trim() || 'You';
 
 	if (isFullscreen) {
 		return null;
@@ -117,11 +136,14 @@ export function ProjectTopNav({
               — ExposéProfi
             </div>
           </div>
-          <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground">
+          <Button
+            variant="ghost"
+            size="icon"
+            className={`h-8 w-8 ${sidebarsCollapsed ? 'text-accent bg-accent/10' : 'text-muted-foreground'} hover:text-foreground`}
+            onClick={onToggleSidebars}
+            title={sidebarsCollapsed ? 'Show sidebars' : 'Hide sidebars for a fuller view'}
+          >
             <ImageIcon className="h-4 w-4" />
-          </Button>
-          <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground">
-            <Settings className="h-4 w-4" />
           </Button>
         </div>
 
@@ -131,11 +153,17 @@ export function ProjectTopNav({
         {/* Right actions */}
         <div className="flex items-center gap-2">
           <div className="flex items-center -space-x-2 mr-2">
-            <div className="w-7 h-7 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold ring-2 ring-background">
+            <div
+              className="w-7 h-7 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold ring-2 ring-background"
+              title="ExposéProfi"
+            >
               EX
             </div>
-            <div className="w-7 h-7 rounded-full bg-accent text-accent-foreground flex items-center justify-center text-xs font-bold ring-2 ring-background">
-              SK
+            <div
+              className="w-7 h-7 rounded-full bg-accent text-accent-foreground flex items-center justify-center text-xs font-bold ring-2 ring-background"
+              title={userLabel}
+            >
+              {userInitials}
             </div>
           </div>
 		  	<ShareLinkManager
@@ -160,11 +188,16 @@ export function ProjectShell({
 	onSelectImage,
 	onUploadComplete,
 	onCommentTabChange,
+	onEditComment,
+	currentUser,
+	userRole,
+	sidebarsCollapsed,
 	children,
 }: ProjectShellProps) {
+	const showSidebars = !isFullscreen && !sidebarsCollapsed;
 	return (
 		<div className={`flex-1 flex overflow-hidden ${isFullscreen ? 'bg-black' : ''}`}>
-			{!isFullscreen && (
+			{showSidebars && (
 				<CommentsSidebar
 					allImages={images}
 					currentImageId={currentImageId}
@@ -172,12 +205,16 @@ export function ProjectShell({
 					onSelectPin={onSelectPin}
 					onResolve={onResolveComment}
 					onTabChange={onCommentTabChange}
+					onEditComment={onEditComment}
+					currentUser={currentUser}
+					userRole={userRole}
+					projectId={projectId}
 				/>
 			)}
 
 			{children}
 
-			{!isFullscreen && (
+			{showSidebars && (
 				<ThumbnailsSidebar
 					images={images}
 					currentImageId={currentImageId}

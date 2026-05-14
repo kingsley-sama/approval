@@ -100,6 +100,8 @@ export default function CommentModal({
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [isDraggingFile, setIsDraggingFile] = useState(false);
+  const dragDepthRef = useRef(0);
 
   const modalRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -318,14 +320,9 @@ export default function CommentModal({
   };
 
   // ── file selection ───────────────────────────────────────────────────────────
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setAttachmentError(null);
-    const files = Array.from(e.target.files ?? []);
-    if (fileInputRef.current) fileInputRef.current.value = '';
-
+  const validateFiles = (files: File[]): { valid: File[]; errors: string[] } => {
     const errors: string[] = [];
-    const valid: PendingAttachment[] = [];
-
+    const valid: File[] = [];
     for (const file of files) {
       if (!ALLOWED_TYPES.has(file.type)) {
         errors.push(`${file.name}: unsupported type`);
@@ -335,30 +332,26 @@ export default function CommentModal({
         errors.push(`${file.name}: exceeds 20 MB`);
         continue;
       }
-      valid.push({ id: crypto.randomUUID(), file });
-    }
-
-    if (errors.length) setAttachmentError(errors.join('; '));
-    setAttachments(prev => [...prev, ...valid]);
-  };
-
-  const removeAttachment = (id: string) => {
-    setAttachments(prev => prev.filter(a => a.id !== id));
-  };
-
-  const handleEditFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!onAddAttachment || !existingPin) return;
-    const files = Array.from(e.target.files ?? []);
-    if (editFileInputRef.current) editFileInputRef.current.value = '';
-    if (!files.length) return;
-
-    const errors: string[] = [];
-    const valid: File[] = [];
-    for (const file of files) {
-      if (!ALLOWED_TYPES.has(file.type)) { errors.push(`${file.name}: unsupported type`); continue; }
-      if (file.size > MAX_BYTES) { errors.push(`${file.name}: exceeds 20 MB`); continue; }
       valid.push(file);
     }
+    return { valid, errors };
+  };
+
+  const addPendingAttachments = (files: File[]) => {
+    setAttachmentError(null);
+    const { valid, errors } = validateFiles(files);
+    if (errors.length) setAttachmentError(errors.join('; '));
+    if (!valid.length) return;
+    setAttachments(prev => [
+      ...prev,
+      ...valid.map(file => ({ id: crypto.randomUUID(), file })),
+    ]);
+  };
+
+  const uploadEditAttachments = async (files: File[]) => {
+    if (!onAddAttachment || !existingPin) return;
+    setAttachmentError(null);
+    const { valid, errors } = validateFiles(files);
     if (errors.length) setAttachmentError(errors.join('; '));
     if (!valid.length) return;
 
@@ -367,6 +360,68 @@ export default function CommentModal({
       await onAddAttachment(existingPin.id, valid);
     } finally {
       setIsUploadingAttachment(false);
+    }
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+    addPendingAttachments(files);
+  };
+
+  const removeAttachment = (id: string) => {
+    setAttachments(prev => prev.filter(a => a.id !== id));
+  };
+
+  const handleEditFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    if (editFileInputRef.current) editFileInputRef.current.value = '';
+    if (!files.length) return;
+    await uploadEditAttachments(files);
+  };
+
+  // ── drag & drop ──────────────────────────────────────────────────────────────
+  const dropEnabled =
+    (isNewPin && !disableAttachments) ||
+    (!!existingPin && !isNewPin && !!onAddAttachment);
+
+  const handleDragEnter = (e: React.DragEvent) => {
+    if (!dropEnabled) return;
+    if (!Array.from(e.dataTransfer.types || []).includes('Files')) return;
+    e.preventDefault();
+    e.stopPropagation();
+    dragDepthRef.current += 1;
+    setIsDraggingFile(true);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    if (!dropEnabled) return;
+    if (!Array.from(e.dataTransfer.types || []).includes('Files')) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = 'copy';
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    if (!dropEnabled) return;
+    e.preventDefault();
+    e.stopPropagation();
+    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+    if (dragDepthRef.current === 0) setIsDraggingFile(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    if (!dropEnabled) return;
+    e.preventDefault();
+    e.stopPropagation();
+    dragDepthRef.current = 0;
+    setIsDraggingFile(false);
+    const files = Array.from(e.dataTransfer.files ?? []);
+    if (!files.length) return;
+    if (isNewPin) {
+      addPendingAttachments(files);
+    } else if (existingPin && onAddAttachment) {
+      void uploadEditAttachments(files);
     }
   };
 
@@ -380,9 +435,25 @@ export default function CommentModal({
     <div className="z-50 pointer-events-none">
       <div
         ref={modalRef}
-        className="bg-white rounded-md shadow-lg p-2 pointer-events-auto border border-border w-72 transition-all duration-200 ease-out"
+        className={`relative bg-white rounded-md shadow-lg p-2 pointer-events-auto border w-72 transition-all duration-200 ease-out ${
+          isDraggingFile
+            ? 'border-blue-500 ring-2 ring-blue-300/60'
+            : 'border-border'
+        }`}
         style={modalStyle}
+        onDragEnter={handleDragEnter}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
       >
+        {isDraggingFile && dropEnabled && (
+          <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-md bg-blue-50/85 border-2 border-dashed border-blue-400">
+            <div className="flex items-center gap-1.5 text-xs font-medium text-blue-700">
+              <Paperclip size={13} />
+              Drop files to attach
+            </div>
+          </div>
+        )}
         {/* ── Header ── */}
         <div className="flex items-start justify-between gap-2 mb-1.5">
           {existingPin ? (

@@ -13,10 +13,6 @@ import {
 import { revalidatePath } from 'next/cache';
 import { nanoid } from 'nanoid';
 import type { AttachmentRecord } from './storage';
-import { db } from '@/lib/db/drizzle';
-import { users } from '@/lib/db/schema';
-import { eq } from 'drizzle-orm';
-import { sendNewCommentEmail } from '@/lib/email';
 
 export interface DbComment {
   id: string;
@@ -270,8 +266,6 @@ export async function createComment(
       saved.drawing_data = safeDrawingData;
     }
 
-    // Fire-and-forget — never awaited, never blocks the response
-    notifyAdminsOfNewComment(saved.thread_id, saved.content, saved.user_name).catch(() => {});
     return { success: true, comment: saved };
   }
 
@@ -309,33 +303,7 @@ export async function createComment(
   }
 
   const data = legacyInsert.data as DbComment;
-  // Fire-and-forget — never awaited, never blocks the response
-  notifyAdminsOfNewComment(data.thread_id, data.content, data.user_name).catch(() => {});
   return { success: true, comment: data };
-}
-
-async function notifyAdminsOfNewComment(threadId: string, content: string, userName: string) {
-  const supabase = await createClient();
-  const { data: thread } = await supabase
-    .from('markup_threads')
-    .select('project_id, markup_projects(project_name)')
-    .eq('id', threadId)
-    .single();
-  if (!thread) return;
-
-  const adminUsers = await db
-    .select({ email: users.email })
-    .from(users)
-    .where(eq(users.role, 'admin'));
-
-  const emails = adminUsers.map(u => u.email);
-  await sendNewCommentEmail({
-    to: emails,
-    commenterName: userName,
-    commentPreview: content,
-    projectName: (thread as any).markup_projects?.project_name ?? 'Unknown Project',
-    projectId: thread.project_id,
-  });
 }
 
 /** Toggle resolved / active status for a pin */

@@ -36,13 +36,15 @@ export default function ProjectPage({ params, searchParams }: ProjectPageProps) 
   const [modalPosition, setModalPosition] = useState({ x: 0, y: 0 });
   const [selectedPin, setSelectedPin] = useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [sidebarsCollapsed, setSidebarsCollapsed] = useState(false);
   const [hoveredPin, setHoveredPin] = useState<string | null>(null);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [isNewPin, setIsNewPin] = useState(false);
   const [pendingPinPos, setPendingPinPos] = useState<{ x: number; y: number } | null>(null);
-  // Shape drawn by the user, awaiting comment confirmation before being committed
-  const [pendingShape, setPendingShape] = useState<Shape | null>(null);
+  // Shapes drawn by the user, awaiting comment confirmation before being committed.
+  // Multiple shapes can accumulate per pending comment (e.g. user marks several spots).
+  const [pendingShapes, setPendingShapes] = useState<Shape[]>([]);
   const [currentUserName, setCurrentUserName] = useState<string>('Anonymous');
   const [currentUserRole, setCurrentUserRole] = useState<string>('member');
   const [commentTab, setCommentTab] = useState<'active' | 'resolved'>('active');
@@ -231,21 +233,28 @@ export default function ProjectPage({ params, searchParams }: ProjectPageProps) 
     () => pins.filter(p => commentTab === 'resolved' ? p.status === 'resolved' : p.status !== 'resolved'),
     [pins, commentTab]
   );
-  // Extract Konva shapes from visible pins to pass to the drawing canvas
+  // Extract Konva shapes from visible pins to pass to the drawing canvas.
+  // Each pin may carry one shape (legacy rows) or an array of shapes.
   const drawnShapes = useMemo<Shape[]>(
-    () => visiblePins.filter(p => p.drawingData).map(p => p.drawingData!),
+    () => visiblePins.flatMap(p =>
+      !p.drawingData ? [] : Array.isArray(p.drawingData) ? p.drawingData : [p.drawingData]
+    ),
     [visiblePins]
   );
 
-  /** Called by ImageViewer when the user finishes drawing a shape. */
+  /** Called by ImageViewer when the user finishes drawing a shape.
+   *  First shape opens the modal at its centre; subsequent shapes append
+   *  to the same pending comment. */
   const handleShapeComplete = useCallback((shape: Shape, center: { x: number; y: number }) => {
-    setPendingShape(shape);
-    setPendingPinPos(center);
-    setModalPosition(center);
-    setSelectedPin(null);
-    setIsNewPin(true);
-    setShowModal(true);
-  }, []);
+    setPendingShapes(prev => [...prev, shape]);
+    setPendingPinPos(prev => prev ?? center);
+    setModalPosition(prev => (showModal ? prev : center));
+    if (!showModal) {
+      setSelectedPin(null);
+      setIsNewPin(true);
+      setShowModal(true);
+    }
+  }, [showModal]);
 
   const handleImageClick = useCallback((x: number, y: number) => {
     // Store position and open modal — no placeholder pin yet
@@ -263,7 +272,8 @@ export default function ProjectPage({ params, searchParams }: ProjectPageProps) 
     const pinNumber = currentPins.length + 1;
 
     // 1. Enqueue locally — instant, no network wait
-    const queued = enqueue(currentImageId, text, currentUserName, pendingPinPos.x, pendingPinPos.y, pinNumber, pendingShape ?? undefined);
+    const drawingPayload = pendingShapes.length > 0 ? pendingShapes : undefined;
+    const queued = enqueue(currentImageId, text, currentUserName, pendingPinPos.x, pendingPinPos.y, pinNumber, drawingPayload);
     // Store any attachment files keyed by localId — uploaded after the comment syncs
     if (attachmentFiles.length > 0) {
       pendingAttachments.current.set(queued.localId, attachmentFiles);
@@ -280,7 +290,7 @@ export default function ProjectPage({ params, searchParams }: ProjectPageProps) 
     setShowModal(false);
     setIsNewPin(false);
     setPendingPinPos(null);
-    setPendingShape(null);
+    setPendingShapes([]);
 
     // 3. Sync to DB in the background (non-blocking)
     drainQueue(syncCallbacks.onSynced, syncCallbacks.onFailed);
@@ -396,7 +406,7 @@ export default function ProjectPage({ params, searchParams }: ProjectPageProps) 
     if (pinId) {
       setSelectedPin(pinId);
       setPendingPinPos(null);
-      setPendingShape(null);
+      setPendingShapes([]);
       const pin = pins.find(p => p.id === pinId);
       if (pin) {
         setModalPosition({ x: pin.x, y: pin.y });
@@ -471,6 +481,9 @@ export default function ProjectPage({ params, searchParams }: ProjectPageProps) 
         pins={pins}
         pendingCount={pendingCount}
         isSyncing={isSyncing}
+        currentUser={currentUserName}
+        sidebarsCollapsed={sidebarsCollapsed}
+        onToggleSidebars={() => setSidebarsCollapsed(v => !v)}
       />
 
       {connectionStatus === 'disconnected' && (
@@ -497,6 +510,10 @@ export default function ProjectPage({ params, searchParams }: ProjectPageProps) 
         onSelectImage={handleSwitchImage}
         onUploadComplete={fetchThreads}
         onCommentTabChange={setCommentTab}
+        onEditComment={handleEditComment}
+        currentUser={currentUserName}
+        userRole={currentUserRole}
+        sidebarsCollapsed={sidebarsCollapsed}
       >
 
         {isLoading ? (
@@ -533,7 +550,7 @@ export default function ProjectPage({ params, searchParams }: ProjectPageProps) 
             pins={visiblePins}
             selectedPin={selectedPin}
             drawnShapes={drawnShapes}
-            pendingShape={pendingShape}
+            pendingShapes={pendingShapes}
             currentImageName={currentImage?.name}
             onShapeComplete={handleShapeComplete}
             onPinClick={handlePinClick}
@@ -558,7 +575,7 @@ export default function ProjectPage({ params, searchParams }: ProjectPageProps) 
             setShowModal(false);
             setIsNewPin(false);
             setPendingPinPos(null);
-            setPendingShape(null); // discard the drawn shape if user cancels
+            setPendingShapes([]); // discard any drawn shapes if user cancels
           }}
           onSubmit={handleAddComment}
           existingPin={selectedPin ? pins.find(p => p.id === selectedPin) : undefined}
