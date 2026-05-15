@@ -107,11 +107,12 @@ export default function ProjectCard({ project, onOpen, onDuplicate, onDelete, on
   const menuRef = React.useRef<HTMLDivElement>(null)
 
   const MENU_ITEMS = [
-    { label: 'Rename project',   icon: Pencil,    destructive: false, action: () => onRename?.(project) },
-    { label: 'Project settings', icon: Settings2, destructive: false, action: () => {} },
-    { label: 'Archive canvas',   icon: Archive,   destructive: false, action: () => {} },
-    { label: 'Delete Project',   icon: Trash2,    destructive: true,  action: () => onDelete(project.id) },
-  ]
+    { label: 'Open in new tab',  icon: ExternalLink, destructive: false, adminOnly: false, action: () => window.open(`/projects/${project.id}`, '_blank', 'noopener,noreferrer') },
+    { label: 'Rename project',   icon: Pencil,       destructive: false, adminOnly: true,  action: () => onRename?.(project) },
+    { label: 'Project settings', icon: Settings2,    destructive: false, adminOnly: true,  action: () => {} },
+    { label: 'Archive canvas',   icon: Archive,      destructive: false, adminOnly: true,  action: () => {} },
+    { label: 'Delete Project',   icon: Trash2,       destructive: true,  adminOnly: true,  action: () => onDelete(project.id) },
+  ].filter(item => isAdmin || !item.adminOnly)
 
   // Build image list: primary image + any thumbnails
   const allImages = [
@@ -161,8 +162,8 @@ export default function ProjectCard({ project, onOpen, onDuplicate, onDelete, on
                 </Tip>
               ) : <div />}
 
-              {isAdmin && (
-                <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2">
+                {isAdmin && (
                   <Tip label="Share">
                     <ShareLinkManager
                       resourceType="project"
@@ -179,43 +180,43 @@ export default function ProjectCard({ project, onOpen, onDuplicate, onDelete, on
                       }
                     />
                   </Tip>
+                )}
 
-                  <div className="relative" ref={menuRef}>
-                    <Tip label="More actions">
-                      <button
-                        onClick={(e) => { e.stopPropagation(); setMenuOpen((o) => !o) }}
-                        className="p-1.5 rounded-md bg-white/20 hover:bg-white/30 text-white transition-colors"
-                      >
-                        <MoreHorizontal size={15} />
-                      </button>
-                    </Tip>
+                <div className="relative" ref={menuRef}>
+                  <Tip label="More actions">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setMenuOpen((o) => !o) }}
+                      className="p-1.5 rounded-md bg-white/20 hover:bg-white/30 text-white transition-colors"
+                    >
+                      <MoreHorizontal size={15} />
+                    </button>
+                  </Tip>
 
-                    {menuOpen && (
-                      <div
-                        className="absolute right-0 top-full mt-1.5 z-50 w-48 rounded-xl bg-popover border border-border shadow-xl overflow-hidden"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <div className="py-1">
-                          {MENU_ITEMS.map(({ label, icon: Icon, destructive, action }) => (
-                            <button
-                              key={label}
-                              onClick={(e) => { e.stopPropagation(); action(); setMenuOpen(false) }}
-                              className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm transition-colors hover:rounded-md hover:bg-accent/10 ${
-                                destructive
-                                  ? 'text-destructive hover:text-destructive'
-                                  : 'text-popover-foreground hover:text-accent'
-                              }`}
-                            >
-                              <Icon size={14} className="shrink-0" />
-                              {label}
-                            </button>
-                          ))}
-                        </div>
+                  {menuOpen && (
+                    <div
+                      className="absolute right-0 top-full mt-1.5 z-50 w-48 rounded-xl bg-popover border border-border shadow-xl overflow-hidden"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div className="py-1">
+                        {MENU_ITEMS.map(({ label, icon: Icon, destructive, action }) => (
+                          <button
+                            key={label}
+                            onClick={(e) => { e.stopPropagation(); action(); setMenuOpen(false) }}
+                            className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm transition-colors hover:rounded-md hover:bg-accent/10 ${
+                              destructive
+                                ? 'text-destructive hover:text-destructive'
+                                : 'text-popover-foreground hover:text-accent'
+                            }`}
+                          >
+                            <Icon size={14} className="shrink-0" />
+                            {label}
+                          </button>
+                        ))}
                       </div>
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </div>
-              )}
+              </div>
             </div>
 
             {/* Center actions */}
