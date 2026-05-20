@@ -1,6 +1,6 @@
 'use client';
 
-import { MessageSquare, ChevronDown, ChevronRight, Check, FileText, ArrowLeft, MoreHorizontal, Paperclip, Video, Smile, Send, Pencil, X, ImageIcon } from 'lucide-react';
+import { MessageSquare, ChevronDown, ChevronRight, Check, FileText, ArrowLeft, MoreHorizontal, Paperclip, Video, Smile, Send, Pencil, X, ImageIcon, XCircle, Trash2 } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import type { AttachmentRecord } from '@/app/actions/storage';
 import CommentBody from './comment-body';
@@ -43,6 +43,8 @@ interface CommentsSidebarProps {
   onTabChange?: (tab: 'active' | 'resolved') => void;
   readOnly?: boolean;
   onEditComment?: (commentId: string, newText: string) => Promise<{ success: boolean; error?: string }>;
+  onDeleteAttachment?: (commentId: string, attachmentId: string) => Promise<void>;
+  onDeleteComment?: (commentId: string) => Promise<void>;
   currentUser?: string;
   userRole?: string;
   /** Required to enable attachment uploads in replies. */
@@ -66,6 +68,8 @@ interface ThreadDetailProps {
   onResolve: (pinId: string) => void;
   readOnly: boolean;
   onEditComment?: (commentId: string, newText: string) => Promise<{ success: boolean; error?: string }>;
+  onDeleteAttachment?: (commentId: string, attachmentId: string) => Promise<void>;
+  onDeleteComment?: (commentId: string) => Promise<void>;
   currentUser?: string;
   userRole?: string;
   projectId?: string;
@@ -77,7 +81,7 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function ThreadDetail({ pin, onBack, onResolve, readOnly, onEditComment, currentUser, userRole, projectId }: ThreadDetailProps) {
+function ThreadDetail({ pin, onBack, onResolve, readOnly, onEditComment, onDeleteAttachment, onDeleteComment, currentUser, userRole, projectId }: ThreadDetailProps) {
   const [reply, setReply] = useState('');
   const [replies, setReplies] = useState<CommentReply[]>([]);
   const [isLoadingReplies, setIsLoadingReplies] = useState(true);
@@ -94,6 +98,26 @@ function ThreadDetail({ pin, onBack, onResolve, readOnly, onEditComment, current
   const [isDraggingReply, setIsDraggingReply] = useState(false);
   const replyDragDepthRef = useRef(0);
   const canAttachToReply = !readOnly && !!projectId;
+  const canDeleteAttachment = !readOnly && !!onDeleteAttachment;
+  const [deletingAttachmentId, setDeletingAttachmentId] = useState<string | null>(null);
+
+  const handleAttachmentDelete = async (commentId: string, attachmentId: string) => {
+    if (!onDeleteAttachment) return;
+    setDeletingAttachmentId(attachmentId);
+    // Optimistically remove from local reply state if it belonged to a reply
+    const snapshot = replies;
+    setReplies(prev => prev.map(r => ({
+      ...r,
+      attachments: r.attachments?.filter(a => a.id !== attachmentId),
+    })));
+    try {
+      await onDeleteAttachment(commentId, attachmentId);
+    } catch {
+      setReplies(snapshot);
+    } finally {
+      setDeletingAttachmentId(null);
+    }
+  };
 
   useEffect(() => {
     let isCancelled = false;
@@ -133,6 +157,14 @@ function ThreadDetail({ pin, onBack, onResolve, readOnly, onEditComment, current
 
   const canEdit =
     !!onEditComment &&
+    (
+      (userRole && ELEVATED_ROLES.includes(userRole)) ||
+      (pin.author?.trim().toLowerCase() === (currentUser ?? currentUserName).trim().toLowerCase())
+    );
+
+  const canDelete =
+    !readOnly &&
+    !!onDeleteComment &&
     (
       (userRole && ELEVATED_ROLES.includes(userRole)) ||
       (pin.author?.trim().toLowerCase() === (currentUser ?? currentUserName).trim().toLowerCase())
@@ -316,6 +348,16 @@ function ThreadDetail({ pin, onBack, onResolve, readOnly, onEditComment, current
               <Check className="size-3.75" strokeWidth={1.75} />
             </button>
           )}
+          {canDelete && (
+            <button
+              onClick={() => onDeleteComment?.(pin.id)}
+              aria-label="Delete comment"
+              title="Delete comment"
+              className="size-7 flex items-center justify-center rounded-full text-muted-foreground hover:text-red-600 hover:bg-red-50 transition-colors"
+            >
+              <Trash2 className="size-3.75" strokeWidth={1.75} />
+            </button>
+          )}
           <button
             aria-label="More options"
             className="size-7 flex items-center justify-center rounded-full text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
@@ -402,29 +444,64 @@ function ThreadDetail({ pin, onBack, onResolve, readOnly, onEditComment, current
                   {pin.attachments
                     .filter(a => a.mime_type.startsWith('image/'))
                     .map(a => (
-                      <a key={a.id} href={a.signedUrl} target="_blank" rel="noopener noreferrer">
-                        <img
-                          src={a.signedUrl}
-                          alt={a.original_filename}
-                          className="h-14 w-14 rounded object-cover border border-border/40"
-                        />
-                      </a>
+                      <div key={a.id} className="relative group">
+                        <a href={a.signedUrl} target="_blank" rel="noopener noreferrer">
+                          <img
+                            src={a.signedUrl}
+                            alt={a.original_filename}
+                            className={`h-14 w-14 rounded object-cover border border-border/40 ${
+                              deletingAttachmentId === a.id ? 'opacity-40' : ''
+                            }`}
+                          />
+                        </a>
+                        {canDeleteAttachment && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              handleAttachmentDelete(pin.id, a.id);
+                            }}
+                            disabled={deletingAttachmentId === a.id}
+                            title="Remove attachment"
+                            aria-label="Remove attachment"
+                            className="absolute -top-1 -right-1 bg-white rounded-full text-gray-500 hover:text-red-600 shadow-sm border border-gray-200 opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-100"
+                          >
+                            <XCircle className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
                     ))}
                 </div>
 
                 {pin.attachments
                   .filter(a => a.mime_type === 'application/pdf')
                   .map(a => (
-                    <a
-                      key={a.id}
-                      href={a.signedUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"
-                    >
-                      <FileText className="h-3.5 w-3.5 shrink-0" />
-                      <span className="truncate max-w-45">{a.original_filename}</span>
-                    </a>
+                    <div key={a.id} className="group flex items-center gap-1.5 text-xs">
+                      <a
+                        href={a.signedUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={`flex items-center gap-1.5 flex-1 min-w-0 text-muted-foreground hover:text-foreground ${
+                          deletingAttachmentId === a.id ? 'opacity-40' : ''
+                        }`}
+                      >
+                        <FileText className="h-3.5 w-3.5 shrink-0" />
+                        <span className="truncate max-w-45">{a.original_filename}</span>
+                      </a>
+                      {canDeleteAttachment && (
+                        <button
+                          type="button"
+                          onClick={() => handleAttachmentDelete(pin.id, a.id)}
+                          disabled={deletingAttachmentId === a.id}
+                          title="Remove attachment"
+                          aria-label="Remove attachment"
+                          className="shrink-0 text-gray-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-100"
+                        >
+                          <XCircle className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
                   ))}
               </div>
             )}
@@ -458,29 +535,64 @@ function ThreadDetail({ pin, onBack, onResolve, readOnly, onEditComment, current
                       {imageAttachments.length > 0 && (
                         <div className="flex flex-wrap gap-1.5">
                           {imageAttachments.map(a => (
-                            <a key={a.id} href={a.signedUrl} target="_blank" rel="noopener noreferrer">
-                              <img
-                                src={a.signedUrl}
-                                alt={a.original_filename}
-                                className="h-12 w-12 rounded object-cover border border-border/40"
-                              />
-                            </a>
+                            <div key={a.id} className="relative group">
+                              <a href={a.signedUrl} target="_blank" rel="noopener noreferrer">
+                                <img
+                                  src={a.signedUrl}
+                                  alt={a.original_filename}
+                                  className={`h-12 w-12 rounded object-cover border border-border/40 ${
+                                    deletingAttachmentId === a.id ? 'opacity-40' : ''
+                                  }`}
+                                />
+                              </a>
+                              {canDeleteAttachment && mine && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    handleAttachmentDelete(item.id, a.id);
+                                  }}
+                                  disabled={deletingAttachmentId === a.id}
+                                  title="Remove attachment"
+                                  aria-label="Remove attachment"
+                                  className="absolute -top-1 -right-1 bg-white rounded-full text-gray-500 hover:text-red-600 shadow-sm border border-gray-200 opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-100"
+                                >
+                                  <XCircle className="h-3.5 w-3.5" />
+                                </button>
+                              )}
+                            </div>
                           ))}
                         </div>
                       )}
                       {pdfAttachments.map(a => (
-                        <a
-                          key={a.id}
-                          href={a.signedUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className={`flex items-center gap-1.5 text-[11px] hover:underline ${
-                            mine ? 'text-primary-foreground/90' : 'text-muted-foreground hover:text-foreground'
-                          }`}
-                        >
-                          <FileText className="h-3 w-3 shrink-0" />
-                          <span className="truncate max-w-40">{a.original_filename}</span>
-                        </a>
+                        <div key={a.id} className="group flex items-center gap-1.5">
+                          <a
+                            href={a.signedUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className={`flex items-center gap-1.5 flex-1 min-w-0 text-[11px] hover:underline ${
+                              mine ? 'text-primary-foreground/90' : 'text-muted-foreground hover:text-foreground'
+                            } ${deletingAttachmentId === a.id ? 'opacity-40' : ''}`}
+                          >
+                            <FileText className="h-3 w-3 shrink-0" />
+                            <span className="truncate max-w-40">{a.original_filename}</span>
+                          </a>
+                          {canDeleteAttachment && isMine(item.user_name) && (
+                            <button
+                              type="button"
+                              onClick={() => handleAttachmentDelete(item.id, a.id)}
+                              disabled={deletingAttachmentId === a.id}
+                              title="Remove attachment"
+                              aria-label="Remove attachment"
+                              className={`shrink-0 opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-100 ${
+                                mine ? 'text-primary-foreground/70 hover:text-primary-foreground' : 'text-gray-400 hover:text-red-600'
+                              }`}
+                            >
+                              <XCircle className="h-3 w-3" />
+                            </button>
+                          )}
+                        </div>
                       ))}
                     </div>
                   )}
@@ -654,6 +766,8 @@ export default function CommentsSidebar({
   onTabChange,
   readOnly = false,
   onEditComment,
+  onDeleteAttachment,
+  onDeleteComment,
   currentUser,
   userRole,
   projectId,
@@ -661,6 +775,19 @@ export default function CommentsSidebar({
   const [expandedImages, setExpandedImages] = useState<string[]>([currentImageId]);
   const [activeTab, setActiveTab] = useState<'active' | 'resolved'>('active');
   const [openThreadPin, setOpenThreadPin] = useState<Pin | null>(null);
+  const [deletingAttachmentId, setDeletingAttachmentId] = useState<string | null>(null);
+
+  const canDeleteAttachmentInline = !readOnly && !!onDeleteAttachment;
+
+  const handleInlineAttachmentDelete = async (commentId: string, attachmentId: string) => {
+    if (!onDeleteAttachment) return;
+    setDeletingAttachmentId(attachmentId);
+    try {
+      await onDeleteAttachment(commentId, attachmentId);
+    } finally {
+      setDeletingAttachmentId(null);
+    }
+  };
 
   useEffect(() => {
     setExpandedImages(prev =>
@@ -765,22 +892,62 @@ export default function CommentsSidebar({
                   .filter(a => a.mime_type.startsWith('image/'))
                   .slice(0, 4)
                   .map(a => (
-                    <a key={a.id} href={a.signedUrl} target="_blank" rel="noopener noreferrer"
-                      onClick={e => e.stopPropagation()}>
-                      <img src={a.signedUrl} alt={a.original_filename}
-                        className="h-8 w-8 rounded object-cover border border-border/40" />
-                    </a>
+                    <div key={a.id} className="relative group/attachment">
+                      <a href={a.signedUrl} target="_blank" rel="noopener noreferrer"
+                        onClick={e => e.stopPropagation()}>
+                        <img src={a.signedUrl} alt={a.original_filename}
+                          className={`h-8 w-8 rounded object-cover border border-border/40 ${
+                            deletingAttachmentId === a.id ? 'opacity-40' : ''
+                          }`} />
+                      </a>
+                      {canDeleteAttachmentInline && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            handleInlineAttachmentDelete(pin.id, a.id);
+                          }}
+                          disabled={deletingAttachmentId === a.id}
+                          title="Remove attachment"
+                          aria-label="Remove attachment"
+                          className="absolute -top-1 -right-1 bg-white rounded-full text-gray-500 hover:text-red-600 shadow-sm border border-gray-200 opacity-0 group-hover/attachment:opacity-100 transition-opacity disabled:opacity-100"
+                        >
+                          <XCircle className="h-3 w-3" />
+                        </button>
+                      )}
+                    </div>
                   ))}
               </div>
               {pin.attachments
                 .filter(a => a.mime_type === 'application/pdf')
                 .map(a => (
-                  <a key={a.id} href={a.signedUrl} target="_blank" rel="noopener noreferrer"
-                    onClick={e => e.stopPropagation()}
-                    className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
-                    <FileText className="h-3 w-3 shrink-0" />
-                    <span className="truncate max-w-40">{a.original_filename}</span>
-                  </a>
+                  <div key={a.id} className="group/attachment flex items-center gap-1 text-xs">
+                    <a href={a.signedUrl} target="_blank" rel="noopener noreferrer"
+                      onClick={e => e.stopPropagation()}
+                      className={`flex items-center gap-1 flex-1 min-w-0 text-muted-foreground hover:text-foreground ${
+                        deletingAttachmentId === a.id ? 'opacity-40' : ''
+                      }`}>
+                      <FileText className="h-3 w-3 shrink-0" />
+                      <span className="truncate max-w-40">{a.original_filename}</span>
+                    </a>
+                    {canDeleteAttachmentInline && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handleInlineAttachmentDelete(pin.id, a.id);
+                        }}
+                        disabled={deletingAttachmentId === a.id}
+                        title="Remove attachment"
+                        aria-label="Remove attachment"
+                        className="shrink-0 text-gray-400 hover:text-red-600 opacity-0 group-hover/attachment:opacity-100 transition-opacity disabled:opacity-100"
+                      >
+                        <XCircle className="h-3 w-3" />
+                      </button>
+                    )}
+                  </div>
                 ))}
             </div>
           )}
@@ -898,6 +1065,12 @@ export default function CommentsSidebar({
             onResolve={onResolve}
             readOnly={readOnly}
             onEditComment={onEditComment}
+            onDeleteAttachment={onDeleteAttachment}
+            onDeleteComment={(id) => {
+              const result = onDeleteComment?.(id);
+              setOpenThreadPin(null);
+              return result ?? Promise.resolve();
+            }}
             currentUser={currentUser}
             userRole={userRole}
             projectId={projectId}

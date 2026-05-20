@@ -16,6 +16,12 @@ export interface BaseShape {
   color: string;
   strokeWidth: number;
   createdAt: string;
+  /**
+   * When true, the shape's geometry is stored as fractions (0..1) of the canvas
+   * dimensions, making it zoom-invariant. Legacy shapes (no flag) are in raw
+   * pixel coords of the canvas at the moment they were drawn.
+   */
+  normalized?: boolean;
 }
 
 export interface FreehandShape extends BaseShape {

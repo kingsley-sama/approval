@@ -353,6 +353,7 @@ export async function updateCommentPosition(
   x: number,
   y: number,
   projectId?: string,
+  drawingData?: any,
 ): Promise<{ success: boolean; error?: string }> {
   await requireUser();
 
@@ -368,13 +369,18 @@ export async function updateCommentPosition(
 
   const supabase = await createClient();
 
+  const update: Record<string, unknown> = {
+    x_position: parsed.data.x,
+    y_position: parsed.data.y,
+    updated_at: new Date().toISOString(),
+  };
+  if (drawingData !== undefined) {
+    update.drawing_data = drawingData;
+  }
+
   const { error } = await supabase
     .from('markup_comments')
-    .update({
-      x_position: parsed.data.x,
-      y_position: parsed.data.y,
-      updated_at: new Date().toISOString(),
-    })
+    .update(update)
     .eq('id', parsed.data.commentId);
 
   if (error) {
@@ -437,11 +443,12 @@ export async function updateComment(
   return { success: true, comment: data as DbComment };
 }
 
-/** Delete a comment */
+/** Delete a comment. Author, admin, or pm only. */
 export async function deleteComment(
-  commentId: string
+  commentId: string,
+  projectId?: string,
 ): Promise<{ success: boolean; error?: string }> {
-  await requireUser();
+  const user = await requireUser();
 
   const parsed = DeleteCommentSchema.safeParse({ commentId });
   if (!parsed.success) {
@@ -450,13 +457,32 @@ export async function deleteComment(
 
   const supabase = await createClient();
 
+  const { data: existing, error: fetchErr } = await supabase
+    .from('markup_comments')
+    .select('user_name')
+    .eq('id', parsed.data.commentId)
+    .single();
+
+  if (fetchErr || !existing) {
+    return { success: false, error: 'Comment not found' };
+  }
+
+  const authorName = existing.user_name?.trim().toLowerCase() ?? '';
+  const currentName = (user.name || user.email || '').trim().toLowerCase();
+  const elevated = user.role === 'admin' || user.role === 'pm';
+  if (!elevated && authorName !== currentName) {
+    return { success: false, error: 'You can only delete your own comments' };
+  }
+
   const { error } = await supabase
     .from('markup_comments')
     .delete()
-    .eq('id', commentId);
+    .eq('id', parsed.data.commentId);
 
   if (error) {
     return { success: false, error: error.message };
   }
+
+  if (projectId) revalidatePath(`/projects/${projectId}`);
   return { success: true };
 }

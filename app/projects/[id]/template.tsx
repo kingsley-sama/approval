@@ -81,6 +81,8 @@ interface ProjectShellProps {
 	onUploadComplete: () => Promise<void>;
 	onCommentTabChange?: (tab: 'active' | 'resolved') => void;
 	onEditComment?: (commentId: string, newText: string) => Promise<{ success: boolean; error?: string }>;
+	onDeleteAttachment?: (commentId: string, attachmentId: string) => Promise<void>;
+	onDeleteComment?: (commentId: string) => Promise<void>;
 	currentUser?: string;
 	userRole?: string;
 	sidebarsCollapsed?: boolean;
@@ -189,6 +191,8 @@ export function ProjectShell({
 	onUploadComplete,
 	onCommentTabChange,
 	onEditComment,
+	onDeleteAttachment,
+	onDeleteComment,
 	currentUser,
 	userRole,
 	sidebarsCollapsed,
@@ -206,6 +210,8 @@ export function ProjectShell({
 					onResolve={onResolveComment}
 					onTabChange={onCommentTabChange}
 					onEditComment={onEditComment}
+					onDeleteAttachment={onDeleteAttachment}
+					onDeleteComment={onDeleteComment}
 					currentUser={currentUser}
 					userRole={userRole}
 					projectId={projectId}

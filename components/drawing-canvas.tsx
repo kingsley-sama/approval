@@ -13,6 +13,7 @@ import type {
   Point,
 } from '@/types/drawing';
 import { nanoid } from 'nanoid';
+import { denormalizeShape } from '@/lib/drawing';
 
 /**
  * Fully-controlled drawing canvas.
@@ -117,7 +118,7 @@ function DrawingCanvasInner({
       onMouseUp={handleMouseUp}
     >
       <Layer>
-        {shapes.map((s, index) => renderShape(s, `${s.id}_${index}`))}
+        {shapes.map((s, index) => renderShape(denormalizeShape(s, imageWidth, imageHeight), `${s.id}_${index}`))}
         {currentShape && renderShape(currentShape, '__current__')}
       </Layer>
     </Stage>

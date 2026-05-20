@@ -13,6 +13,7 @@ import Image from 'next/image';
 import dynamic from 'next/dynamic';
 import DrawingToolbar, { DRAWING_COLOR, STROKE_WIDTH } from '@/components/drawing-toolbar';
 import { DrawingTool, Shape } from '@/types/drawing';
+import { normalizeShape } from '@/lib/drawing';
 import { Button } from '../ui/button';
 import {
   DropdownMenu,
@@ -44,7 +45,7 @@ interface ImageViewerProps {
   pins: Pin[];
   selectedPin: string | null;
   onPinClick: (x: number, y: number, pinId?: string) => void;
-  onPinReposition?: (pinId: string, x: number, y: number) => void | Promise<void>;
+  onPinReposition?: (pinId: string, x: number, y: number, deltaPxX: number, deltaPxY: number) => void | Promise<void>;
   isFullscreen: boolean;
   onToggleFullscreen: () => void;
   hoveredPin: string | null;
@@ -57,6 +58,7 @@ interface ImageViewerProps {
   drawnShapes: Shape[];
   pendingShapes: Shape[];
   onShapeComplete: (shape: Shape, center: { x: number; y: number }) => void;
+  onUndoShape?: () => void;
   showDrawingTools?: boolean;
 }
 
@@ -79,6 +81,7 @@ function ImageViewerInner({
   drawnShapes,
   pendingShapes,
   onShapeComplete,
+  onUndoShape,
   showDrawingTools = true,
 }: ImageViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -114,23 +117,22 @@ function ImageViewerInner({
     return Math.max(0, Math.min(100, value));
   };
 
-  const getShapeCenter = (shape: Shape, rw: number, rh: number) => {
+  // Pin sits at the point where the drawing began (the first mouse-down).
+  const getShapeAnchor = (shape: Shape, rw: number, rh: number) => {
     if (rw <= 0 || rh <= 0) {
       return { x: 50, y: 50 };
     }
 
     let px = 0, py = 0;
     if (shape.type === 'pen') {
-      const xs = shape.points.filter((_, i) => i % 2 === 0);
-      const ys = shape.points.filter((_, i) => i % 2 === 1);
-      px = xs.reduce((a, b) => a + b, 0) / xs.length;
-      py = ys.reduce((a, b) => a + b, 0) / ys.length;
+      px = shape.points[0] ?? 0;
+      py = shape.points[1] ?? 0;
     } else if (shape.type === 'rectangle' || shape.type === 'highlight') {
-      px = shape.x + shape.width / 2;
-      py = shape.y + shape.height / 2;
+      px = shape.x;
+      py = shape.y;
     } else if (shape.type === 'arrow') {
-      px = (shape.points[0] + shape.points[2]) / 2;
-      py = (shape.points[1] + shape.points[3]) / 2;
+      px = shape.points[0];
+      py = shape.points[1];
     }
     return {
       x: clampPercent((px / rw) * 100),
@@ -181,6 +183,24 @@ function ImageViewerInner({
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [isFullscreen, onToggleFullscreen]);
+
+  // Ctrl/Cmd+Z to undo the last drawn shape (while pending shapes exist)
+  useEffect(() => {
+    if (!onUndoShape) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) {
+        const target = e.target as HTMLElement | null;
+        if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+          return;
+        }
+        if (pendingShapes.length === 0) return;
+        e.preventDefault();
+        onUndoShape();
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [onUndoShape, pendingShapes.length]);
 
   const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (suppressNextClickRef.current) {
@@ -246,7 +266,13 @@ function ImageViewerInner({
 
       if (!moved) return;
 
-      onPinReposition?.(pinId, finalPosition.x, finalPosition.y);
+      const rect = imageRef.current?.getBoundingClientRect();
+      const w = rect?.width ?? renderedDimensions.width;
+      const h = rect?.height ?? renderedDimensions.height;
+      const deltaPxX = ((finalPosition.x - dragState.originX) / 100) * w;
+      const deltaPxY = ((finalPosition.y - dragState.originY) / 100) * h;
+
+      onPinReposition?.(pinId, finalPosition.x, finalPosition.y, deltaPxX, deltaPxY);
     };
 
     window.addEventListener('pointermove', handlePointerMove);
@@ -291,7 +317,19 @@ function ImageViewerInner({
 
     if (zoom === 'fit-horizontal') return { width: baseWidth, height: 'auto' };
     if (zoom === 'fit-window') return { maxWidth: fitWidth, maxHeight: fitHeight, width: 'auto', height: 'auto' };
-    if (typeof zoom === 'number') return { width: `${zoom}vw`, height: 'auto' };
+    if (typeof zoom === 'number') {
+      // Zoom as a percentage of the image's natural width.
+      // Falls back to viewport-relative until natural dimensions are known.
+      if (imageDimensions.width > 0) {
+        return {
+          width: `${(imageDimensions.width * zoom) / 100}px`,
+          height: 'auto',
+          maxWidth: 'none',
+          maxHeight: 'none',
+        };
+      }
+      return { width: `${zoom}vw`, height: 'auto', maxWidth: 'none' };
+    }
   };
 
   const getZoomLabel = () => {
@@ -344,6 +382,8 @@ function ImageViewerInner({
               <DrawingToolbar
                 activeTool={activeTool}
                 onToolSelect={setActiveTool}
+                onUndo={onUndoShape}
+                canUndo={pendingShapes.length > 0}
               />
             </div>
           )}
@@ -430,8 +470,12 @@ function ImageViewerInner({
                 strokeWidth={STROKE_WIDTH}
                 isEnabled={activeTool !== null}
                 onShapeComplete={(shape) => {
-                  const center = getShapeCenter(shape, renderedDimensions.width, renderedDimensions.height);
-                  onShapeComplete(shape, center);
+                  // Compute the pin anchor from the raw pixel-coord shape (matches
+                  // the canvas coords the user just clicked), then normalize the
+                  // shape itself so it scales with future zoom changes.
+                  const anchor = getShapeAnchor(shape, renderedDimensions.width, renderedDimensions.height);
+                  const normalized = normalizeShape(shape, renderedDimensions.width, renderedDimensions.height);
+                  onShapeComplete(normalized, anchor);
                 }}
               />
             </div>

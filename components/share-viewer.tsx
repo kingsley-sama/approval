@@ -150,9 +150,15 @@ export default function ShareViewer({ shareLink, resourceData, token }: ShareVie
 
   const currentThread = threads[currentIndex];
   const pins = currentThread?.pins || [];
-  const drawnShapes: Shape[] = pins.flatMap(p =>
-    !p.drawingData ? [] : Array.isArray(p.drawingData) ? p.drawingData : [p.drawingData]
-  );
+  // Drawings render only for the active pin (selected click takes priority over
+  // hover), matching the main project view.
+  const drawnShapes: Shape[] = (() => {
+    const activeId = selectedPin ?? hoveredPin;
+    if (!activeId) return [];
+    const pin = pins.find(p => p.id === activeId);
+    if (!pin?.drawingData) return [];
+    return Array.isArray(pin.drawingData) ? pin.drawingData : [pin.drawingData];
+  })();
 
   const handleImageClick = (x: number, y: number) => {
     if (!canComment || !nameConfirmed) return;

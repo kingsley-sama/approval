@@ -9,6 +9,8 @@ export const STROKE_WIDTH = 3;
 interface DrawingToolbarProps {
   activeTool: DrawingTool | null;
   onToolSelect: (tool: DrawingTool | null) => void;
+  onUndo?: () => void;
+  canUndo?: boolean;
 }
 
 const tools: { value: DrawingTool; label: string; icon: React.ReactNode }[] = [
@@ -62,7 +64,7 @@ const tools: { value: DrawingTool; label: string; icon: React.ReactNode }[] = [
   },
 ];
 
-export default function DrawingToolbar({ activeTool, onToolSelect }: DrawingToolbarProps) {
+export default function DrawingToolbar({ activeTool, onToolSelect, onUndo, canUndo }: DrawingToolbarProps) {
   return (
     <div className="flex items-center gap-0.5 bg-white/90 backdrop-blur-sm border border-gray-200 rounded-lg shadow-sm px-1 py-1">
       {tools.map((tool, i) => (
@@ -84,6 +86,26 @@ export default function DrawingToolbar({ activeTool, onToolSelect }: DrawingTool
           </button>
         </React.Fragment>
       ))}
+      {onUndo && (
+        <>
+          <div className="w-px h-5 bg-gray-200 mx-0.5 flex-shrink-0" />
+          <button
+            onClick={onUndo}
+            disabled={!canUndo}
+            title="Undo last drawing (Ctrl+Z)"
+            className={`p-2 rounded-md transition-all ${
+              canUndo
+                ? 'text-gray-500 hover:bg-gray-100 hover:text-gray-800'
+                : 'text-gray-300 cursor-not-allowed'
+            }`}
+          >
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+              <path d="M9 14L4 9l5-5" />
+              <path d="M4 9h7a5 5 0 015 5v2" />
+            </svg>
+          </button>
+        </>
+      )}
     </div>
   );
 }

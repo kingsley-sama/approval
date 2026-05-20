@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { X, Paperclip, Link2, Search, FileText, ImageIcon, XCircle, ExternalLink, Send, Smile, Pencil } from 'lucide-react';
+import { X, Paperclip, Link2, Search, FileText, ImageIcon, XCircle, ExternalLink, Send, Smile, Pencil, Check, Trash2 } from 'lucide-react';
 import { getProjectsForMention } from '@/app/actions/projects';
 import type { AttachmentRecord } from '@/app/actions/storage';
 import CommentBody from './comment-body';
@@ -41,7 +41,10 @@ interface CommentModalProps {
   isFullscreen?: boolean;
   disableAttachments?: boolean;
   onAddAttachment?: (commentId: string, files: File[]) => Promise<void>;
+  onDeleteAttachment?: (commentId: string, attachmentId: string) => Promise<void>;
   onEditComment?: (commentId: string, newText: string) => Promise<{ success: boolean; error?: string }>;
+  onResolve?: (commentId: string) => void;
+  onDeleteComment?: (commentId: string) => Promise<void>;
 }
 
 const ALLOWED_TYPES = new Set([
@@ -71,8 +74,22 @@ export default function CommentModal({
   isFullscreen,
   disableAttachments = false,
   onAddAttachment,
+  onDeleteAttachment,
   onEditComment,
+  onResolve,
+  onDeleteComment,
 }: CommentModalProps) {
+  const [deletingAttachmentId, setDeletingAttachmentId] = useState<string | null>(null);
+
+  const handleDeleteAttachmentClick = async (attachmentId: string) => {
+    if (!existingPin || !onDeleteAttachment) return;
+    setDeletingAttachmentId(attachmentId);
+    try {
+      await onDeleteAttachment(existingPin.id, attachmentId);
+    } finally {
+      setDeletingAttachmentId(null);
+    }
+  };
   const [comment, setComment] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
@@ -127,6 +144,13 @@ export default function CommentModal({
   const canEditExisting =
     !!existingPin &&
     !!onEditComment &&
+    (ELEVATED_ROLES.includes(userRole) ||
+      (existingPin.author?.trim().toLowerCase() === currentUser.trim().toLowerCase()));
+
+  const canDeleteExisting =
+    !!existingPin &&
+    !isNewPin &&
+    !!onDeleteComment &&
     (ELEVATED_ROLES.includes(userRole) ||
       (existingPin.author?.trim().toLowerCase() === currentUser.trim().toLowerCase()));
 
@@ -473,12 +497,39 @@ export default function CommentModal({
           ) : (
             <div className="text-xs font-semibold text-gray-700 flex-1">New comment</div>
           )}
-          <button
-            onClick={onClose}
-            className="p-0.5 hover:bg-gray-100 rounded text-gray-600 shrink-0 transition-colors"
-          >
-            <X size={14} />
-          </button>
+          <div className="flex items-center gap-0.5 shrink-0">
+            {existingPin && !isNewPin && onResolve && (
+              <button
+                onClick={() => onResolve(existingPin.id)}
+                aria-label={existingPin.status === 'resolved' ? 'Mark active' : 'Mark resolved'}
+                title={existingPin.status === 'resolved' ? 'Mark active' : 'Mark resolved'}
+                className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium transition-colors ${
+                  existingPin.status === 'resolved'
+                    ? 'bg-green-100 text-green-700 hover:bg-green-200'
+                    : 'text-gray-600 hover:bg-gray-100'
+                }`}
+              >
+                <Check size={12} strokeWidth={2} />
+                <span>{existingPin.status === 'resolved' ? 'Resolved' : 'Resolve'}</span>
+              </button>
+            )}
+            {canDeleteExisting && (
+              <button
+                onClick={() => existingPin && onDeleteComment?.(existingPin.id)}
+                aria-label="Delete comment"
+                title="Delete comment"
+                className="p-1 rounded text-gray-500 hover:text-red-600 hover:bg-red-50 transition-colors"
+              >
+                <Trash2 size={13} />
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className="p-0.5 hover:bg-gray-100 rounded text-gray-600 transition-colors"
+            >
+              <X size={14} />
+            </button>
+          </div>
         </div>
 
         {/* ── Body ── */}
@@ -544,36 +595,70 @@ export default function CommentModal({
                   {existingPin.attachments
                     .filter(a => a.mime_type.startsWith('image/'))
                     .map(a => (
-                      <a
-                        key={a.id}
-                        href={a.signedUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="relative group block"
-                      >
-                        <img
-                          src={a.signedUrl}
-                          alt={a.original_filename}
-                          className="h-14 w-14 rounded object-cover border border-border/40 group-hover:opacity-80 transition-opacity"
-                        />
-                        <ExternalLink size={10} className="absolute bottom-1 right-1 text-white drop-shadow opacity-0 group-hover:opacity-100 transition-opacity" />
-                      </a>
+                      <div key={a.id} className="relative group">
+                        <a
+                          href={a.signedUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="block"
+                        >
+                          <img
+                            src={a.signedUrl}
+                            alt={a.original_filename}
+                            className={`h-14 w-14 rounded object-cover border border-border/40 group-hover:opacity-80 transition-opacity ${
+                              deletingAttachmentId === a.id ? 'opacity-40' : ''
+                            }`}
+                          />
+                          <ExternalLink size={10} className="absolute bottom-1 right-1 text-white drop-shadow opacity-0 group-hover:opacity-100 transition-opacity" />
+                        </a>
+                        {onDeleteAttachment && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              handleDeleteAttachmentClick(a.id);
+                            }}
+                            disabled={deletingAttachmentId === a.id}
+                            title="Remove attachment"
+                            aria-label="Remove attachment"
+                            className="absolute -top-1 -right-1 bg-white rounded-full text-gray-500 hover:text-red-600 shadow-sm border border-gray-200 opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-100"
+                          >
+                            <XCircle size={14} />
+                          </button>
+                        )}
+                      </div>
                     ))}
                 </div>
                 {existingPin.attachments
                   .filter(a => a.mime_type === 'application/pdf')
                   .map(a => (
-                    <a
-                      key={a.id}
-                      href={a.signedUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-1.5 px-2 py-1 bg-gray-50 border border-border rounded text-xs text-muted-foreground hover:text-foreground hover:bg-gray-100 transition-colors"
-                    >
-                      <FileText size={12} className="text-gray-500 shrink-0" />
-                      <span className="flex-1 truncate">{a.original_filename}</span>
-                      <ExternalLink size={10} className="shrink-0 opacity-50" />
-                    </a>
+                    <div key={a.id} className="group flex items-center gap-1.5 px-2 py-1 bg-gray-50 border border-border rounded text-xs">
+                      <a
+                        href={a.signedUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={`flex items-center gap-1.5 flex-1 min-w-0 text-muted-foreground hover:text-foreground transition-colors ${
+                          deletingAttachmentId === a.id ? 'opacity-40' : ''
+                        }`}
+                      >
+                        <FileText size={12} className="text-gray-500 shrink-0" />
+                        <span className="flex-1 truncate">{a.original_filename}</span>
+                        <ExternalLink size={10} className="shrink-0 opacity-50" />
+                      </a>
+                      {onDeleteAttachment && (
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteAttachmentClick(a.id)}
+                          disabled={deletingAttachmentId === a.id}
+                          title="Remove attachment"
+                          aria-label="Remove attachment"
+                          className="shrink-0 text-gray-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-100"
+                        >
+                          <XCircle size={12} />
+                        </button>
+                      )}
+                    </div>
                   ))}
               </div>
             )}

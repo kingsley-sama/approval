@@ -3,8 +3,8 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import ImageViewer from '@/components/annotation/image-viewer';
 import CommentModal from '@/components/annotation/comment-modal';
 import { getProjectThreads } from '@/app/actions/threads';
-import { getThreadComments, resolveComment, getCurrentUser, DbComment, updateCommentPosition, updateComment } from '@/app/actions/comments';
-import { getAttachmentUploadUrl, registerAttachment, getAttachmentsForComments } from '@/app/actions/storage';
+import { getThreadComments, resolveComment, getCurrentUser, DbComment, updateCommentPosition, updateComment, deleteComment } from '@/app/actions/comments';
+import { getAttachmentUploadUrl, registerAttachment, getAttachmentsForComments, deleteAttachment } from '@/app/actions/storage';
 import { useCommentQueue } from '@/hooks/use-comment-queue';
 import { useRealtimeComments } from '@/hooks/use-realtime-comments';
 import { useToast } from '@/hooks/use-toast';
@@ -12,6 +12,7 @@ import { Upload } from 'lucide-react';
 import ImageUploader from '@/components/image-uploader';
 import { ProjectTopNav, ProjectShell, ProjectImageData, ProjectPin } from './template';
 import type { Shape } from '@/types/drawing';
+import { shiftDrawingData } from '@/lib/drawing';
 
 type Pin = ProjectPin;
 type ImageData = ProjectImageData;
@@ -233,14 +234,17 @@ export default function ProjectPage({ params, searchParams }: ProjectPageProps) 
     () => pins.filter(p => commentTab === 'resolved' ? p.status === 'resolved' : p.status !== 'resolved'),
     [pins, commentTab]
   );
-  // Extract Konva shapes from visible pins to pass to the drawing canvas.
-  // Each pin may carry one shape (legacy rows) or an array of shapes.
-  const drawnShapes = useMemo<Shape[]>(
-    () => visiblePins.flatMap(p =>
-      !p.drawingData ? [] : Array.isArray(p.drawingData) ? p.drawingData : [p.drawingData]
-    ),
-    [visiblePins]
-  );
+  // Drawings render only for the active pin (selected click takes priority over
+  // hover) so multiple pins don't visually collide. The clicked pin opens the
+  // comment modal AND reveals its mark; hovering a pin reveals it without
+  // opening the modal.
+  const drawnShapes = useMemo<Shape[]>(() => {
+    const activeId = selectedPin ?? hoveredPin;
+    if (!activeId) return [];
+    const pin = visiblePins.find(p => p.id === activeId);
+    if (!pin?.drawingData) return [];
+    return Array.isArray(pin.drawingData) ? pin.drawingData : [pin.drawingData];
+  }, [visiblePins, selectedPin, hoveredPin]);
 
   /** Called by ImageViewer when the user finishes drawing a shape.
    *  First shape opens the modal at its centre; subsequent shapes append
@@ -255,6 +259,10 @@ export default function ProjectPage({ params, searchParams }: ProjectPageProps) 
       setShowModal(true);
     }
   }, [showModal]);
+
+  const handleUndoShape = useCallback(() => {
+    setPendingShapes(prev => prev.slice(0, -1));
+  }, []);
 
   const handleImageClick = useCallback((x: number, y: number) => {
     // Store position and open modal — no placeholder pin yet
@@ -348,6 +356,56 @@ export default function ProjectPage({ params, searchParams }: ProjectPageProps) 
     }));
   };
 
+  const handleDeleteComment = async (commentId: string) => {
+    if (commentId.startsWith('local_')) return;
+    const confirmed = typeof window !== 'undefined'
+      ? window.confirm('Delete this comment? Its drawing, attachments, and replies will be removed.')
+      : true;
+    if (!confirmed) return;
+
+    const snapshot = imagesState;
+    setImagesState(prev => prev.map(img => ({
+      ...img,
+      pins: img.pins.filter(p => p.id !== commentId),
+    })));
+    if (selectedPin === commentId) {
+      setSelectedPin(null);
+      setShowModal(false);
+    }
+
+    const result = await deleteComment(commentId, projectId);
+    if (!result.success) {
+      setImagesState(snapshot);
+      toast({
+        title: 'Failed to delete comment',
+        description: result.error ?? 'Please try again.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleDeleteAttachment = async (commentId: string, attachmentId: string) => {
+    // Optimistic removal
+    const snapshot = imagesState;
+    setImagesState(prev => prev.map(img => ({
+      ...img,
+      pins: img.pins.map(p =>
+        p.id === commentId
+          ? { ...p, attachments: (p.attachments ?? []).filter(a => a.id !== attachmentId) }
+          : p
+      ),
+    })));
+    const result = await deleteAttachment(attachmentId);
+    if (!result.success) {
+      setImagesState(snapshot);
+      toast({
+        title: 'Failed to remove attachment',
+        description: result.error ?? 'Please try again.',
+        variant: 'destructive',
+      });
+    }
+  };
+
   const handleSwitchImage = useCallback((imageId: string) => {
     const index = imagesState.findIndex(img => img.id === imageId);
     if (index !== -1) {
@@ -418,7 +476,7 @@ export default function ProjectPage({ params, searchParams }: ProjectPageProps) 
     }
   }, [pins, handleImageClick]);
 
-  const handlePinReposition = useCallback(async (pinId: string, x: number, y: number) => {
+  const handlePinReposition = useCallback(async (pinId: string, x: number, y: number, deltaPxX: number, deltaPxY: number) => {
     // Local optimistic comments are not in the DB yet.
     if (pinId.startsWith('local_') || !currentImageId) return;
 
@@ -427,6 +485,15 @@ export default function ProjectPage({ params, searchParams }: ProjectPageProps) 
     if (!pinBeforeUpdate) return;
 
     const previousPosition = { x: pinBeforeUpdate.x, y: pinBeforeUpdate.y };
+    const previousDrawingData = pinBeforeUpdate.drawingData;
+    // Pixel delta moves legacy (pre-normalization) shapes; fractional delta —
+    // a percent-of-canvas shift expressed as a 0..1 number — moves normalized
+    // shapes. shiftShape picks the right one per shape.
+    const deltaFracX = (x - previousPosition.x) / 100;
+    const deltaFracY = (y - previousPosition.y) / 100;
+    const shiftedDrawingData = previousDrawingData
+      ? shiftDrawingData(previousDrawingData, deltaPxX, deltaPxY, deltaFracX, deltaFracY)
+      : undefined;
 
     setImagesState(prev => prev.map(img =>
       img.id === currentImageId
@@ -434,7 +501,7 @@ export default function ProjectPage({ params, searchParams }: ProjectPageProps) 
             ...img,
             pins: img.pins.map(pin =>
               pin.id === pinId
-                ? { ...pin, x, y }
+                ? { ...pin, x, y, drawingData: shiftedDrawingData ?? pin.drawingData }
                 : pin
             ),
           }
@@ -445,7 +512,7 @@ export default function ProjectPage({ params, searchParams }: ProjectPageProps) 
       setModalPosition({ x, y });
     }
 
-    const result = await updateCommentPosition(pinId, x, y, projectId);
+    const result = await updateCommentPosition(pinId, x, y, projectId, shiftedDrawingData);
     if (!result.success) {
       setImagesState(prev => prev.map(img =>
         img.id === currentImageId
@@ -453,7 +520,7 @@ export default function ProjectPage({ params, searchParams }: ProjectPageProps) 
               ...img,
               pins: img.pins.map(pin =>
                 pin.id === pinId
-                  ? { ...pin, x: previousPosition.x, y: previousPosition.y }
+                  ? { ...pin, x: previousPosition.x, y: previousPosition.y, drawingData: previousDrawingData }
                   : pin
               ),
             }
@@ -511,6 +578,8 @@ export default function ProjectPage({ params, searchParams }: ProjectPageProps) 
         onUploadComplete={fetchThreads}
         onCommentTabChange={setCommentTab}
         onEditComment={handleEditComment}
+        onDeleteAttachment={handleDeleteAttachment}
+        onDeleteComment={handleDeleteComment}
         currentUser={currentUserName}
         userRole={currentUserRole}
         sidebarsCollapsed={sidebarsCollapsed}
@@ -553,6 +622,7 @@ export default function ProjectPage({ params, searchParams }: ProjectPageProps) 
             pendingShapes={pendingShapes}
             currentImageName={currentImage?.name}
             onShapeComplete={handleShapeComplete}
+            onUndoShape={handleUndoShape}
             onPinClick={handlePinClick}
             onPinReposition={handlePinReposition}
             isFullscreen={isFullscreen}
@@ -584,7 +654,10 @@ export default function ProjectPage({ params, searchParams }: ProjectPageProps) 
           isNewPin={isNewPin}
           isFullscreen={isFullscreen}
           onAddAttachment={!isNewPin ? handleAddAttachmentToComment : undefined}
+          onDeleteAttachment={!isNewPin ? handleDeleteAttachment : undefined}
           onEditComment={!isNewPin ? handleEditComment : undefined}
+          onResolve={!isNewPin ? handleResolveComment : undefined}
+          onDeleteComment={!isNewPin ? handleDeleteComment : undefined}
         />
       )}
     </div>
