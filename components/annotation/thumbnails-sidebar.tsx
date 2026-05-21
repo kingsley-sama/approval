@@ -4,6 +4,7 @@ import { ChevronUp, ChevronDown } from 'lucide-react';
 import NextImage from 'next/image';
 import ImageUploader from '@/components/image-uploader';
 import { getOptimizedImageUrl, IMAGE_SIZES } from '@/lib/image-url';
+import { IconTooltip } from '@/components/ui/icon-tooltip';
 
 interface ImageData {
   id: string;
@@ -61,26 +62,32 @@ export default function ThumbnailsSidebar({
       <div className="border-t border-border p-2 flex items-center justify-between text-xs text-gray-600">
         <span>{images.findIndex(img => img.id === currentImageId) + 1} of {images.length}</span>
         <div className="flex gap-1">
-          <button
-            className="p-1 hover:bg-gray-100 rounded disabled:opacity-40"
-            disabled={images.findIndex(img => img.id === currentImageId) === 0}
-            onClick={() => {
-              const idx = images.findIndex(img => img.id === currentImageId);
-              if (idx > 0) onSelectImage(images[idx - 1].id);
-            }}
-          >
-            <ChevronUp size={16} />
-          </button>
-          <button
-            className="p-1 hover:bg-gray-100 rounded disabled:opacity-40"
-            disabled={images.findIndex(img => img.id === currentImageId) === images.length - 1}
-            onClick={() => {
-              const idx = images.findIndex(img => img.id === currentImageId);
-              if (idx < images.length - 1) onSelectImage(images[idx + 1].id);
-            }}
-          >
-            <ChevronDown size={16} />
-          </button>
+          <IconTooltip label="Previous image" side="top">
+            <button
+              aria-label="Previous image"
+              className="p-1 hover:bg-gray-100 rounded disabled:opacity-40"
+              disabled={images.findIndex(img => img.id === currentImageId) === 0}
+              onClick={() => {
+                const idx = images.findIndex(img => img.id === currentImageId);
+                if (idx > 0) onSelectImage(images[idx - 1].id);
+              }}
+            >
+              <ChevronUp size={16} />
+            </button>
+          </IconTooltip>
+          <IconTooltip label="Next image" side="top">
+            <button
+              aria-label="Next image"
+              className="p-1 hover:bg-gray-100 rounded disabled:opacity-40"
+              disabled={images.findIndex(img => img.id === currentImageId) === images.length - 1}
+              onClick={() => {
+                const idx = images.findIndex(img => img.id === currentImageId);
+                if (idx < images.length - 1) onSelectImage(images[idx + 1].id);
+              }}
+            >
+              <ChevronDown size={16} />
+            </button>
+          </IconTooltip>
         </div>
       </div>
     </div>

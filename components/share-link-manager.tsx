@@ -34,6 +34,7 @@ import {
 } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { Share, Check, Copy } from 'lucide-react';
+import { useConfirm } from '@/components/confirm-dialog';
 
 interface ShareLinkManagerProps {
   resourceType: ShareResourceType;
@@ -53,6 +54,7 @@ export default function ShareLinkManager({
   const [isOpen, setIsOpen] = useState(false);
   const [shareLinks, setShareLinks] = useState<ShareLink[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const confirm = useConfirm();
   
   // Form state
   const [permission, setPermission] = useState<SharePermission>('view');
@@ -98,7 +100,14 @@ export default function ShareLinkManager({
   };
 
   const handleRevokeLink = async (shareId: string) => {
-    if (!confirm('Are you sure you want to revoke this share link?')) return;
+    const confirmed = await confirm({
+      title: 'Revoke this share link?',
+      description: 'Anyone using this link will lose access immediately. This cannot be undone.',
+      confirmText: 'Revoke',
+      cancelText: 'Cancel',
+      destructive: true,
+    });
+    if (!confirmed) return;
 
     setIsLoading(true);
     const result = await revokeShareLink(shareId);

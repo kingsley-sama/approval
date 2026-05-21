@@ -628,6 +628,7 @@ export default function ShareViewer({ shareLink, resourceData, token }: ShareVie
             onToggleFullscreen={() => setIsFullscreen(!isFullscreen)}
             showDrawingTools={canDraw && nameConfirmed}
             currentImageName={currentThread.name}
+            onUndoShape={() => setPendingShapes(prev => prev.slice(0, -1))}
           />
         ) : (
           <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
@@ -773,6 +774,8 @@ export default function ShareViewer({ shareLink, resourceData, token }: ShareVie
           onEditComment={canComment ? handleEditComment : undefined}
           isFullscreen={isFullscreen}
           disableAttachments
+          onUndoShape={isNewPin ? () => setPendingShapes(prev => prev.slice(0, -1)) : undefined}
+          canUndoShape={pendingShapes.length > 0}
         />
       )}
     </div>

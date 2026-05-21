@@ -3,6 +3,8 @@ import { Inter, Manrope } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { ThemeProvider } from '@/components/theme-provider'
 import { Toaster } from '@/components/ui/toaster'
+import { ConfirmDialogProvider } from '@/components/confirm-dialog'
+import { TooltipProvider } from '@/components/ui/tooltip'
 import './globals.css'
 
 const inter = Inter({
@@ -60,7 +62,11 @@ export default function RootLayout({
           enableSystem={false}
           disableTransitionOnChange
         >
-          {children}
+          <TooltipProvider delayDuration={200} skipDelayDuration={300}>
+            <ConfirmDialogProvider>
+              {children}
+            </ConfirmDialogProvider>
+          </TooltipProvider>
         </ThemeProvider>
         <Toaster />
         <Analytics />

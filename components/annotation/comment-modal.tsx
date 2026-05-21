@@ -7,6 +7,7 @@ import type { AttachmentRecord } from '@/app/actions/storage';
 import CommentBody from './comment-body';
 import { getRepliesForComment, createReply, type CommentReply } from '@/app/actions/replies';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
+import { IconTooltip } from '@/components/ui/icon-tooltip';
 
 interface Pin {
   id: string;
@@ -45,6 +46,8 @@ interface CommentModalProps {
   onEditComment?: (commentId: string, newText: string) => Promise<{ success: boolean; error?: string }>;
   onResolve?: (commentId: string) => void;
   onDeleteComment?: (commentId: string) => Promise<void>;
+  onUndoShape?: () => void;
+  canUndoShape?: boolean;
 }
 
 const ALLOWED_TYPES = new Set([
@@ -78,6 +81,8 @@ export default function CommentModal({
   onEditComment,
   onResolve,
   onDeleteComment,
+  onUndoShape,
+  canUndoShape = false,
 }: CommentModalProps) {
   const [deletingAttachmentId, setDeletingAttachmentId] = useState<string | null>(null);
 
@@ -499,36 +504,41 @@ export default function CommentModal({
           )}
           <div className="flex items-center gap-0.5 shrink-0">
             {existingPin && !isNewPin && onResolve && (
-              <button
-                onClick={() => onResolve(existingPin.id)}
-                aria-label={existingPin.status === 'resolved' ? 'Mark active' : 'Mark resolved'}
-                title={existingPin.status === 'resolved' ? 'Mark active' : 'Mark resolved'}
-                className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium transition-colors ${
-                  existingPin.status === 'resolved'
-                    ? 'bg-green-100 text-green-700 hover:bg-green-200'
-                    : 'text-gray-600 hover:bg-gray-100'
-                }`}
-              >
-                <Check size={12} strokeWidth={2} />
-                <span>{existingPin.status === 'resolved' ? 'Resolved' : 'Resolve'}</span>
-              </button>
+              <IconTooltip label={existingPin.status === 'resolved' ? 'Mark active' : 'Mark resolved'}>
+                <button
+                  onClick={() => onResolve(existingPin.id)}
+                  aria-label={existingPin.status === 'resolved' ? 'Mark active' : 'Mark resolved'}
+                  className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium transition-colors ${
+                    existingPin.status === 'resolved'
+                      ? 'bg-green-100 text-green-700 hover:bg-green-200'
+                      : 'text-gray-600 hover:bg-gray-100'
+                  }`}
+                >
+                  <Check size={12} strokeWidth={2} />
+                  <span>{existingPin.status === 'resolved' ? 'Resolved' : 'Resolve'}</span>
+                </button>
+              </IconTooltip>
             )}
             {canDeleteExisting && (
-              <button
-                onClick={() => existingPin && onDeleteComment?.(existingPin.id)}
-                aria-label="Delete comment"
-                title="Delete comment"
-                className="p-1 rounded text-gray-500 hover:text-red-600 hover:bg-red-50 transition-colors"
-              >
-                <Trash2 size={13} />
-              </button>
+              <IconTooltip label="Delete comment">
+                <button
+                  onClick={() => existingPin && onDeleteComment?.(existingPin.id)}
+                  aria-label="Delete comment"
+                  className="p-1 rounded text-gray-500 hover:text-red-600 hover:bg-red-50 transition-colors"
+                >
+                  <Trash2 size={13} />
+                </button>
+              </IconTooltip>
             )}
-            <button
-              onClick={onClose}
-              className="p-0.5 hover:bg-gray-100 rounded text-gray-600 transition-colors"
-            >
-              <X size={14} />
-            </button>
+            <IconTooltip label="Close">
+              <button
+                onClick={onClose}
+                aria-label="Close"
+                className="p-0.5 hover:bg-gray-100 rounded text-gray-600 transition-colors"
+              >
+                <X size={14} />
+              </button>
+            </IconTooltip>
           </div>
         </div>
 
@@ -579,13 +589,15 @@ export default function CommentModal({
               <div className="group relative text-sm text-gray-700 px-1 py-1 bg-gray-50 rounded border border-gray-200 mb-1.5">
                 <CommentBody content={existingPin.content} />
                 {canEditExisting && (
-                  <button
-                    onClick={handleStartEdit}
-                    title="Edit comment"
-                    className="absolute top-1 right-1 p-0.5 rounded text-gray-400 hover:text-gray-700 hover:bg-white opacity-0 group-hover:opacity-100 transition-opacity"
-                  >
-                    <Pencil size={11} />
-                  </button>
+                  <IconTooltip label="Edit comment">
+                    <button
+                      onClick={handleStartEdit}
+                      aria-label="Edit comment"
+                      className="absolute top-1 right-1 p-0.5 rounded text-gray-400 hover:text-gray-700 hover:bg-white opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <Pencil size={11} />
+                    </button>
+                  </IconTooltip>
                 )}
               </div>
             )}
@@ -612,20 +624,21 @@ export default function CommentModal({
                           <ExternalLink size={10} className="absolute bottom-1 right-1 text-white drop-shadow opacity-0 group-hover:opacity-100 transition-opacity" />
                         </a>
                         {onDeleteAttachment && (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              handleDeleteAttachmentClick(a.id);
-                            }}
-                            disabled={deletingAttachmentId === a.id}
-                            title="Remove attachment"
-                            aria-label="Remove attachment"
-                            className="absolute -top-1 -right-1 bg-white rounded-full text-gray-500 hover:text-red-600 shadow-sm border border-gray-200 opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-100"
-                          >
-                            <XCircle size={14} />
-                          </button>
+                          <IconTooltip label="Remove attachment">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                handleDeleteAttachmentClick(a.id);
+                              }}
+                              disabled={deletingAttachmentId === a.id}
+                              aria-label="Remove attachment"
+                              className="absolute -top-1 -right-1 bg-white rounded-full text-gray-500 hover:text-red-600 shadow-sm border border-gray-200 opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-100"
+                            >
+                              <XCircle size={14} />
+                            </button>
+                          </IconTooltip>
                         )}
                       </div>
                     ))}
@@ -647,16 +660,17 @@ export default function CommentModal({
                         <ExternalLink size={10} className="shrink-0 opacity-50" />
                       </a>
                       {onDeleteAttachment && (
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteAttachmentClick(a.id)}
-                          disabled={deletingAttachmentId === a.id}
-                          title="Remove attachment"
-                          aria-label="Remove attachment"
-                          className="shrink-0 text-gray-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-100"
-                        >
-                          <XCircle size={12} />
-                        </button>
+                        <IconTooltip label="Remove attachment">
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteAttachmentClick(a.id)}
+                            disabled={deletingAttachmentId === a.id}
+                            aria-label="Remove attachment"
+                            className="shrink-0 text-gray-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-100"
+                          >
+                            <XCircle size={12} />
+                          </button>
+                        </IconTooltip>
                       )}
                     </div>
                   ))}
@@ -672,15 +686,17 @@ export default function CommentModal({
                   className="hidden"
                   onChange={handleEditFileSelect}
                 />
-                <button
-                  onClick={() => editFileInputRef.current?.click()}
-                  disabled={isUploadingAttachment}
-                  className="flex items-center gap-1 p-1 rounded text-xs text-muted-foreground hover:bg-gray-100 hover:text-gray-700 disabled:opacity-50 transition-colors"
-                  title="Add attachment"
-                >
-                  <Paperclip size={13} />
-                  <span>{isUploadingAttachment ? 'Uploading…' : 'Add attachment'}</span>
-                </button>
+                <IconTooltip label="Add attachment">
+                  <button
+                    onClick={() => editFileInputRef.current?.click()}
+                    disabled={isUploadingAttachment}
+                    aria-label="Add attachment"
+                    className="flex items-center gap-1 p-1 rounded text-xs text-muted-foreground hover:bg-gray-100 hover:text-gray-700 disabled:opacity-50 transition-colors"
+                  >
+                    <Paperclip size={13} />
+                    <span>{isUploadingAttachment ? 'Uploading…' : 'Add attachment'}</span>
+                  </button>
+                </IconTooltip>
                 {attachmentError && (
                   <p className="text-[10px] text-red-500 flex-1">{attachmentError}</p>
                 )}
@@ -727,13 +743,16 @@ export default function CommentModal({
                   disabled={isSendingReply}
                   className="flex-1 px-2 py-1 text-[11px] border border-border rounded bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50"
                 />
-                <button
-                  onClick={handleSendReply}
-                  disabled={!replyText.trim() || isSendingReply}
-                  className="p-1.5 rounded bg-primary text-white hover:bg-primary/90 disabled:opacity-40 transition-colors"
-                >
-                  <Send size={11} />
-                </button>
+                <IconTooltip label="Send reply">
+                  <button
+                    onClick={handleSendReply}
+                    disabled={!replyText.trim() || isSendingReply}
+                    aria-label="Send reply"
+                    className="p-1.5 rounded bg-primary text-white hover:bg-primary/90 disabled:opacity-40 transition-colors"
+                  >
+                    <Send size={11} />
+                  </button>
+                </IconTooltip>
               </div>
             </div>
           </>
@@ -766,12 +785,15 @@ export default function CommentModal({
                 }
                 <span className="flex-1 truncate text-gray-700">{a.file.name}</span>
                 <span className="text-gray-400 shrink-0">{formatBytes(a.file.size)}</span>
-                <button
-                  onClick={() => removeAttachment(a.id)}
-                  className="shrink-0 text-gray-400 hover:text-red-500 transition-colors"
-                >
-                  <XCircle size={12} />
-                </button>
+                <IconTooltip label="Remove attachment">
+                  <button
+                    onClick={() => removeAttachment(a.id)}
+                    aria-label="Remove attachment"
+                    className="shrink-0 text-gray-400 hover:text-red-500 transition-colors"
+                  >
+                    <XCircle size={12} />
+                  </button>
+                </IconTooltip>
               </div>
             ))}
           </div>
@@ -819,6 +841,26 @@ export default function CommentModal({
         {/* ── Toolbar ── */}
         <div className="flex gap-0.5 items-center justify-between">
           <div className="flex gap-0.5">
+            {isNewPin && onUndoShape && (
+              <IconTooltip label="Undo last drawing (Ctrl+Z)">
+                <button
+                  type="button"
+                  onClick={onUndoShape}
+                  disabled={!canUndoShape}
+                  aria-label="Undo last drawing"
+                  className={`p-1 rounded transition-colors duration-150 ${
+                    canUndoShape
+                      ? 'hover:bg-gray-100 text-gray-600'
+                      : 'text-gray-300 cursor-not-allowed'
+                  }`}
+                >
+                  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
+                    <path d="M9 14L4 9l5-5" />
+                    <path d="M4 9h7a5 5 0 015 5v2" />
+                  </svg>
+                </button>
+              </IconTooltip>
+            )}
             {isNewPin && hasStartedTyping && (
               <Popover
                 open={showEmojiPicker}
@@ -828,17 +870,19 @@ export default function CommentModal({
                 }}
               >
                 <PopoverTrigger asChild>
-                  <button
-                    className={`p-1 rounded transition-colors duration-150 ${
-                      showEmojiPicker
-                        ? 'bg-blue-100 text-blue-600'
-                        : 'hover:bg-gray-100 text-gray-600'
-                    }`}
-                    title="Add emoji"
-                    type="button"
-                  >
-                    <Smile size={14} />
-                  </button>
+                  <IconTooltip label="Add emoji">
+                    <button
+                      className={`p-1 rounded transition-colors duration-150 ${
+                        showEmojiPicker
+                          ? 'bg-blue-100 text-blue-600'
+                          : 'hover:bg-gray-100 text-gray-600'
+                      }`}
+                      aria-label="Add emoji"
+                      type="button"
+                    >
+                      <Smile size={14} />
+                    </button>
+                  </IconTooltip>
                 </PopoverTrigger>
                 <PopoverContent align="start" side="top" className="w-52 p-2">
                   <div className="grid grid-cols-8 gap-1">
@@ -858,17 +902,19 @@ export default function CommentModal({
               </Popover>
             )}
             {canLink && (
-              <button
-                onClick={() => setShowLinkPicker(v => !v)}
-                className={`p-1 rounded transition-colors duration-150 ${
-                  showLinkPicker
-                    ? 'bg-blue-100 text-blue-600'
-                    : 'hover:bg-gray-100 text-gray-600'
-                }`}
-                title="Reference a project"
-              >
-                <Link2 size={14} />
-              </button>
+              <IconTooltip label="Reference a project">
+                <button
+                  onClick={() => setShowLinkPicker(v => !v)}
+                  aria-label="Reference a project"
+                  className={`p-1 rounded transition-colors duration-150 ${
+                    showLinkPicker
+                      ? 'bg-blue-100 text-blue-600'
+                      : 'hover:bg-gray-100 text-gray-600'
+                  }`}
+                >
+                  <Link2 size={14} />
+                </button>
+              </IconTooltip>
             )}
             {isNewPin && !disableAttachments && (
               <>
@@ -880,20 +926,22 @@ export default function CommentModal({
                   className="hidden"
                   onChange={handleFileSelect}
                 />
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  className={`p-1 rounded transition-colors duration-150 ${
-                    attachments.length > 0
-                      ? 'bg-blue-100 text-blue-600'
-                      : 'hover:bg-gray-100 text-gray-600'
-                  }`}
-                  title="Attach file (images or PDF, max 20 MB)"
-                >
-                  <Paperclip size={14} />
-                  {attachments.length > 0 && (
-                    <span className="sr-only">{attachments.length} attached</span>
-                  )}
-                </button>
+                <IconTooltip label="Attach file (images or PDF, max 20 MB)">
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    aria-label="Attach file"
+                    className={`p-1 rounded transition-colors duration-150 ${
+                      attachments.length > 0
+                        ? 'bg-blue-100 text-blue-600'
+                        : 'hover:bg-gray-100 text-gray-600'
+                    }`}
+                  >
+                    <Paperclip size={14} />
+                    {attachments.length > 0 && (
+                      <span className="sr-only">{attachments.length} attached</span>
+                    )}
+                  </button>
+                </IconTooltip>
               </>
             )}
           </div>

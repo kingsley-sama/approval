@@ -21,6 +21,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { IconTooltip } from '@/components/ui/icon-tooltip';
 
 const DrawingCanvas = dynamic(() => import('@/components/drawing-canvas'), {
   ssr: false,
@@ -28,6 +29,9 @@ const DrawingCanvas = dynamic(() => import('@/components/drawing-canvas'), {
 
 // Custom cursor for comment/pin placement mode — orange map pin with "+" indicator
 const COMMENT_PIN_CURSOR = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='28' viewBox='0 0 20 28'%3E%3Cpath d='M10 27C10 27 19 15.5 19 9.5C19 4.5 15 1 10 1C5 1 1 4.5 1 9.5C1 15.5 10 27 10 27Z' fill='%23ff6137' stroke='white' stroke-width='1'/%3E%3Ccircle cx='10' cy='9.5' r='3.5' fill='white'/%3E%3Cline x1='8.5' y1='9.5' x2='11.5' y2='9.5' stroke='%23ff6137' stroke-width='1.5' stroke-linecap='round'/%3E%3Cline x1='10' y1='8' x2='10' y2='11' stroke='%23ff6137' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E") 10 27, crosshair`;
+
+// Pencil cursor — matches the pen icon used in the drawing toolbar
+const DRAWING_PENCIL_CURSOR = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 20 20'%3E%3Cpath d='M13.586 3.586a2 2 0 112.828 2.828l-8.5 8.5a1 1 0 01-.39.242l-3 1a1 1 0 01-1.265-1.265l1-3a1 1 0 01.242-.39l8.5-8.5z' fill='%232563eb' stroke='white' stroke-width='1' stroke-linejoin='round'/%3E%3C/svg%3E") 3 21, crosshair`;
 
 interface Pin {
   id: string;
@@ -411,23 +415,26 @@ function ImageViewerInner({
             </DropdownMenuContent>
           </DropdownMenu>
 
-          <Button
-            variant="ghost"
-            size="icon"
-            className={`h-7 w-7 ${isFullscreen ? 'text-zinc-300 hover:text-white hover:bg-zinc-700' : 'text-muted-foreground'}`}
-          >
-            <Download className="h-3.5 w-3.5" />
-          </Button>
+          <IconTooltip label="Download image">
+            <Button
+              variant="ghost"
+              size="icon"
+              className={`h-7 w-7 ${isFullscreen ? 'text-zinc-300 hover:text-white hover:bg-zinc-700' : 'text-muted-foreground'}`}
+            >
+              <Download className="h-3.5 w-3.5" />
+            </Button>
+          </IconTooltip>
 
-          <Button
-            variant="ghost"
-            size="icon"
-            className={`h-7 w-7 ${isFullscreen ? 'text-zinc-300 hover:text-white hover:bg-zinc-700' : 'text-muted-foreground'}`}
-            onClick={onToggleFullscreen}
-            title={isFullscreen ? 'Exit fullscreen (Esc)' : 'Fullscreen'}
-          >
-            {isFullscreen ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
-          </Button>
+          <IconTooltip label={isFullscreen ? 'Exit fullscreen (Esc)' : 'Fullscreen'}>
+            <Button
+              variant="ghost"
+              size="icon"
+              className={`h-7 w-7 ${isFullscreen ? 'text-zinc-300 hover:text-white hover:bg-zinc-700' : 'text-muted-foreground'}`}
+              onClick={onToggleFullscreen}
+            >
+              {isFullscreen ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
+            </Button>
+          </IconTooltip>
         </div>
       </div>
 
@@ -446,7 +453,7 @@ function ImageViewerInner({
             priority
             style={{
               ...getImageStyle(),
-              cursor: activeTool ? 'crosshair' : COMMENT_PIN_CURSOR,
+              cursor: activeTool ? DRAWING_PENCIL_CURSOR : COMMENT_PIN_CURSOR,
             }}
           />
 
@@ -459,6 +466,7 @@ function ImageViewerInner({
                 height: renderedDimensions.height,
                 pointerEvents: activeTool !== null ? 'auto' : 'none',
                 zIndex: 10,
+                cursor: activeTool ? DRAWING_PENCIL_CURSOR : undefined,
               }}
             >
               <DrawingCanvas

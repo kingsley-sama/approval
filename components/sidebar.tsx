@@ -127,13 +127,15 @@ export default function AppSidebar({ user }: AppSidebarProps) {
   <div className="flex items-center gap-3 p-2 rounded-xl group-data-[collapsible=icon]:justify-center ">
     <div className="relative shrink-0">
       <Avatar className="h-8 w-8 ring-2 ring-accent/20">
-        <AvatarImage src={user?.avatarUrl ?? '/apple-icon.png'} alt={user?.name ?? 'User'} />
+        {user?.avatarUrl && (
+          <AvatarImage src={user.avatarUrl} alt={user.name ?? 'User'} />
+        )}
         <AvatarFallback className="bg-accent/20 text-accent text-xs font-semibold">
           {getInitials(user?.name, user?.email)}
         </AvatarFallback>
       </Avatar>
       {/* Online indicator */}
-      <span className="absolute bottom-0 right-0 h-2 w-2 rounded-full bg-accent ring-2 ring-background" />
+      <span className="absolute bottom-0 right-0 h-2 w-2 rounded-full bg-green-500 ring-2 ring-background" />
     </div>
     <div className="flex-1 min-w-0 group-data-[collapsible=icon]:hidden">
       {user?.name && (

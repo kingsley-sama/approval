@@ -3,6 +3,7 @@
 import { useState, useRef } from 'react';
 import { getSignedUploadUrl, registerUploadedFile } from '@/app/actions/storage';
 import { Button } from '@/components/ui/button';
+import { IconTooltip } from '@/components/ui/icon-tooltip';
 import { Plus, CheckCircle2, XCircle, Loader2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { xhrUpload, validateFiles, type FileUploadState } from '@/lib/upload';
@@ -135,15 +136,17 @@ export default function ImageUploader({ projectId, onUploadComplete, trigger }: 
           {trigger}
         </div>
       ) : (
-        <Button
-          variant="outline"
-          size="icon"
-          className="h-8 w-8 rounded-full"
-          onClick={() => fileInputRef.current?.click()}
-          title="Upload Images"
-        >
-          {isActive ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-        </Button>
+        <IconTooltip label="Upload images">
+          <Button
+            variant="outline"
+            size="icon"
+            className="h-8 w-8 rounded-full"
+            onClick={() => fileInputRef.current?.click()}
+            aria-label="Upload images"
+          >
+            {isActive ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+          </Button>
+        </IconTooltip>
       )}
 
       {/* Upload progress panel */}

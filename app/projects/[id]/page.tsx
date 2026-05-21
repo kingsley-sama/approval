@@ -8,6 +8,7 @@ import { getAttachmentUploadUrl, registerAttachment, getAttachmentsForComments, 
 import { useCommentQueue } from '@/hooks/use-comment-queue';
 import { useRealtimeComments } from '@/hooks/use-realtime-comments';
 import { useToast } from '@/hooks/use-toast';
+import { useConfirm } from '@/components/confirm-dialog';
 import { Upload } from 'lucide-react';
 import ImageUploader from '@/components/image-uploader';
 import { ProjectTopNav, ProjectShell, ProjectImageData, ProjectPin } from './template';
@@ -52,6 +53,7 @@ export default function ProjectPage({ params, searchParams }: ProjectPageProps) 
 
   const { enqueue, getPendingForThread, drainQueue, pendingCount, isSyncing } = useCommentQueue();
   const { toast } = useToast();
+  const confirm = useConfirm();
   // Holds File[] per localId so they can be uploaded once the comment is synced
   const pendingAttachments = useRef<Map<string, File[]>>(new Map());
 
@@ -358,9 +360,13 @@ export default function ProjectPage({ params, searchParams }: ProjectPageProps) 
 
   const handleDeleteComment = async (commentId: string) => {
     if (commentId.startsWith('local_')) return;
-    const confirmed = typeof window !== 'undefined'
-      ? window.confirm('Delete this comment? Its drawing, attachments, and replies will be removed.')
-      : true;
+    const confirmed = await confirm({
+      title: 'Delete this comment?',
+      description: 'Its drawing, attachments, and replies will be removed. This action cannot be undone.',
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+      destructive: true,
+    });
     if (!confirmed) return;
 
     const snapshot = imagesState;
@@ -658,6 +664,8 @@ export default function ProjectPage({ params, searchParams }: ProjectPageProps) 
           onEditComment={!isNewPin ? handleEditComment : undefined}
           onResolve={!isNewPin ? handleResolveComment : undefined}
           onDeleteComment={!isNewPin ? handleDeleteComment : undefined}
+          onUndoShape={isNewPin ? handleUndoShape : undefined}
+          canUndoShape={pendingShapes.length > 0}
         />
       )}
     </div>

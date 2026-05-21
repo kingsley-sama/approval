@@ -8,6 +8,7 @@ import { createReply, getRepliesForComment, type CommentReply } from '@/app/acti
 import { getCurrentUser } from '@/app/actions/comments';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { uploadCommentAttachments, validateAttachments } from '@/lib/comment-attachments';
+import { IconTooltip } from '@/components/ui/icon-tooltip';
 
 const EMOJI_OPTIONS = [
   '😀', '😂', '😍', '😎', '🤔', '😅', '😢', '😡',
@@ -321,13 +322,15 @@ function ThreadDetail({ pin, onBack, onResolve, readOnly, onEditComment, onDelet
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-border/50">
         <div className="flex items-center gap-3">
-          <button
-            onClick={onBack}
-            aria-label="Back"
-            className="flex items-center justify-center size-8 rounded-full ring-1 ring-border hover:ring-foreground hover:bg-foreground hover:text-background text-foreground transition-all duration-200 group"
-          >
-            <ArrowLeft className="size-3.75 transition-transform group-hover:-translate-x-0.5" strokeWidth={1.5} />
-          </button>
+          <IconTooltip label="Back to comments">
+            <button
+              onClick={onBack}
+              aria-label="Back"
+              className="flex items-center justify-center size-8 rounded-full ring-1 ring-border hover:ring-foreground hover:bg-foreground hover:text-background text-foreground transition-all duration-200 group"
+            >
+              <ArrowLeft className="size-3.75 transition-transform group-hover:-translate-x-0.5" strokeWidth={1.5} />
+            </button>
+          </IconTooltip>
           <div className="h-4 w-px bg-border" />
           <div className="flex items-center gap-2">
             <span className="text-[10px] font-semibold text-muted-foreground tracking-[0.18em] uppercase">
@@ -340,30 +343,35 @@ function ThreadDetail({ pin, onBack, onResolve, readOnly, onEditComment, onDelet
         </div>
         <div className="flex items-center gap-1">
           {!readOnly && (
-            <button
-              onClick={() => onResolve(pin.id)}
-              aria-label="Mark resolved"
-              className="size-7 flex items-center justify-center rounded-full text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
-            >
-              <Check className="size-3.75" strokeWidth={1.75} />
-            </button>
+            <IconTooltip label={pin.status === 'resolved' ? 'Mark active' : 'Mark resolved'}>
+              <button
+                onClick={() => onResolve(pin.id)}
+                aria-label="Mark resolved"
+                className="size-7 flex items-center justify-center rounded-full text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+              >
+                <Check className="size-3.75" strokeWidth={1.75} />
+              </button>
+            </IconTooltip>
           )}
           {canDelete && (
-            <button
-              onClick={() => onDeleteComment?.(pin.id)}
-              aria-label="Delete comment"
-              title="Delete comment"
-              className="size-7 flex items-center justify-center rounded-full text-muted-foreground hover:text-red-600 hover:bg-red-50 transition-colors"
-            >
-              <Trash2 className="size-3.75" strokeWidth={1.75} />
-            </button>
+            <IconTooltip label="Delete comment">
+              <button
+                onClick={() => onDeleteComment?.(pin.id)}
+                aria-label="Delete comment"
+                className="size-7 flex items-center justify-center rounded-full text-muted-foreground hover:text-red-600 hover:bg-red-50 transition-colors"
+              >
+                <Trash2 className="size-3.75" strokeWidth={1.75} />
+              </button>
+            </IconTooltip>
           )}
-          <button
-            aria-label="More options"
-            className="size-7 flex items-center justify-center rounded-full text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
-          >
-            <MoreHorizontal className="size-4" strokeWidth={1.75} />
-          </button>
+          <IconTooltip label="More options">
+            <button
+              aria-label="More options"
+              className="size-7 flex items-center justify-center rounded-full text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+            >
+              <MoreHorizontal className="size-4" strokeWidth={1.75} />
+            </button>
+          </IconTooltip>
         </div>
       </div>
 
@@ -426,14 +434,15 @@ function ThreadDetail({ pin, onBack, onResolve, readOnly, onEditComment, onDelet
                   className="text-[13px] leading-relaxed text-foreground"
                 />
                 {canEdit && (
-                  <button
-                    onClick={handleStartEdit}
-                    title="Edit comment"
-                    aria-label="Edit comment"
-                    className="absolute top-2 right-2 p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted/60 opacity-0 group-hover:opacity-100 transition-opacity"
-                  >
-                    <Pencil size={11} />
-                  </button>
+                  <IconTooltip label="Edit comment">
+                    <button
+                      onClick={handleStartEdit}
+                      aria-label="Edit comment"
+                      className="absolute top-2 right-2 p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted/60 opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <Pencil size={11} />
+                    </button>
+                  </IconTooltip>
                 )}
               </>
             )}
@@ -643,14 +652,16 @@ function ThreadDetail({ pin, onBack, onResolve, readOnly, onEditComment, onDelet
                   )}
                   <span className="flex-1 truncate text-foreground">{p.file.name}</span>
                   <span className="text-muted-foreground shrink-0">{formatBytes(p.file.size)}</span>
-                  <button
-                    type="button"
-                    onClick={() => removePendingReplyFile(p.id)}
-                    aria-label="Remove attachment"
-                    className="text-muted-foreground hover:text-red-500 shrink-0 transition-colors"
-                  >
-                    <X className="size-3" />
-                  </button>
+                  <IconTooltip label="Remove attachment">
+                    <button
+                      type="button"
+                      onClick={() => removePendingReplyFile(p.id)}
+                      aria-label="Remove attachment"
+                      className="text-muted-foreground hover:text-red-500 shrink-0 transition-colors"
+                    >
+                      <X className="size-3" />
+                    </button>
+                  </IconTooltip>
                 </div>
               ))}
             </div>
@@ -689,14 +700,16 @@ function ThreadDetail({ pin, onBack, onResolve, readOnly, onEditComment, onDelet
             <div className="flex items-center gap-1">
               <Popover>
                 <PopoverTrigger asChild>
-                  <button
-                    type="button"
-                    aria-label="Add emoji"
-                    disabled={readOnly || isSendingReply}
-                    className="size-7 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-full transition-colors disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
-                  >
-                    <Smile className="size-3.5" strokeWidth={1.5} />
-                  </button>
+                  <IconTooltip label="Add emoji" side="top">
+                    <button
+                      type="button"
+                      aria-label="Add emoji"
+                      disabled={readOnly || isSendingReply}
+                      className="size-7 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-full transition-colors disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
+                    >
+                      <Smile className="size-3.5" strokeWidth={1.5} />
+                    </button>
+                  </IconTooltip>
                 </PopoverTrigger>
                 <PopoverContent align="start" sideOffset={6} className="w-auto p-2">
                   <div className="grid grid-cols-8 gap-1">
@@ -713,32 +726,34 @@ function ThreadDetail({ pin, onBack, onResolve, readOnly, onEditComment, onDelet
                   </div>
                 </PopoverContent>
               </Popover>
-              <button
-                type="button"
-                aria-label="Attach file"
-                title={
-                  canAttachToReply
-                    ? 'Attach file (images or PDF, max 20 MB)'
-                    : 'Attachments unavailable'
-                }
-                disabled={!canAttachToReply || isSendingReply}
-                onClick={() => replyFileInputRef.current?.click()}
-                className={`size-7 flex items-center justify-center rounded-full transition-colors disabled:opacity-50 disabled:hover:bg-transparent ${
-                  pendingReplyFiles.length > 0
-                    ? 'bg-primary/10 text-primary'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
-                } disabled:text-muted-foreground/60`}
+              <IconTooltip
+                side="top"
+                label={canAttachToReply ? 'Attach file (images or PDF, max 20 MB)' : 'Attachments unavailable'}
               >
-                <Paperclip className="size-3.5" strokeWidth={1.5} />
-              </button>
-              <button
-                type="button"
-                aria-label="Record video"
-                disabled
-                className="size-7 flex items-center justify-center text-muted-foreground/60 rounded-full"
-              >
-                <Video className="size-3.5" strokeWidth={1.5} />
-              </button>
+                <button
+                  type="button"
+                  aria-label="Attach file"
+                  disabled={!canAttachToReply || isSendingReply}
+                  onClick={() => replyFileInputRef.current?.click()}
+                  className={`size-7 flex items-center justify-center rounded-full transition-colors disabled:opacity-50 disabled:hover:bg-transparent ${
+                    pendingReplyFiles.length > 0
+                      ? 'bg-primary/10 text-primary'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                  } disabled:text-muted-foreground/60`}
+                >
+                  <Paperclip className="size-3.5" strokeWidth={1.5} />
+                </button>
+              </IconTooltip>
+              <IconTooltip label="Record video (coming soon)" side="top">
+                <button
+                  type="button"
+                  aria-label="Record video"
+                  disabled
+                  className="size-7 flex items-center justify-center text-muted-foreground/60 rounded-full"
+                >
+                  <Video className="size-3.5" strokeWidth={1.5} />
+                </button>
+              </IconTooltip>
             </div>
 
             <button

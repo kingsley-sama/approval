@@ -2,6 +2,7 @@
 
 import React from 'react';
 import type { DrawingTool } from '@/types/drawing';
+import { IconTooltip } from '@/components/ui/icon-tooltip';
 
 export const DRAWING_COLOR = '#f43f5e'; // fixed rose-500
 export const STROKE_WIDTH = 3;
@@ -73,37 +74,41 @@ export default function DrawingToolbar({ activeTool, onToolSelect, onUndo, canUn
           {i === tools.length - 1 && (
             <div className="w-px h-5 bg-gray-200 mx-0.5 flex-shrink-0" />
           )}
-          <button
-            onClick={() => onToolSelect(activeTool === tool.value ? null : tool.value)}
-            title={tool.label}
-            className={`p-2 rounded-md transition-all ${
-              activeTool === tool.value
-                ? 'bg-rose-500 text-white shadow-inner'
-                : 'text-gray-500 hover:bg-gray-100 hover:text-gray-800'
-            }`}
-          >
-            {tool.icon}
-          </button>
+          <IconTooltip label={tool.label}>
+            <button
+              onClick={() => onToolSelect(activeTool === tool.value ? null : tool.value)}
+              aria-label={tool.label}
+              className={`p-2 rounded-md transition-all ${
+                activeTool === tool.value
+                  ? 'bg-rose-500 text-white shadow-inner'
+                  : 'text-gray-500 hover:bg-gray-100 hover:text-gray-800'
+              }`}
+            >
+              {tool.icon}
+            </button>
+          </IconTooltip>
         </React.Fragment>
       ))}
       {onUndo && (
         <>
           <div className="w-px h-5 bg-gray-200 mx-0.5 flex-shrink-0" />
-          <button
-            onClick={onUndo}
-            disabled={!canUndo}
-            title="Undo last drawing (Ctrl+Z)"
-            className={`p-2 rounded-md transition-all ${
-              canUndo
-                ? 'text-gray-500 hover:bg-gray-100 hover:text-gray-800'
-                : 'text-gray-300 cursor-not-allowed'
-            }`}
-          >
-            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-              <path d="M9 14L4 9l5-5" />
-              <path d="M4 9h7a5 5 0 015 5v2" />
-            </svg>
-          </button>
+          <IconTooltip label="Undo last drawing (Ctrl+Z)">
+            <button
+              onClick={onUndo}
+              disabled={!canUndo}
+              aria-label="Undo last drawing"
+              className={`p-2 rounded-md transition-all ${
+                canUndo
+                  ? 'text-gray-500 hover:bg-gray-100 hover:text-gray-800'
+                  : 'text-gray-300 cursor-not-allowed'
+              }`}
+            >
+              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                <path d="M9 14L4 9l5-5" />
+                <path d="M4 9h7a5 5 0 015 5v2" />
+              </svg>
+            </button>
+          </IconTooltip>
         </>
       )}
     </div>

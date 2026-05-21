@@ -9,6 +9,7 @@ import ShareLinkManager from '@/components/share-link-manager';
 import type { Shape } from '@/types/drawing';
 import type { AttachmentRecord } from '@/app/actions/storage';
 import { Button } from '@/components/ui/button';
+import { IconTooltip } from '@/components/ui/icon-tooltip';
 import {
   ChevronLeft,
   ChevronRight,
@@ -115,14 +116,17 @@ export function ProjectTopNav({
 	return (
 		<header className="h-14 flex items-center justify-between px-4 border-b border-border/50 bg-background shrink-0 z-10">
         <div className="flex items-center gap-3">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 text-muted-foreground hover:text-foreground"
-            onClick={() => router.push('/projects')}
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
+          <IconTooltip label="Back to projects">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-muted-foreground hover:text-foreground"
+              onClick={() => router.push('/projects')}
+              aria-label="Back to projects"
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+          </IconTooltip>
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 flex items-center justify-center overflow-hidden">
               <Image
@@ -138,15 +142,17 @@ export function ProjectTopNav({
               — ExposéProfi
             </div>
           </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            className={`h-8 w-8 ${sidebarsCollapsed ? 'text-accent bg-accent/10' : 'text-muted-foreground'} hover:text-foreground`}
-            onClick={onToggleSidebars}
-            title={sidebarsCollapsed ? 'Show sidebars' : 'Hide sidebars for a fuller view'}
-          >
-            <ImageIcon className="h-4 w-4" />
-          </Button>
+          <IconTooltip label={sidebarsCollapsed ? 'Show sidebars' : 'Hide sidebars for a fuller view'}>
+            <Button
+              variant="ghost"
+              size="icon"
+              className={`h-8 w-8 ${sidebarsCollapsed ? 'text-accent bg-accent/10' : 'text-muted-foreground'} hover:text-foreground`}
+              onClick={onToggleSidebars}
+              aria-label={sidebarsCollapsed ? 'Show sidebars' : 'Hide sidebars'}
+            >
+              <ImageIcon className="h-4 w-4" />
+            </Button>
+          </IconTooltip>
         </div>
 
         {/* Center: project name */}
@@ -155,18 +161,16 @@ export function ProjectTopNav({
         {/* Right actions */}
         <div className="flex items-center gap-2">
           <div className="flex items-center -space-x-2 mr-2">
-            <div
-              className="w-7 h-7 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold ring-2 ring-background"
-              title="ExposéProfi"
-            >
-              EX
-            </div>
-            <div
-              className="w-7 h-7 rounded-full bg-accent text-accent-foreground flex items-center justify-center text-xs font-bold ring-2 ring-background"
-              title={userLabel}
-            >
-              {userInitials}
-            </div>
+            <IconTooltip label="ExposéProfi">
+              <div className="w-7 h-7 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold ring-2 ring-background cursor-default">
+                EX
+              </div>
+            </IconTooltip>
+            <IconTooltip label={userLabel}>
+              <div className="w-7 h-7 rounded-full bg-accent text-accent-foreground flex items-center justify-center text-xs font-bold ring-2 ring-background cursor-default">
+                {userInitials}
+              </div>
+            </IconTooltip>
           </div>
 		  	<ShareLinkManager
 					resourceType="project"

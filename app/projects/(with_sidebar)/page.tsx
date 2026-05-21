@@ -21,6 +21,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { IconTooltip } from '@/components/ui/icon-tooltip'
 
 const cardColors = [
   'bg-orange-50', 'bg-green-50', 'bg-blue-50', 'bg-purple-50',
@@ -223,14 +224,17 @@ export default function ProjectsPage() {
                 <Trash2 size={13} />
                 {isBulkDeleting ? 'Deleting…' : `Delete ${selectedIds.size}`}
               </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                onClick={() => setSelectedIds(new Set())}
-              >
-                <X size={14} />
-              </Button>
+              <IconTooltip label="Clear selection">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                  onClick={() => setSelectedIds(new Set())}
+                  aria-label="Clear selection"
+                >
+                  <X size={14} />
+                </Button>
+              </IconTooltip>
             </div>
           </div>
         )}

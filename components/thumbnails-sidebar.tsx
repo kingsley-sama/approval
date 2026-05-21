@@ -1,6 +1,7 @@
 "use client";
 
 import { ChevronUp, ChevronDown } from 'lucide-react';
+import { IconTooltip } from '@/components/ui/icon-tooltip';
 
 interface ImageData {
   id: number;
@@ -44,12 +45,16 @@ export default function ThumbnailsSidebar({
       <div className="border-t border-border p-2 flex items-center justify-between text-xs text-gray-600">
         <span>{images.findIndex(img => img.id === currentImageId) + 1} of {images.length}</span>
         <div className="flex gap-1">
-          <button className="p-1 hover:bg-gray-100 rounded">
-            <ChevronUp size={16} />
-          </button>
-          <button className="p-1 hover:bg-gray-100 rounded">
-            <ChevronDown size={16} />
-          </button>
+          <IconTooltip label="Previous image" side="top">
+            <button aria-label="Previous image" className="p-1 hover:bg-gray-100 rounded">
+              <ChevronUp size={16} />
+            </button>
+          </IconTooltip>
+          <IconTooltip label="Next image" side="top">
+            <button aria-label="Next image" className="p-1 hover:bg-gray-100 rounded">
+              <ChevronDown size={16} />
+            </button>
+          </IconTooltip>
         </div>
       </div>
     </div>
