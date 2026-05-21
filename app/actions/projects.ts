@@ -297,6 +297,23 @@ export async function getProjectsForMention(): Promise<{ id: string; name: strin
   return (data as any[]).map(p => ({ id: p.id, name: p.project_name }));
 }
 
+export async function getProjectName(projectId: string): Promise<string | null> {
+  const supabase = await createClient();
+  try {
+    const { data, error } = await supabase
+      .from('markup_projects')
+      .select('project_name')
+      .eq('id', projectId)
+      .maybeSingle();
+
+    if (error || !data) return null;
+    return (data as { project_name: string | null }).project_name;
+  } catch (error) {
+    console.error('Error fetching project name:', error);
+    return null;
+  }
+}
+
 export async function deleteProject(projectId: string) {
   await requireAdmin();
   const supabase = await createClient()

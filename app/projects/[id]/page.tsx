@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import ImageViewer from '@/components/annotation/image-viewer';
 import CommentModal from '@/components/annotation/comment-modal';
 import { getProjectThreads } from '@/app/actions/threads';
+import { getProjectName } from '@/app/actions/projects';
 import { getThreadComments, resolveComment, getCurrentUser, DbComment, updateCommentPosition, updateComment, deleteComment } from '@/app/actions/comments';
 import { getAttachmentUploadUrl, registerAttachment, getAttachmentsForComments, deleteAttachment } from '@/app/actions/storage';
 import { useCommentQueue } from '@/hooks/use-comment-queue';
@@ -30,7 +31,18 @@ interface ProjectPageProps {
 export default function ProjectPage({ params, searchParams }: ProjectPageProps) {
   const { id: projectId } = React.use(params);
   const { name } = React.use(searchParams);
-  const projectName = name ? decodeURIComponent(name) : `Project ${projectId}`;
+  const [projectName, setProjectName] = useState<string>(
+    name ? decodeURIComponent(name) : ''
+  );
+
+  useEffect(() => {
+    if (projectName) return;
+    let cancelled = false;
+    getProjectName(projectId).then(n => {
+      if (!cancelled && n) setProjectName(n);
+    });
+    return () => { cancelled = true; };
+  }, [projectId, projectName]);
 
   const [imagesState, setImagesState] = useState<ImageData[]>([]);
   const [currentImageId, setCurrentImageId] = useState<string>('');

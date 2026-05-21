@@ -383,14 +383,14 @@ export default function ShareViewer({ shareLink, resourceData, token }: ShareVie
     if (pendingNavigationRef.current) {
       pendingNavigationRef.current = false;
       allowNavigationRef.current = true;
-      router.push('/projects');
+      router.push('/');
     }
   }, [router]);
 
   const handleLeaveAnyway = useCallback(() => {
     setReviewIntent(null);
     allowNavigationRef.current = true;
-    router.push('/projects');
+    router.push('/');
   }, [router]);
 
   // Native browser-close warning when there are unconfirmed comments
@@ -421,13 +421,6 @@ export default function ShareViewer({ shareLink, resourceData, token }: ShareVie
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
   }, [hasAddedComment, reviewSubmitted]);
-
-  const activeCount = threads.flatMap(t => t.pins).filter(p => p.status !== 'resolved').length;
-  const resolvedCount = threads.flatMap(t => t.pins).filter(p => p.status === 'resolved').length;
-
-  const permLabel =
-    shareLink.permissions === 'view' ? 'View only' :
-    shareLink.permissions === 'comment' ? 'Can comment' : 'Full access';
 
   // ── Guest name gate (only if commenting is enabled and name not yet set) ──────
   if (canComment && !nameConfirmed) {
@@ -500,35 +493,24 @@ export default function ShareViewer({ shareLink, resourceData, token }: ShareVie
           {/* Center — project name */}
           <div className="flex items-center gap-2">
             <span className="text-sm font-medium text-foreground truncate max-w-xs">{projectName}</span>
-            <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">{permLabel}</span>
           </div>
 
-          {/* Right — stats + guest identity */}
+          {/* Right — guest identity */}
           <div className="flex items-center gap-4 text-sm">
-            <span>
-              <span className="font-semibold">{activeCount}</span>
-              <span className="text-muted-foreground ml-1">Active</span>
-            </span>
-            <span className="w-px h-4 bg-border" />
-            <span>
-              <span className="font-semibold">{resolvedCount}</span>
-              <span className="text-muted-foreground ml-1">Resolved</span>
-            </span>
             {nameConfirmed && canComment && (
               <>
-                <span className="w-px h-4 bg-border" />
                 {reviewSubmitted ? (
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/5 text-primary text-xs font-semibold ring-1 ring-primary/15">
-                    <span className="w-1.5 h-1.5 rounded-full bg-accent" />
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-semibold ring-1 ring-emerald-200">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
                     Review submitted
                   </span>
                 ) : (
                   <button
                     type="button"
                     onClick={handleDoneClick}
-                    className="group inline-flex items-center gap-2 pl-2 pr-3.5 py-1.5 rounded-full bg-primary text-primary-foreground text-xs font-semibold shadow-sm ring-1 ring-accent/30 hover:shadow-md hover:ring-accent/50 active:scale-[0.98] transition-all"
+                    className="group inline-flex items-center gap-2 pl-2 pr-3.5 py-1.5 rounded-full bg-emerald-600 text-white text-xs font-semibold shadow-sm ring-1 ring-emerald-700/30 hover:bg-emerald-700 hover:shadow-md active:scale-[0.98] transition-all"
                   >
-                    <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-accent text-accent-foreground">
+                    <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-white/20 text-white">
                       <CheckCircle2 className="h-3 w-3" />
                     </span>
                     Done reviewing
