@@ -26,6 +26,13 @@ export function Login({ mode = 'signin' }: { mode?: 'signin' | 'signup' }) {
 
   return (
     <div className="min-h-[100dvh] bg-background flex items-center justify-center px-4">
+      <Link
+        href="/"
+        className="group absolute top-5 left-5 inline-flex items-center gap-1.5 pl-2 pr-3.5 py-2 rounded-full text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors font-body"
+      >
+        <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-0.5" />
+        Back to homepage
+      </Link>
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -214,10 +221,14 @@ export function Login({ mode = 'signin' }: { mode?: 'signin' | 'signup' }) {
         </div>
 
         <div className="flex justify-center mt-8">
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-muted text-muted-foreground text-xs font-medium font-body">
+          <Link
+            href="/"
+            aria-label="Go to homepage"
+            className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-muted text-muted-foreground text-xs font-medium font-body hover:bg-accent/10 hover:text-accent transition-colors"
+          >
             <span className="w-1.5 h-1.5 rounded-full bg-accent" />
             — ExposéProfi
-          </div>
+          </Link>
         </div>
       </motion.div>
     </div>

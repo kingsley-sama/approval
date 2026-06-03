@@ -63,6 +63,9 @@ interface ImageViewerProps {
   pendingShapes: Shape[];
   onShapeComplete: (shape: Shape, center: { x: number; y: number }) => void;
   onUndoShape?: () => void;
+  /** Whether the undo control is actionable. Defaults to "has pending shapes"
+   *  when omitted; pass explicitly to also cover saved-drawing undo. */
+  canUndo?: boolean;
   showDrawingTools?: boolean;
 }
 
@@ -86,8 +89,12 @@ function ImageViewerInner({
   pendingShapes,
   onShapeComplete,
   onUndoShape,
+  canUndo,
   showDrawingTools = true,
 }: ImageViewerProps) {
+  // Fall back to the legacy "pending shapes only" rule when the caller does
+  // not drive undo availability explicitly.
+  const undoEnabled = canUndo ?? pendingShapes.length > 0;
   const containerRef = useRef<HTMLDivElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
   const [imageDimensions, setImageDimensions] = useState({ width: 1600, height: 1600 });
@@ -197,14 +204,14 @@ function ImageViewerInner({
         if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
           return;
         }
-        if (pendingShapes.length === 0) return;
+        if (!undoEnabled) return;
         e.preventDefault();
         onUndoShape();
       }
     };
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [onUndoShape, pendingShapes.length]);
+  }, [onUndoShape, undoEnabled]);
 
   const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (suppressNextClickRef.current) {
@@ -387,7 +394,7 @@ function ImageViewerInner({
                 activeTool={activeTool}
                 onToolSelect={setActiveTool}
                 onUndo={onUndoShape}
-                canUndo={pendingShapes.length > 0}
+                canUndo={undoEnabled}
               />
             </div>
           )}

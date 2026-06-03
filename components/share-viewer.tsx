@@ -22,10 +22,11 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
+import { useConfirm } from '@/components/confirm-dialog';
 import type { ShareLink } from '@/app/actions/share-links';
 import type { Shape } from '@/types/drawing';
 import type { AttachmentRecord } from '@/app/actions/storage';
-import { ArrowLeft, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, CheckCheck } from 'lucide-react';
 
 interface Pin {
   id: string;
@@ -51,6 +52,12 @@ interface ShareViewerProps {
   shareLink: ShareLink;
   resourceData: any;
   token: string;
+}
+
+/** Normalize a pin's drawingData (single shape, array, or none) to a flat array. */
+function toShapeArray(drawingData?: Shape | Shape[]): Shape[] {
+  if (!drawingData) return [];
+  return Array.isArray(drawingData) ? drawingData : [drawingData];
 }
 
 function dbCommentToPin(
@@ -95,6 +102,7 @@ export default function ShareViewer({ shareLink, resourceData, token }: ShareVie
   const canComment = shareLink.permissions === 'comment' || shareLink.permissions === 'draw_and_comment';
   const canDraw = shareLink.permissions === 'draw_and_comment';
   const { toast } = useToast();
+  const confirm = useConfirm();
 
   // Guest name — persisted in localStorage
   const [guestName, setGuestName] = useState('');
@@ -168,6 +176,85 @@ export default function ShareViewer({ shareLink, resourceData, token }: ShareVie
     setIsNewPin(true);
     setShowModal(true);
   };
+
+  // Guests may only undo their own saved drawings on the current image.
+  const guestKey = guestName.trim().toLowerCase();
+  const isOwnSavedDrawing = useCallback(
+    (pin: Pin) =>
+      !pin.id.startsWith('local_') &&
+      (pin.author ?? '').trim().toLowerCase() === guestKey &&
+      guestKey.length > 0 &&
+      toShapeArray(pin.drawingData).length > 0,
+    [guestKey],
+  );
+  const canUndoDrawing = pendingShapes.length > 0 || pins.some(isOwnSavedDrawing);
+
+  const handleUndoDrawing = useCallback(async () => {
+    // 1) Peel unsaved strokes first.
+    if (pendingShapes.length > 0) {
+      setPendingShapes(prev => prev.slice(0, -1));
+      return;
+    }
+    // 2) Then peel the last shape off the most recent saved drawing of mine.
+    const thread = threads[currentIndex];
+    if (!thread) return;
+    const target = [...thread.pins].reverse().find(isOwnSavedDrawing);
+    if (!target) return;
+
+    const nextShapes = toShapeArray(target.drawingData).slice(0, -1);
+    const willDelete = nextShapes.length === 0;
+    // Removing the last shape deletes the whole annotation — confirm first so
+    // the user sees that the pin and its comment go with it.
+    if (willDelete) {
+      const ok = await confirm({
+        title: 'Remove this drawing?',
+        description: target.content
+          ? `This deletes the pin, its drawing, and the comment "${target.content}". This cannot be undone.`
+          : 'This deletes the pin and its drawing. This cannot be undone.',
+        confirmText: 'Remove',
+        cancelText: 'Cancel',
+        destructive: true,
+      });
+      if (!ok) return;
+    }
+    const snapshot = threads;
+    setThreads(prev => prev.map((t, i) =>
+      i !== currentIndex ? t : {
+        ...t,
+        pins: willDelete
+          // Last shape removed — drop the whole pin/comment.
+          ? t.pins.filter(p => p.id !== target.id)
+          : t.pins.map(p => p.id === target.id ? { ...p, drawingData: nextShapes } : p),
+      }
+    ));
+    if (willDelete && selectedPin === target.id) {
+      setSelectedPin(null);
+      setShowModal(false);
+    }
+
+    fetch('/api/share/comment/drawing', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token,
+        commentId: target.id,
+        userName: guestName,
+        drawingData: nextShapes,
+      }),
+    })
+      .then(async (res) => {
+        const r = await res.json().catch(() => ({}));
+        if (!r.success) throw new Error(r.error || `Request failed (${res.status})`);
+      })
+      .catch((e) => {
+        setThreads(snapshot);
+        toast({
+          title: 'Unable to undo drawing',
+          description: e?.message || 'Please try again.',
+          variant: 'destructive',
+        });
+      });
+  }, [pendingShapes.length, threads, currentIndex, isOwnSavedDrawing, selectedPin, token, guestName, confirm, toast]);
 
   const handleShapeComplete = (shape: Shape, center: { x: number; y: number }) => {
     if (!canComment || !nameConfirmed) return;
@@ -508,11 +595,9 @@ export default function ShareViewer({ shareLink, resourceData, token }: ShareVie
                   <button
                     type="button"
                     onClick={handleDoneClick}
-                    className="group inline-flex items-center gap-2 pl-2 pr-3.5 py-1.5 rounded-full bg-emerald-600 text-white text-xs font-semibold shadow-sm ring-1 ring-emerald-700/30 hover:bg-emerald-700 hover:shadow-md active:scale-[0.98] transition-all"
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-accent/10 text-accent text-sm font-semibold hover:bg-accent hover:text-accent-foreground active:scale-[0.98] transition-all duration-200 ease-out"
                   >
-                    <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-white/20 text-white">
-                      <CheckCircle2 className="h-3 w-3" />
-                    </span>
+                    <CheckCheck className="h-4 w-4" />
                     Done reviewing
                   </button>
                 )}
@@ -610,7 +695,8 @@ export default function ShareViewer({ shareLink, resourceData, token }: ShareVie
             onToggleFullscreen={() => setIsFullscreen(!isFullscreen)}
             showDrawingTools={canDraw && nameConfirmed}
             currentImageName={currentThread.name}
-            onUndoShape={() => setPendingShapes(prev => prev.slice(0, -1))}
+            onUndoShape={canDraw ? handleUndoDrawing : () => setPendingShapes(prev => prev.slice(0, -1))}
+            canUndo={canDraw ? canUndoDrawing : pendingShapes.length > 0}
           />
         ) : (
           <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
@@ -639,44 +725,40 @@ export default function ShareViewer({ shareLink, resourceData, token }: ShareVie
         onOpenChange={(open) => { if (!open) closeReviewModal(); }}
       >
         <DialogContent className="sm:max-w-md rounded-2xl border-border/60 p-0 overflow-hidden">
-          <div className="h-1 bg-accent" />
-          <div className="p-6 space-y-4">
-            <DialogHeader>
-              <div className="flex items-center gap-3.5">
-                <div className="relative w-11 h-11 rounded-full bg-primary/5 ring-1 ring-primary/15 flex items-center justify-center text-primary shrink-0">
-                  <CheckCircle2 className="h-5 w-5" />
-                  <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-accent ring-2 ring-background" />
-                </div>
-                <div className="min-w-0 text-left">
-                  <DialogTitle className="text-base text-primary">
-                    {reviewIntent === 'leave' ? 'Are you done reviewing?' : 'Mark review as complete?'}
-                  </DialogTitle>
-                  <DialogDescription className="mt-0.5">
-                    {ownCommentCount > 0 ? (
-                      <>
-                        You&apos;ve left {ownCommentCount}{' '}
-                        {ownCommentCount === 1 ? 'comment' : 'comments'} on{' '}
-                        <span className="font-medium text-foreground">{projectName}</span>.
-                      </>
-                    ) : (
-                      <>
-                        Confirm you&apos;ve finished reviewing{' '}
-                        <span className="font-medium text-foreground">{projectName}</span>.
-                      </>
-                    )}
-                  </DialogDescription>
-                </div>
+          <div className="px-8 pt-9 pb-7 text-center">
+            <DialogHeader className="items-center text-center">
+              <div className="mx-auto w-14 h-14 rounded-full bg-primary/[0.04] ring-1 ring-primary/10 flex items-center justify-center text-primary">
+                <CheckCircle2 className="h-7 w-7" strokeWidth={2} />
               </div>
+              <p className="mt-5 text-[11px] font-bold uppercase tracking-[0.16em] text-primary">
+                Exposeprofi <span className="text-accent mx-0.5">·</span> Revision
+              </p>
+              <DialogTitle className="mt-2 text-lg font-semibold text-primary text-center">
+                {reviewIntent === 'leave' ? 'Are you done reviewing?' : 'Mark review as complete?'}
+              </DialogTitle>
+              <DialogDescription className="mt-1.5 text-center leading-relaxed">
+                {ownCommentCount > 0 ? (
+                  <>
+                    You&apos;ve left {ownCommentCount}{' '}
+                    {ownCommentCount === 1 ? 'comment' : 'comments'} on{' '}
+                    <span className="font-semibold text-accent">{projectName}</span>.
+                  </>
+                ) : (
+                  <>
+                    Confirm you&apos;ve finished reviewing{' '}
+                    <span className="font-semibold text-accent">{projectName}</span>.
+                  </>
+                )}
+              </DialogDescription>
             </DialogHeader>
-            <p className="text-sm text-muted-foreground leading-relaxed">
+            <p className="mt-3 text-sm text-muted-foreground leading-relaxed">
               Letting us know helps the team start working on your feedback right away.
-              You can always come back later and add more.
             </p>
-            <DialogFooter className="flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-2">
+            <DialogFooter className="mt-7 flex-col sm:flex-row sm:justify-center gap-2">
               <button
                 type="button"
                 onClick={closeReviewModal}
-                className="px-5 py-2 text-sm font-medium rounded-full border border-border bg-background hover:bg-muted active:scale-[0.98] transition-all"
+                className="px-6 py-2.5 text-sm font-semibold rounded-full bg-accent/10 text-accent hover:bg-accent hover:text-accent-foreground active:scale-[0.98] transition-all duration-200 ease-out"
               >
                 Cancel
               </button>
@@ -684,7 +766,7 @@ export default function ShareViewer({ shareLink, resourceData, token }: ShareVie
                 <button
                   type="button"
                   onClick={handleLeaveAnyway}
-                  className="px-5 py-2 text-sm font-medium rounded-full text-muted-foreground hover:text-foreground hover:bg-muted active:scale-[0.98] transition-all"
+                  className="px-6 py-2.5 text-sm font-medium rounded-full text-muted-foreground hover:text-foreground hover:bg-muted active:scale-[0.98] transition-all"
                 >
                   Leave without confirming
                 </button>
@@ -692,7 +774,7 @@ export default function ShareViewer({ shareLink, resourceData, token }: ShareVie
               <button
                 type="button"
                 onClick={handleConfirmDone}
-                className="px-5 py-2 text-sm font-semibold rounded-full bg-primary text-primary-foreground shadow-sm ring-1 ring-accent/30 hover:shadow-md hover:ring-accent/50 active:scale-[0.98] transition-all"
+                className="px-6 py-2.5 text-sm font-semibold rounded-full bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground active:scale-[0.98] transition-all duration-200 ease-out"
               >
                 Yes, I&apos;m done
               </button>
@@ -707,29 +789,28 @@ export default function ShareViewer({ shareLink, resourceData, token }: ShareVie
         onOpenChange={(open) => { if (!open) handleThanksClose(); }}
       >
         <DialogContent className="sm:max-w-md rounded-2xl border-border/60 p-0 overflow-hidden">
-          <div className="h-1 bg-accent" />
-          <div className="p-6 space-y-4 text-center">
-            <DialogHeader>
-              <div className="flex flex-col items-center gap-3">
-                <div className="relative w-14 h-14 rounded-full bg-primary/5 ring-1 ring-primary/15 flex items-center justify-center text-primary">
-                  <CheckCircle2 className="h-7 w-7" />
-                  <span className="absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full bg-accent ring-2 ring-background" />
-                </div>
-                <DialogTitle className="text-lg text-primary">
-                  Thank you for your feedback
-                </DialogTitle>
-                <DialogDescription>
-                  Your review of{' '}
-                  <span className="font-medium text-foreground">{projectName}</span>{' '}
-                  has been marked complete. The team will take it from here.
-                </DialogDescription>
+          <div className="px-8 pt-9 pb-7 text-center">
+            <DialogHeader className="items-center text-center">
+              <div className="mx-auto w-14 h-14 rounded-full bg-primary/[0.04] ring-1 ring-primary/10 flex items-center justify-center text-primary">
+                <CheckCircle2 className="h-7 w-7" strokeWidth={2} />
               </div>
+              <p className="mt-5 text-[11px] font-bold uppercase tracking-[0.16em] text-primary">
+                Exposeprofi <span className="text-accent mx-0.5">·</span> Revision
+              </p>
+              <DialogTitle className="mt-2 text-lg font-semibold text-primary text-center">
+                Thank you for your feedback
+              </DialogTitle>
+              <DialogDescription className="mt-1.5 text-center leading-relaxed">
+                Your review of{' '}
+                <span className="font-semibold text-accent">{projectName}</span>{' '}
+                has been marked complete. The team will take it from here.
+              </DialogDescription>
             </DialogHeader>
-            <DialogFooter className="sm:justify-center pt-2">
+            <DialogFooter className="mt-7 sm:justify-center">
               <button
                 type="button"
                 onClick={handleThanksClose}
-                className="px-6 py-2 text-sm font-semibold rounded-full bg-primary text-primary-foreground shadow-sm ring-1 ring-accent/30 hover:shadow-md hover:ring-accent/50 active:scale-[0.98] transition-all"
+                className="px-6 py-2.5 text-sm font-semibold rounded-full bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground active:scale-[0.98] transition-all duration-200 ease-out"
               >
                 {pendingNavigationRef.current ? 'Continue' : 'Close'}
               </button>

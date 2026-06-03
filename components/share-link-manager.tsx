@@ -163,7 +163,10 @@ export default function ShareLinkManager({
         )}
       </DialogTrigger>
 
-      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+      <DialogContent
+        className="max-w-2xl max-h-[80vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
         <DialogHeader>
           <DialogTitle>Share: {resourceName}</DialogTitle>
           <DialogDescription>

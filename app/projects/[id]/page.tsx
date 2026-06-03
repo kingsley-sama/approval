@@ -4,7 +4,7 @@ import ImageViewer from '@/components/annotation/image-viewer';
 import CommentModal from '@/components/annotation/comment-modal';
 import { getProjectThreads } from '@/app/actions/threads';
 import { getProjectName } from '@/app/actions/projects';
-import { getThreadComments, resolveComment, getCurrentUser, DbComment, updateCommentPosition, updateComment, deleteComment } from '@/app/actions/comments';
+import { getThreadComments, resolveComment, getCurrentUser, DbComment, updateCommentPosition, updateComment, updateCommentDrawing, deleteComment } from '@/app/actions/comments';
 import { getAttachmentUploadUrl, registerAttachment, getAttachmentsForComments, deleteAttachment } from '@/app/actions/storage';
 import { useCommentQueue } from '@/hooks/use-comment-queue';
 import { useRealtimeComments } from '@/hooks/use-realtime-comments';
@@ -18,6 +18,17 @@ import { shiftDrawingData } from '@/lib/drawing';
 
 type Pin = ProjectPin;
 type ImageData = ProjectImageData;
+
+/** Normalize a pin's drawingData (single shape, array, or none) to a flat array. */
+function pinShapes(drawingData: Pin['drawingData']): Shape[] {
+  if (!drawingData) return [];
+  return Array.isArray(drawingData) ? drawingData : [drawingData];
+}
+
+/** A saved (DB-backed) pin that still carries at least one drawing shape. */
+function isSavedDrawingPin(pin: Pin): boolean {
+  return !pin.isPending && !pin.id.startsWith('local_') && pinShapes(pin.drawingData).length > 0;
+}
 
 interface ProjectPageProps {
   params: Promise<{
@@ -274,9 +285,68 @@ export default function ProjectPage({ params, searchParams }: ProjectPageProps) 
     }
   }, [showModal]);
 
-  const handleUndoShape = useCallback(() => {
-    setPendingShapes(prev => prev.slice(0, -1));
-  }, []);
+  // A saved drawing remains undoable on the current image when there are no
+  // unsaved strokes left to peel first.
+  const hasSavedDrawingOnImage = useMemo(
+    () => (currentImage?.pins ?? []).some(isSavedDrawingPin),
+    [currentImage]
+  );
+  const canUndo = pendingShapes.length > 0 || hasSavedDrawingOnImage;
+
+  const handleUndoShape = useCallback(async () => {
+    // 1) Peel unsaved strokes first.
+    if (pendingShapes.length > 0) {
+      setPendingShapes(prev => prev.slice(0, -1));
+      return;
+    }
+    // 2) Then peel the last shape off the most recent saved drawing.
+    const img = imagesState.find(i => i.id === currentImageId);
+    if (!img) return;
+    const target = [...img.pins].reverse().find(isSavedDrawingPin);
+    if (!target) return;
+
+    const nextShapes = pinShapes(target.drawingData).slice(0, -1);
+    const willDelete = nextShapes.length === 0;
+    // Removing the last shape deletes the whole annotation — confirm first so
+    // the user sees that the pin and its comment go with it.
+    if (willDelete) {
+      const ok = await confirm({
+        title: 'Remove this drawing?',
+        description: target.content
+          ? `This deletes the pin, its drawing, and the comment "${target.content}". This cannot be undone.`
+          : 'This deletes the pin and its drawing. This cannot be undone.',
+        confirmText: 'Remove',
+        cancelText: 'Cancel',
+        destructive: true,
+      });
+      if (!ok) return;
+    }
+    const snapshot = imagesState;
+    setImagesState(prev => prev.map(i =>
+      i.id !== currentImageId ? i : {
+        ...i,
+        pins: willDelete
+          // Last shape removed — drop the whole pin/comment.
+          ? i.pins.filter(p => p.id !== target.id)
+          : i.pins.map(p => p.id === target.id ? { ...p, drawingData: nextShapes } : p),
+      }
+    ));
+    if (willDelete && selectedPin === target.id) {
+      setSelectedPin(null);
+      setShowModal(false);
+    }
+
+    updateCommentDrawing(target.id, nextShapes, projectId).then(res => {
+      if (!res.success) {
+        setImagesState(snapshot);
+        toast({
+          title: 'Unable to undo drawing',
+          description: res.error ?? 'Please try again.',
+          variant: 'destructive',
+        });
+      }
+    });
+  }, [pendingShapes.length, imagesState, currentImageId, projectId, selectedPin, confirm, toast]);
 
   const handleImageClick = useCallback((x: number, y: number) => {
     // Store position and open modal — no placeholder pin yet
@@ -641,6 +711,7 @@ export default function ProjectPage({ params, searchParams }: ProjectPageProps) 
             currentImageName={currentImage?.name}
             onShapeComplete={handleShapeComplete}
             onUndoShape={handleUndoShape}
+            canUndo={canUndo}
             onPinClick={handlePinClick}
             onPinReposition={handlePinReposition}
             isFullscreen={isFullscreen}

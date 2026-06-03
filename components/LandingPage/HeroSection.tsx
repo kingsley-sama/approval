@@ -61,7 +61,7 @@ const HeroSection = () => {
           <div className="rounded-2xl overflow-hidden border border-border shadow-2xl shadow-foreground/5">
             <Image
               src={heroProduct}
-              alt="ProtoFlow interface showing team collaboration on real estate designs"
+              alt="Revision interface showing team collaboration on real estate designs"
               className="w-full"
             />
           </div>

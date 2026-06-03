@@ -392,6 +392,85 @@ export async function updateCommentPosition(
   return { success: true };
 }
 
+/**
+ * Replace a comment's drawing shapes. Used by the "Undo last drawing" control
+ * to peel the last shape off a saved drawing. When the shape set becomes empty
+ * the whole annotation (pin + comment + drawing) is removed — an empty drawing
+ * pin carries no useful information. Returns `deleted: true` in that case.
+ * Handles both storage layouts: drawing_id → markup_drawings, and legacy
+ * drawing JSON kept directly on the comment row.
+ */
+export async function updateCommentDrawing(
+  commentId: string,
+  shapes: any[] | null,
+  projectId?: string,
+): Promise<{ success: boolean; drawingData?: any; deleted?: boolean; error?: string }> {
+  await requireUser();
+
+  if (!commentId || typeof commentId !== 'string') {
+    return { success: false, error: 'Invalid comment ID' };
+  }
+
+  const nextShapes = Array.isArray(shapes) && shapes.length > 0 ? shapes : null;
+  const supabase = await createClient();
+
+  const { data: existing, error: fetchErr } = await supabase
+    .from('markup_comments')
+    .select('id, drawing_id, type')
+    .eq('id', commentId)
+    .single();
+
+  if (fetchErr || !existing) {
+    return { success: false, error: 'Comment not found' };
+  }
+
+  const drawingId = (existing as any).drawing_id as string | null | undefined;
+
+  if (nextShapes) {
+    // Still has shapes — persist the trimmed set where the drawing lives.
+    if (drawingId) {
+      const { error } = await supabase
+        .from('markup_drawings')
+        .update({ drawing_data: nextShapes, updated_at: new Date().toISOString() })
+        .eq('id', drawingId);
+      if (error) {
+        console.error('Error updating drawing shapes:', error);
+        return { success: false, error: error.message };
+      }
+    } else {
+      // Legacy layout: shapes stored directly on the comment row.
+      const { error } = await supabase
+        .from('markup_comments')
+        .update({ drawing_data: nextShapes, updated_at: new Date().toISOString() } as any)
+        .eq('id', commentId);
+      if (error && !isMissingColumnError(error, ['drawing_data'])) {
+        console.error('Error updating comment drawing:', error);
+        return { success: false, error: error.message };
+      }
+    }
+  } else {
+    // No shapes left — remove the whole annotation. Delete the comment first
+    // so the drawing FK (ON DELETE SET NULL) doesn't matter, then clean up the
+    // now-orphaned drawing row.
+    const { error } = await supabase
+      .from('markup_comments')
+      .delete()
+      .eq('id', commentId);
+    if (error) {
+      console.error('Error deleting emptied drawing comment:', error);
+      return { success: false, error: error.message };
+    }
+    if (drawingId) {
+      await supabase.from('markup_drawings').delete().eq('id', drawingId);
+    }
+    if (projectId) revalidatePath(`/projects/${projectId}`);
+    return { success: true, deleted: true };
+  }
+
+  if (projectId) revalidatePath(`/projects/${projectId}`);
+  return { success: true, drawingData: nextShapes ?? undefined };
+}
+
 /** Update a comment's text content. Author or admin only. */
 export async function updateComment(
   commentId: string,

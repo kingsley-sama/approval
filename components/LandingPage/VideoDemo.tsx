@@ -22,7 +22,7 @@ const VideoDemo = () => {
             See it in action
           </h2>
           <p className="text-lg text-muted-foreground max-w-md mx-auto font-body">
-            Watch how the team uses ProtoFlow to streamline design reviews.
+            Watch how the team uses Revision to streamline design reviews.
           </p>
         </motion.div>
 
@@ -50,7 +50,7 @@ const VideoDemo = () => {
             onClick={() => router.push("/login")}
             className="bg-accent text-accent-foreground hover:bg-accent/90 rounded-full px-8 h-12 text-base font-display font-semibold gap-2"
           >
-            Login to ProtoFlow <ArrowRight className="w-4 h-4" />
+            Login to Revision <ArrowRight className="w-4 h-4" />
           </Button>
         </div>
       </div>

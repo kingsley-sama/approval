@@ -39,7 +39,7 @@ const ProblemSection = () => {
           >
             <Image
               src={beforeAfter}
-              alt="Before: chaotic feedback. After: organized feedback in ProtoFlow"
+              alt="Before: chaotic feedback. After: organized feedback in Revision"
               className="w-full"
             />
           </motion.div>
@@ -52,7 +52,7 @@ const ProblemSection = () => {
               transition={{ duration: 0.5, delay: 0.1 }}
               className="surface-low rounded-2xl p-8"
             >
-              <h3 className="font-display font-bold text-foreground text-lg mb-4">Before ProtoFlow</h3>
+              <h3 className="font-display font-bold text-foreground text-lg mb-4">Before Revision</h3>
               <ul className="space-y-3 text-muted-foreground text-sm font-body">
                 <li className="flex items-start gap-3">
                   <span className="text-destructive mt-0.5 font-bold">✕</span>
@@ -75,7 +75,7 @@ const ProblemSection = () => {
               transition={{ duration: 0.5, delay: 0.2 }}
               className="bg-primary rounded-2xl p-8"
             >
-              <h3 className="font-display font-bold text-background text-lg mb-4">With ProtoFlow</h3>
+              <h3 className="font-display font-bold text-background text-lg mb-4">With Revision</h3>
               <ul className="space-y-3 text-background/70 text-sm font-body">
                 <li className="flex items-start gap-3">
                   <span className="text-accent mt-0.5 font-bold">✓</span>

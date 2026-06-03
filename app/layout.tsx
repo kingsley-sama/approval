@@ -23,28 +23,11 @@ export const metadata: Metadata = {
   title: 'Revision - Annotation & Approval Tool for feedback on renders',
   description: 'Give feedback on renders with ease using Revision, the annotation and approval tool designed for artists, clients, and teams.',
   generator: 'Next.js',
+  manifest: '/favicon_io/site.webmanifest',
   icons: {
-    icon: [
-      {
-        url: '/favicon.ico',
-        sizes: 'any',
-        type: 'image/x-icon',
-      },
-      {
-        url: '/icon-light-32x32.png',
-        media: '(prefers-color-scheme: light)',
-      },
-      {
-        url: '/icon-dark-32x32.png',
-        media: '(prefers-color-scheme: dark)',
-      },
-      {
-        url: '/icon.svg',
-        type: 'image/svg+xml',
-      },
-    ],
-    shortcut: '/favicon.ico',
-    apple: '/apple-icon.png',
+    icon: '/favicon_io/android-chrome-192x192.png',
+    shortcut: '/favicon_io/android-chrome-192x192.png',
+    apple: '/favicon_io/android-chrome-192x192.png',
   },
 }
 
