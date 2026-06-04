@@ -5,7 +5,7 @@
  */
 'use client';
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
@@ -121,6 +121,7 @@ export default function ShareViewer({ shareLink, resourceData, token }: ShareVie
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [hoveredPin, setHoveredPin] = useState<string | null>(null);
+  const [commentTab, setCommentTab] = useState<'active' | 'resolved'>('active');
 
   const [hasAddedComment, setHasAddedComment] = useState(false);
   const [ownCommentCount, setOwnCommentCount] = useState(0);
@@ -156,14 +157,33 @@ export default function ShareViewer({ shareLink, resourceData, token }: ShareVie
     localStorage.setItem('share_guest_name', n);
   };
 
-  const currentThread = threads[currentIndex];
+  // Pin numbers run continuously across every thread in the shared resource:
+  // thread 1's pins are 1..n, the next thread continues at n+1, and so on. This
+  // matches the authenticated project view (see numberedImages there). It's
+  // display-only — the stored per-thread numbers are left untouched. `threads`
+  // stays the source of truth for mutations; `numberedThreads` is for rendering.
+  const numberedThreads = useMemo<ThreadData[]>(() => {
+    let counter = 0;
+    return threads.map(t => ({
+      ...t,
+      pins: t.pins.map(pin => ({ ...pin, number: ++counter })),
+    }));
+  }, [threads]);
+
+  const currentThread = numberedThreads[currentIndex];
   const pins = currentThread?.pins || [];
+  // Pins shown on the image follow the sidebar's active/resolved tab, so resolved
+  // pins only appear while viewing the Resolved tab (matching the main project
+  // view). Without this, resolved pins linger on the image alongside active ones.
+  const visiblePins = pins.filter(p =>
+    commentTab === 'resolved' ? p.status === 'resolved' : p.status !== 'resolved'
+  );
   // Drawings render only for the active pin (selected click takes priority over
   // hover), matching the main project view.
   const drawnShapes: Shape[] = (() => {
     const activeId = selectedPin ?? hoveredPin;
     if (!activeId) return [];
-    const pin = pins.find(p => p.id === activeId);
+    const pin = visiblePins.find(p => p.id === activeId);
     if (!pin?.drawingData) return [];
     return Array.isArray(pin.drawingData) ? pin.drawingData : [pin.drawingData];
   })();
@@ -330,6 +350,57 @@ export default function ShareViewer({ shareLink, resourceData, token }: ShareVie
       return { success: false, error: e?.message ?? 'Failed to update comment' };
     }
   }, [guestName, token, toast]);
+
+  // Reviewers with comment access can toggle a comment's resolved state to
+  // confirm a revision is done. Optimistically flips the pin, then persists.
+  const handleResolve = useCallback(async (commentId: string) => {
+    if (commentId.startsWith('local_')) return; // not saved yet
+
+    let previousStatus: 'active' | 'resolved' = 'active';
+    setThreads(prev => prev.map(t => {
+      if (!t.pins.some(p => p.id === commentId)) return t;
+      return {
+        ...t,
+        pins: t.pins.map(pin => {
+          if (pin.id !== commentId) return pin;
+          previousStatus = pin.status;
+          return { ...pin, status: pin.status === 'resolved' ? 'active' : 'resolved' };
+        }),
+      };
+    }));
+
+    const revert = () => setThreads(prev => prev.map(t => {
+      if (!t.pins.some(p => p.id === commentId)) return t;
+      return {
+        ...t,
+        pins: t.pins.map(p => p.id === commentId ? { ...p, status: previousStatus } : p),
+      };
+    }));
+
+    try {
+      const res = await fetch('/api/share/comment/resolve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, commentId }),
+      });
+      const result = await res.json();
+      if (!result.success) {
+        revert();
+        toast({
+          title: 'Failed to update status',
+          description: result.error ?? 'Please try again.',
+          variant: 'destructive',
+        });
+      }
+    } catch (e: any) {
+      revert();
+      toast({
+        title: 'Failed to update status',
+        description: e?.message || 'Please try again.',
+        variant: 'destructive',
+      });
+    }
+  }, [token, toast]);
 
   const handleAddComment = async (text: string) => {
     if (!currentThread || !pendingPinPos) return;
@@ -513,38 +584,37 @@ export default function ShareViewer({ shareLink, resourceData, token }: ShareVie
   if (canComment && !nameConfirmed) {
     return (
       <div className="h-screen flex items-center justify-center bg-muted/30 px-4">
-        <div className="bg-background rounded-3xl shadow-xl border border-border/60 w-full max-w-sm overflow-hidden">
-          <div className="h-1 bg-accent" />
-          <div className="p-8 space-y-5">
-            <div className="flex items-center gap-3">
-              <div className="relative w-11 h-11 rounded-full bg-primary/5 ring-1 ring-primary/15 flex items-center justify-center text-primary shrink-0">
-                <CheckCircle2 className="h-5 w-5" />
-                <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-accent ring-2 ring-background" />
-              </div>
-              <div className="min-w-0">
-                <h2 className="text-base font-semibold leading-tight text-primary">Enter your name</h2>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Shown with your comments on{' '}
-                  <span className="font-medium text-foreground">{projectName}</span>
-                </p>
-              </div>
+        <div className="w-full sm:max-w-md rounded-2xl border border-border/60 bg-background shadow-xl overflow-hidden">
+          <div className="px-8 pt-9 pb-7 text-center">
+            <div className="mx-auto w-14 h-14 rounded-full bg-primary/[0.04] ring-1 ring-primary/10 flex items-center justify-center text-primary">
+              <CheckCircle2 className="h-7 w-7" strokeWidth={2} />
             </div>
+            <p className="mt-5 text-[11px] font-bold uppercase tracking-[0.16em] text-primary">
+              Exposeprofi <span className="text-accent mx-0.5">·</span> Revision
+            </p>
+            <h2 className="mt-2 text-lg font-semibold text-primary">Enter your name</h2>
+            <p className="mt-1.5 text-sm text-muted-foreground leading-relaxed">
+              Shown with your comments on{' '}
+              <span className="font-semibold text-accent">{projectName}</span>.
+            </p>
             <input
               type="text"
-              className="w-full border border-border rounded-full px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
+              className="mt-6 w-full border border-border rounded-full px-4 py-2.5 text-sm text-center outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
               placeholder="Your name"
               value={nameInput}
               onChange={e => setNameInput(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && confirmName()}
               autoFocus
             />
-            <button
-              onClick={confirmName}
-              disabled={!nameInput.trim()}
-              className="w-full py-2.5 bg-primary text-primary-foreground rounded-full text-sm font-semibold shadow-sm ring-1 ring-accent/30 hover:shadow-md hover:ring-accent/50 active:scale-[0.98] disabled:opacity-40 disabled:hover:shadow-sm disabled:active:scale-100 transition-all"
-            >
-              Continue
-            </button>
+            <div className="mt-7 flex justify-center">
+              <button
+                onClick={confirmName}
+                disabled={!nameInput.trim()}
+                className="px-6 py-2.5 text-sm font-semibold rounded-full bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground active:scale-[0.98] transition-all duration-200 ease-out disabled:opacity-40 disabled:hover:bg-primary/10 disabled:hover:text-primary disabled:active:scale-100"
+              >
+                Continue
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -636,7 +706,7 @@ export default function ShareViewer({ shareLink, resourceData, token }: ShareVie
         {/* Comments sidebar — read-only for guests */}
         {!isFullscreen && (
           <CommentsSidebar
-            allImages={threads.map(t => ({ id: t.id, name: t.name, pins: t.pins }))}
+            allImages={numberedThreads.map(t => ({ id: t.id, name: t.name, pins: t.pins }))}
             currentImageId={currentThread?.id || ''}
             selectedPinId={selectedPin}
             onSelectPin={(pinId) => {
@@ -653,8 +723,10 @@ export default function ShareViewer({ shareLink, resourceData, token }: ShareVie
                 }
               }
             }}
-            onResolve={() => {}}
+            onResolve={canComment ? handleResolve : () => {}}
+            onTabChange={setCommentTab}
             readOnly
+            canResolve={canComment}
             onEditComment={canComment ? handleEditComment : undefined}
             currentUser={guestName || 'Guest'}
             userRole="member"
@@ -664,7 +736,7 @@ export default function ShareViewer({ shareLink, resourceData, token }: ShareVie
         {/* Image viewer */}
         {currentThread ? (
           <ImageViewer
-            pins={pins}
+            pins={visiblePins}
             selectedPin={selectedPin}
             drawnShapes={drawnShapes}
             pendingShapes={pendingShapes}
@@ -707,7 +779,7 @@ export default function ShareViewer({ shareLink, resourceData, token }: ShareVie
         {/* Thumbnails sidebar — upload disabled for guests */}
         {!isFullscreen && (
           <ThumbnailsSidebar
-            images={threads.map(t => ({ id: t.id, name: t.name, url: t.url, pins: t.pins }))}
+            images={numberedThreads.map(t => ({ id: t.id, name: t.name, url: t.url, pins: t.pins }))}
             currentImageId={currentThread?.id || ''}
             onSelectImage={(id) => {
               const idx = threads.findIndex(t => t.id === id);
@@ -834,6 +906,7 @@ export default function ShareViewer({ shareLink, resourceData, token }: ShareVie
             setPendingShapes([]);
           }}
           onSubmit={canComment ? handleAddComment : async () => {}}
+          onResolve={canComment && !isNewPin ? handleResolve : undefined}
           onEditComment={canComment ? handleEditComment : undefined}
           isFullscreen={isFullscreen}
           disableAttachments

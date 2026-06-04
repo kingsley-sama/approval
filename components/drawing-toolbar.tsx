@@ -44,6 +44,15 @@ const tools: { value: DrawingTool; label: string; icon: React.ReactNode }[] = [
     ),
   },
   {
+    value: 'line',
+    label: 'Line',
+    icon: (
+      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" className="w-4 h-4">
+        <line x1="4" y1="16" x2="16" y2="4" />
+      </svg>
+    ),
+  },
+  {
     value: 'highlight',
     label: 'Highlight',
     icon: (

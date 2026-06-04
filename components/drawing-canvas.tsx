@@ -9,6 +9,7 @@ import type {
   FreehandShape,
   RectangleShape,
   ArrowShape,
+  LineShape,
   HighlightShape,
   Point,
 } from '@/types/drawing';
@@ -69,6 +70,8 @@ function DrawingCanvasInner({
       setCurrentShape({ ...base, type: 'rectangle', x: point.x, y: point.y, width: 0, height: 0 } as RectangleShape);
     } else if (currentTool === 'arrow') {
       setCurrentShape({ ...base, type: 'arrow', points: [point.x, point.y, point.x, point.y], pointerLength: 10, pointerWidth: 10 } as ArrowShape);
+    } else if (currentTool === 'line') {
+      setCurrentShape({ ...base, type: 'line', points: [point.x, point.y, point.x, point.y] } as LineShape);
     } else if (currentTool === 'highlight') {
       setCurrentShape({ ...base, type: 'highlight', x: point.x, y: point.y, width: 0, height: 0, opacity: 0.3 } as HighlightShape);
     }
@@ -83,7 +86,7 @@ function DrawingCanvasInner({
       setCurrentShape({ ...currentShape, points: [...currentShape.points, point.x, point.y] });
     } else if (currentShape.type === 'rectangle') {
       setCurrentShape({ ...currentShape, width: point.x - currentShape.x, height: point.y - currentShape.y });
-    } else if (currentShape.type === 'arrow') {
+    } else if (currentShape.type === 'arrow' || currentShape.type === 'line') {
       setCurrentShape({ ...currentShape, points: [startPoint.current.x, startPoint.current.y, point.x, point.y] });
     } else if (currentShape.type === 'highlight') {
       setCurrentShape({ ...currentShape, width: point.x - currentShape.x, height: point.y - currentShape.y });
@@ -103,6 +106,8 @@ function DrawingCanvasInner({
       return <Rect key={key} x={shape.x} y={shape.y} width={shape.width} height={shape.height} stroke={shape.color} strokeWidth={shape.strokeWidth} fill={shape.fill} />;
     } else if (shape.type === 'arrow') {
       return <Arrow key={key} points={shape.points} stroke={shape.color} strokeWidth={shape.strokeWidth} pointerLength={shape.pointerLength} pointerWidth={shape.pointerWidth} fill={shape.color} />;
+    } else if (shape.type === 'line') {
+      return <Line key={key} points={shape.points} stroke={shape.color} strokeWidth={shape.strokeWidth} lineCap="round" lineJoin="round" />;
     } else if (shape.type === 'highlight') {
       return <Rect key={key} x={shape.x} y={shape.y} width={shape.width} height={shape.height} fill={shape.color} opacity={shape.opacity} />;
     }

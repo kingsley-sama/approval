@@ -14,7 +14,6 @@ import { Upload } from 'lucide-react';
 import ImageUploader from '@/components/image-uploader';
 import { ProjectTopNav, ProjectShell, ProjectImageData, ProjectPin } from './template';
 import type { Shape } from '@/types/drawing';
-import { shiftDrawingData } from '@/lib/drawing';
 
 type Pin = ProjectPin;
 type ImageData = ProjectImageData;
@@ -253,7 +252,20 @@ export default function ProjectPage({ params, searchParams }: ProjectPageProps) 
     onNewComment: handleRealtimeComment,
   });
 
-  const currentImage = imagesState.find(img => img.id === currentImageId);
+  // Pin numbers run continuously across every image in the project: the first
+  // image's pins are 1..n, the next image continues at n+1, and so on. Numbering
+  // follows the image order and each image's creation order, so it stays stable
+  // as pins are added. This is display-only — the stored per-thread numbers are
+  // left untouched.
+  const numberedImages = useMemo<ImageData[]>(() => {
+    let counter = 0;
+    return imagesState.map(img => ({
+      ...img,
+      pins: img.pins.map(pin => ({ ...pin, number: ++counter })),
+    }));
+  }, [imagesState]);
+
+  const currentImage = numberedImages.find(img => img.id === currentImageId);
   const pins = currentImage?.pins || [];
   const visiblePins = useMemo(
     () => pins.filter(p => commentTab === 'resolved' ? p.status === 'resolved' : p.status !== 'resolved'),
@@ -564,7 +576,7 @@ export default function ProjectPage({ params, searchParams }: ProjectPageProps) 
     }
   }, [pins, handleImageClick]);
 
-  const handlePinReposition = useCallback(async (pinId: string, x: number, y: number, deltaPxX: number, deltaPxY: number) => {
+  const handlePinReposition = useCallback(async (pinId: string, x: number, y: number) => {
     // Local optimistic comments are not in the DB yet.
     if (pinId.startsWith('local_') || !currentImageId) return;
 
@@ -573,23 +585,17 @@ export default function ProjectPage({ params, searchParams }: ProjectPageProps) 
     if (!pinBeforeUpdate) return;
 
     const previousPosition = { x: pinBeforeUpdate.x, y: pinBeforeUpdate.y };
-    const previousDrawingData = pinBeforeUpdate.drawingData;
-    // Pixel delta moves legacy (pre-normalization) shapes; fractional delta —
-    // a percent-of-canvas shift expressed as a 0..1 number — moves normalized
-    // shapes. shiftShape picks the right one per shape.
-    const deltaFracX = (x - previousPosition.x) / 100;
-    const deltaFracY = (y - previousPosition.y) / 100;
-    const shiftedDrawingData = previousDrawingData
-      ? shiftDrawingData(previousDrawingData, deltaPxX, deltaPxY, deltaFracX, deltaFracY)
-      : undefined;
 
+    // Only the pin marker moves — its drawing marks stay anchored where they were
+    // placed. A pin is often dragged aside precisely to reveal the marks beneath
+    // it, so the marks must NOT follow the pin.
     setImagesState(prev => prev.map(img =>
       img.id === currentImageId
         ? {
             ...img,
             pins: img.pins.map(pin =>
               pin.id === pinId
-                ? { ...pin, x, y, drawingData: shiftedDrawingData ?? pin.drawingData }
+                ? { ...pin, x, y }
                 : pin
             ),
           }
@@ -600,7 +606,7 @@ export default function ProjectPage({ params, searchParams }: ProjectPageProps) 
       setModalPosition({ x, y });
     }
 
-    const result = await updateCommentPosition(pinId, x, y, projectId, shiftedDrawingData);
+    const result = await updateCommentPosition(pinId, x, y, projectId);
     if (!result.success) {
       setImagesState(prev => prev.map(img =>
         img.id === currentImageId
@@ -608,7 +614,7 @@ export default function ProjectPage({ params, searchParams }: ProjectPageProps) 
               ...img,
               pins: img.pins.map(pin =>
                 pin.id === pinId
-                  ? { ...pin, x: previousPosition.x, y: previousPosition.y, drawingData: previousDrawingData }
+                  ? { ...pin, x: previousPosition.x, y: previousPosition.y }
                   : pin
               ),
             }
@@ -650,7 +656,7 @@ export default function ProjectPage({ params, searchParams }: ProjectPageProps) 
 
       <ProjectShell
         isFullscreen={isFullscreen}
-        images={imagesState}
+        images={numberedImages}
         currentImageId={currentImageId}
         selectedPinId={selectedPin}
         onSelectPin={(pinId) => {

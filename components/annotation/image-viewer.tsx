@@ -49,7 +49,7 @@ interface ImageViewerProps {
   pins: Pin[];
   selectedPin: string | null;
   onPinClick: (x: number, y: number, pinId?: string) => void;
-  onPinReposition?: (pinId: string, x: number, y: number, deltaPxX: number, deltaPxY: number) => void | Promise<void>;
+  onPinReposition?: (pinId: string, x: number, y: number) => void | Promise<void>;
   isFullscreen: boolean;
   onToggleFullscreen: () => void;
   hoveredPin: string | null;
@@ -141,7 +141,7 @@ function ImageViewerInner({
     } else if (shape.type === 'rectangle' || shape.type === 'highlight') {
       px = shape.x;
       py = shape.y;
-    } else if (shape.type === 'arrow') {
+    } else if (shape.type === 'arrow' || shape.type === 'line') {
       px = shape.points[0];
       py = shape.points[1];
     }
@@ -277,13 +277,7 @@ function ImageViewerInner({
 
       if (!moved) return;
 
-      const rect = imageRef.current?.getBoundingClientRect();
-      const w = rect?.width ?? renderedDimensions.width;
-      const h = rect?.height ?? renderedDimensions.height;
-      const deltaPxX = ((finalPosition.x - dragState.originX) / 100) * w;
-      const deltaPxY = ((finalPosition.y - dragState.originY) / 100) * h;
-
-      onPinReposition?.(pinId, finalPosition.x, finalPosition.y, deltaPxX, deltaPxY);
+      onPinReposition?.(pinId, finalPosition.x, finalPosition.y);
     };
 
     window.addEventListener('pointermove', handlePointerMove);
@@ -298,7 +292,11 @@ function ImageViewerInner({
   }, [draggingPinId, onPinReposition]);
 
   const handlePinPointerDown = (event: React.PointerEvent<HTMLDivElement>, pin: Pin) => {
-    if (activeTool !== null || pin.isPending) return;
+    // Pins stay draggable even while a drawing tool is active, so the user can
+    // nudge a pin out of the way mid-marking to see the marks underneath it.
+    // The marks themselves stay anchored. Pending pins aren't in the DB yet, so
+    // they remain fixed.
+    if (pin.isPending) return;
 
     event.preventDefault();
     event.stopPropagation();
@@ -446,8 +444,14 @@ function ImageViewerInner({
       </div>
 
       {/* Main Image Viewport */}
-      <div className="flex-1 flex items-center justify-center overflow-auto min-w-full min-h-full py-8 px-6">
-        <div data-annotation-image-container className="relative" onClick={handleClick}>
+      {/* The scroll container must NOT center its content: with `justify-content: center`
+          the overflowed start edge (left) becomes unreachable by the scrollbar, so only
+          vertical panning works. Centering lives on an inner wrapper that grows to fit the
+          image (min-w/min-h-full keeps gutters when the image is smaller than the viewport),
+          which keeps both horizontal and vertical edges scrollable. */}
+      <div className="flex-1 overflow-auto">
+        <div className="flex items-center justify-center min-w-full min-h-full py-8 px-6">
+          <div data-annotation-image-container className="relative" onClick={handleClick}>
           <Image
             ref={imageRef}
             src={currentImageUrl || '/modern-house-exterior.jpg'}
@@ -533,6 +537,7 @@ function ImageViewerInner({
               </div>
             </div>
           ))}
+          </div>
         </div>
       </div>
     </div>

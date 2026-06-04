@@ -301,7 +301,11 @@ export default function CommentModal({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') handleSubmit();
+    // Enter saves; Shift+Enter (or Ctrl/Cmd+Enter) inserts a newline.
+    if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+      e.preventDefault();
+      handleSubmit();
+    }
     if (e.key === 'Escape') onClose();
   };
 

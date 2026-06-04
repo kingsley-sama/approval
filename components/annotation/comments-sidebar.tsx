@@ -43,6 +43,9 @@ interface CommentsSidebarProps {
   onResolve: (pinId: string) => void;
   onTabChange?: (tab: 'active' | 'resolved') => void;
   readOnly?: boolean;
+  /** Show the resolve toggle even in readOnly mode (e.g. share-link guests who
+   *  are allowed to confirm a revision is done). */
+  canResolve?: boolean;
   onEditComment?: (commentId: string, newText: string) => Promise<{ success: boolean; error?: string }>;
   onDeleteAttachment?: (commentId: string, attachmentId: string) => Promise<void>;
   onDeleteComment?: (commentId: string) => Promise<void>;
@@ -68,6 +71,7 @@ interface ThreadDetailProps {
   onBack: () => void;
   onResolve: (pinId: string) => void;
   readOnly: boolean;
+  canResolve?: boolean;
   onEditComment?: (commentId: string, newText: string) => Promise<{ success: boolean; error?: string }>;
   onDeleteAttachment?: (commentId: string, attachmentId: string) => Promise<void>;
   onDeleteComment?: (commentId: string) => Promise<void>;
@@ -82,7 +86,7 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function ThreadDetail({ pin, onBack, onResolve, readOnly, onEditComment, onDeleteAttachment, onDeleteComment, currentUser, userRole, projectId }: ThreadDetailProps) {
+function ThreadDetail({ pin, onBack, onResolve, readOnly, canResolve, onEditComment, onDeleteAttachment, onDeleteComment, currentUser, userRole, projectId }: ThreadDetailProps) {
   const [reply, setReply] = useState('');
   const [replies, setReplies] = useState<CommentReply[]>([]);
   const [isLoadingReplies, setIsLoadingReplies] = useState(true);
@@ -342,7 +346,7 @@ function ThreadDetail({ pin, onBack, onResolve, readOnly, onEditComment, onDelet
           </div>
         </div>
         <div className="flex items-center gap-1">
-          {!readOnly && (
+          {(!readOnly || canResolve) && (
             <IconTooltip label={pin.status === 'resolved' ? 'Mark active' : 'Mark resolved'}>
               <button
                 onClick={() => onResolve(pin.id)}
@@ -780,6 +784,7 @@ export default function CommentsSidebar({
   onResolve,
   onTabChange,
   readOnly = false,
+  canResolve = false,
   onEditComment,
   onDeleteAttachment,
   onDeleteComment,
@@ -966,7 +971,7 @@ export default function CommentsSidebar({
                 ))}
             </div>
           )}
-          {!readOnly && (
+          {(!readOnly || canResolve) && (
             <div className="mt-2 flex items-center justify-end gap-1.5">
               {(pin.replyCount ?? 0) > 0 && (
                 <span
@@ -1079,6 +1084,7 @@ export default function CommentsSidebar({
             onBack={() => setOpenThreadPin(null)}
             onResolve={onResolve}
             readOnly={readOnly}
+            canResolve={canResolve}
             onEditComment={onEditComment}
             onDeleteAttachment={onDeleteAttachment}
             onDeleteComment={(id) => {

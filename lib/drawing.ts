@@ -35,7 +35,7 @@ export function normalizeShape(shape: Shape, w: number, h: number): Shape {
       height: safeDiv(shape.height, h),
     };
   }
-  if (shape.type === 'arrow') {
+  if (shape.type === 'arrow' || shape.type === 'line') {
     const [x1, y1, x2, y2] = shape.points;
     return {
       ...shape,
@@ -64,7 +64,7 @@ export function denormalizeShape(shape: Shape, w: number, h: number): Shape {
       height: shape.height * h,
     };
   }
-  if (shape.type === 'arrow') {
+  if (shape.type === 'arrow' || shape.type === 'line') {
     const [x1, y1, x2, y2] = shape.points;
     return {
       ...shape,
@@ -93,7 +93,7 @@ export function shiftShape(shape: Shape, dxPx: number, dyPx: number, dxFrac: num
   if (shape.type === 'rectangle' || shape.type === 'highlight') {
     return { ...shape, x: shape.x + dx, y: shape.y + dy };
   }
-  if (shape.type === 'arrow') {
+  if (shape.type === 'arrow' || shape.type === 'line') {
     const [x1, y1, x2, y2] = shape.points;
     return { ...shape, points: [x1 + dx, y1 + dy, x2 + dx, y2 + dy] };
   }

@@ -42,19 +42,33 @@ export default function ThumbnailsSidebar({
           <div
             key={img.id}
             onClick={() => onSelectImage(img.id)}
-            className={`border-b border-border aspect-square overflow-hidden cursor-pointer hover:opacity-80 transition-all ${
-              currentImageId === img.id ? 'ring-2 ring-blue-600' : ''
+            className={`border-b border-border cursor-pointer transition-colors ${
+              currentImageId === img.id ? 'bg-blue-50' : 'hover:bg-gray-50'
             }`}
           >
-            <NextImage
-              src={getOptimizedImageUrl(img.url, IMAGE_SIZES.SIDEBAR_THUMB) || "/placeholder.svg"}
-              alt={img.name}
-              width={128}
-              height={128}
-              sizes="128px"
-              quality={60}
-              className="w-full h-full object-cover"
-            />
+            <div
+              className={`aspect-square overflow-hidden hover:opacity-80 transition-all ${
+                currentImageId === img.id ? 'ring-2 ring-inset ring-blue-600' : ''
+              }`}
+            >
+              <NextImage
+                src={getOptimizedImageUrl(img.url, IMAGE_SIZES.SIDEBAR_THUMB) || "/placeholder.svg"}
+                alt={img.name}
+                width={128}
+                height={128}
+                sizes="128px"
+                quality={60}
+                className="w-full h-full object-cover"
+              />
+            </div>
+            <div
+              className={`px-1.5 py-1 text-[10px] leading-tight truncate ${
+                currentImageId === img.id ? 'text-blue-700 font-medium' : 'text-gray-600'
+              }`}
+              title={img.name}
+            >
+              {img.name}
+            </div>
           </div>
         ))}
       </div>

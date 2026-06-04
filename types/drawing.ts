@@ -3,7 +3,7 @@
  * Defines the structure for canvas-based annotations
  */
 
-export type DrawingTool = 'pen' | 'rectangle' | 'arrow' | 'highlight' | 'eraser';
+export type DrawingTool = 'pen' | 'rectangle' | 'arrow' | 'line' | 'highlight' | 'eraser';
 
 export interface Point {
   x: number;
@@ -45,6 +45,11 @@ export interface ArrowShape extends BaseShape {
   pointerWidth: number;
 }
 
+export interface LineShape extends BaseShape {
+  type: 'line';
+  points: number[]; // [x1, y1, x2, y2]
+}
+
 export interface HighlightShape extends BaseShape {
   type: 'highlight';
   x: number;
@@ -54,7 +59,7 @@ export interface HighlightShape extends BaseShape {
   opacity: number;
 }
 
-export type Shape = FreehandShape | RectangleShape | ArrowShape | HighlightShape;
+export type Shape = FreehandShape | RectangleShape | ArrowShape | LineShape | HighlightShape;
 
 export interface DrawingData {
   version: string;
