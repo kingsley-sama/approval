@@ -7,6 +7,7 @@ import { IconTooltip } from '@/components/ui/icon-tooltip';
 import { Plus, CheckCircle2, XCircle, Loader2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { xhrUpload, validateFiles, type FileUploadState } from '@/lib/upload';
+import { compressImageFile } from '@/lib/image-compression';
 
 interface ImageUploaderProps {
   projectId: string;
@@ -24,7 +25,11 @@ export default function ImageUploader({ projectId, onUploadComplete, trigger }: 
   const patch = (id: string, update: Partial<FileUploadState>) =>
     setFileStates(prev => prev.map(f => f.id === id ? { ...f, ...update } : f));
 
-  const uploadOne = async (file: File, state: FileUploadState): Promise<boolean> => {
+  const uploadOne = async (rawFile: File, state: FileUploadState): Promise<boolean> => {
+    // 0. Compress in the browser before uploading (best-effort; falls back to
+    //    the original on failure or if compression doesn't help).
+    const file = await compressImageFile(rawFile);
+
     // 1. Get presigned URL from server (tiny request — no file data)
     patch(state.id, { status: 'uploading', progress: 0 });
     const urlResult = await getSignedUploadUrl(projectId, file.name);

@@ -3,6 +3,7 @@
 import { useRef, useState } from 'react';
 import { Upload } from 'lucide-react';
 import { storageService } from '@/lib/supabase';
+import { compressImageFiles } from '@/lib/image-compression';
 
 type UploadedFile = { url: string; path: string; name: string };
 
@@ -67,7 +68,9 @@ export default function UploadUi({
 			// `bucketName` is accepted for API compatibility with callers.
 			void bucketName;
 
-			const result = await storageService.uploadMultipleFiles(validFiles, folder);
+			// Compress images client-side before upload (non-images pass through).
+			const filesToUpload = await compressImageFiles(validFiles);
+			const result = await storageService.uploadMultipleFiles(filesToUpload, folder);
 
 			if (result.failedUploads.length > 0 && result.successfulUploads.length === 0) {
 				throw new Error(result.failedUploads[0].error?.message || 'Upload failed');

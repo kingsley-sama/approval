@@ -18,6 +18,7 @@ import {
 import { Label } from '@/components/ui/label';
 import { FolderPlus, Upload, X, CheckCircle2, XCircle, Loader2, AlertCircle } from 'lucide-react';
 import { xhrUpload, validateFiles, type FileUploadState } from '@/lib/upload';
+import { compressImageFile } from '@/lib/image-compression';
 
 interface CreateProjectModalProps {
   onProjectCreated: () => void;
@@ -136,7 +137,10 @@ export default function CreateProjectModal({ onProjectCreated, trigger }: Create
         const patch = (id: string, update: Partial<FileUploadState>) =>
           setUploadStates(prev => prev.map(s => s.id === id ? { ...s, ...update } : s));
 
-        const uploadOne = async (file: File, state: FileUploadState): Promise<string | null> => {
+        const uploadOne = async (rawFile: File, state: FileUploadState): Promise<string | null> => {
+          // Compress in the browser before uploading (best-effort; falls back
+          // to the original on failure or if compression doesn't help).
+          const file = await compressImageFile(rawFile);
           patch(state.id, { status: 'uploading', progress: 0 });
 
           const urlResult = await getSignedUploadUrl(projectId, file.name);

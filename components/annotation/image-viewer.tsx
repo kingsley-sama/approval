@@ -33,6 +33,23 @@ const COMMENT_PIN_CURSOR = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.
 // Pencil cursor — matches the pen icon used in the drawing toolbar
 const DRAWING_PENCIL_CURSOR = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 20 20'%3E%3Cpath d='M13.586 3.586a2 2 0 112.828 2.828l-8.5 8.5a1 1 0 01-.39.242l-3 1a1 1 0 01-1.265-1.265l1-3a1 1 0 01.242-.39l8.5-8.5z' fill='%232563eb' stroke='white' stroke-width='1' stroke-linejoin='round'/%3E%3C/svg%3E") 3 21, crosshair`;
 
+const EXT_BY_MIME: Record<string, string> = {
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+  'image/gif': 'gif',
+  'image/svg+xml': 'svg',
+};
+
+/** Build a sensible download filename from the image name, falling back to the
+ *  URL's basename, and ensuring it carries an extension matching the blob type. */
+function downloadFileName(name: string | undefined, mimeType: string, url: string): string {
+  const fromUrl = url.split('/').pop()?.split('?')[0];
+  const base = (name && name.trim()) || (fromUrl && decodeURIComponent(fromUrl)) || 'image';
+  if (/\.[a-zA-Z0-9]{2,5}$/.test(base)) return base;
+  return `${base}.${EXT_BY_MIME[mimeType] ?? 'jpg'}`;
+}
+
 interface Pin {
   id: string;
   number: number;
@@ -113,6 +130,32 @@ function ImageViewerInner({
   } | null>(null);
   const draggingPinPositionRef = useRef<{ x: number; y: number } | null>(null);
   const suppressNextClickRef = useRef(false);
+  const [isDownloading, setIsDownloading] = useState(false);
+
+  // Fetch the stored image as a blob so the browser's download attribute works
+  // even for cross-origin storage URLs (where `<a download>` is otherwise
+  // ignored). Falls back to opening the image in a new tab on failure.
+  const handleDownload = async () => {
+    if (!currentImageUrl || isDownloading) return;
+    setIsDownloading(true);
+    try {
+      const res = await fetch(currentImageUrl);
+      if (!res.ok) throw new Error(`Download failed (${res.status})`);
+      const blob = await res.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = objectUrl;
+      a.download = downloadFileName(currentImageName, blob.type, currentImageUrl);
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(objectUrl);
+    } catch {
+      window.open(currentImageUrl, '_blank', 'noopener');
+    } finally {
+      setIsDownloading(false);
+    }
+  };
 
   const zoomOptions = [
     { label: 'Fit in Window', value: 'fit-window' as const },
@@ -349,7 +392,7 @@ function ImageViewerInner({
   return (
     <div
       ref={containerRef}
-      className={`flex-1 flex flex-col relative overflow-hidden transition-colors ${isFullscreen ? 'bg-black' : 'bg-gray-100'}`}
+      className={`flex-1 flex flex-col relative overflow-hidden transition-colors ${isFullscreen ? 'bg-black' : 'bg-gray-300'}`}
     >
       {/* Viewer Toolbar */}
       <div className={`flex items-center justify-between px-4 py-2 border-b shrink-0 z-30 ${isFullscreen ? 'bg-zinc-900 border-zinc-700' : 'bg-background border-border/50'}`}>
@@ -424,6 +467,9 @@ function ImageViewerInner({
             <Button
               variant="ghost"
               size="icon"
+              onClick={handleDownload}
+              disabled={isDownloading || !currentImageUrl}
+              aria-label="Download image"
               className={`h-7 w-7 ${isFullscreen ? 'text-zinc-300 hover:text-white hover:bg-zinc-700' : 'text-muted-foreground'}`}
             >
               <Download className="h-3.5 w-3.5" />
@@ -460,7 +506,12 @@ function ImageViewerInner({
             alt="Annotation view"
             className="block"
             sizes="(max-width: 768px) 100vw, calc(100vw - 600px)"
-            quality={85}
+            // Serve the original file rather than routing it through the Next.js
+            // image optimizer. Revision uploads can be very large; optimizing them
+            // makes sharp time out / error, leaving a broken-image placeholder that
+            // the optimizer then caches so reloads can't recover it. Unoptimized
+            // also preserves full resolution for zooming in on annotations.
+            unoptimized
             priority
             style={{
               ...getImageStyle(),

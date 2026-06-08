@@ -14,6 +14,7 @@ import { Upload } from 'lucide-react';
 import ImageUploader from '@/components/image-uploader';
 import { ProjectTopNav, ProjectShell, ProjectImageData, ProjectPin } from './template';
 import type { Shape } from '@/types/drawing';
+import { compressImageFile } from '@/lib/image-compression';
 
 type Pin = ProjectPin;
 type ImageData = ProjectImageData;
@@ -144,8 +145,10 @@ export default function ProjectPage({ params, searchParams }: ProjectPageProps) 
   /** Upload files to project-scoped attachment storage after a comment is confirmed. */
   async function uploadAttachmentsForComment(commentId: string, pid: string, files: File[]) {
     const failed: string[] = [];
-    for (const file of files) {
+    for (const rawFile of files) {
       try {
+        // Compress images client-side before upload (PDFs/other pass through).
+        const file = await compressImageFile(rawFile);
         const urlResult = await getAttachmentUploadUrl(pid, file.name, file.type, file.size);
         if (!urlResult.success || !urlResult.signedUrl || !urlResult.storagePath) {
           failed.push(file.name);
@@ -163,7 +166,7 @@ export default function ProjectPage({ params, searchParams }: ProjectPageProps) 
 
         await registerAttachment(commentId, pid, urlResult.storagePath, file.name, file.type, file.size);
       } catch {
-        failed.push(file.name);
+        failed.push(rawFile.name);
       }
     }
     if (failed.length > 0) {

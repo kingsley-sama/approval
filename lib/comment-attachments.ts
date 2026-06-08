@@ -2,6 +2,7 @@ import {
   getAttachmentUploadUrl,
   registerAttachment,
 } from '@/app/actions/storage';
+import { compressImageFile } from '@/lib/image-compression';
 
 export const ATTACHMENT_ALLOWED_TYPES = new Set([
   'image/jpeg',
@@ -51,8 +52,10 @@ export async function uploadCommentAttachments(
   const failed: string[] = [];
   let uploaded = 0;
 
-  for (const file of files) {
+  for (const rawFile of files) {
     try {
+      // Shrink images in the browser before uploading (PDFs/other pass through).
+      const file = await compressImageFile(rawFile);
       const urlResult = await getAttachmentUploadUrl(
         projectId,
         file.name,
@@ -87,7 +90,7 @@ export async function uploadCommentAttachments(
       }
       uploaded += 1;
     } catch {
-      failed.push(file.name);
+      failed.push(rawFile.name);
     }
   }
 
