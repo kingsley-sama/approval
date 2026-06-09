@@ -115,6 +115,9 @@ function ImageViewerInner({
   const containerRef = useRef<HTMLDivElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
   const [imageDimensions, setImageDimensions] = useState({ width: 1600, height: 1600 });
+  // False from the moment the source changes until the new image has loaded, so
+  // a loading overlay can cover the switch instead of showing the stale image.
+  const [imageLoaded, setImageLoaded] = useState(false);
   const [zoom, setZoom] = useState<ZoomMode>('fit-window');
   const [activeTool, setActiveTool] = useState<DrawingTool | null>(null);
   const [renderedDimensions, setRenderedDimensions] = useState({ width: 0, height: 0 });
@@ -199,8 +202,12 @@ function ImageViewerInner({
     if (!img) return;
     const handleLoad = () => {
       setImageDimensions({ width: img.naturalWidth, height: img.naturalHeight });
+      setImageLoaded(true);
     };
-    if (img.complete) handleLoad();
+    // Reset to "loading" for the new source; if it's already cached (e.g. warmed
+    // by the preloader) `complete` is true and the overlay never flashes.
+    setImageLoaded(false);
+    if (img.complete && img.naturalWidth > 0) handleLoad();
     img.addEventListener('load', handleLoad);
     return () => img.removeEventListener('load', handleLoad);
   }, [currentImageUrl]);
@@ -392,7 +399,7 @@ function ImageViewerInner({
   return (
     <div
       ref={containerRef}
-      className={`flex-1 flex flex-col relative overflow-hidden transition-colors ${isFullscreen ? 'bg-black' : 'bg-gray-300'}`}
+      className={`flex-1 flex flex-col relative overflow-hidden transition-colors ${isFullscreen ? 'bg-black' : 'bg-gray-200'}`}
     >
       {/* Viewer Toolbar */}
       <div className={`flex items-center justify-between px-4 py-2 border-b shrink-0 z-30 ${isFullscreen ? 'bg-zinc-900 border-zinc-700' : 'bg-background border-border/50'}`}>
@@ -495,7 +502,14 @@ function ImageViewerInner({
           vertical panning works. Centering lives on an inner wrapper that grows to fit the
           image (min-w/min-h-full keeps gutters when the image is smaller than the viewport),
           which keeps both horizontal and vertical edges scrollable. */}
-      <div className="flex-1 overflow-auto">
+      <div className="flex-1 overflow-auto relative">
+        {/* Loading overlay — shows immediately on a switch and stays until the
+            new image has loaded, hiding the previous image during the swap. */}
+        {currentImageUrl && !imageLoaded && (
+          <div className={`absolute inset-0 z-40 flex items-center justify-center ${isFullscreen ? 'bg-black' : 'bg-gray-200'}`}>
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+          </div>
+        )}
         <div className="flex items-center justify-center min-w-full min-h-full py-8 px-6">
           <div data-annotation-image-container className="relative" onClick={handleClick}>
           <Image

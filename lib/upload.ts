@@ -6,6 +6,10 @@ export interface FileUploadState {
   status: FileStatus;
   progress: number; // 0-100
   error?: string;
+  // Compression accounting, populated once the file has been processed.
+  originalSize?: number;
+  compressedSize?: number;
+  didCompress?: boolean;
 }
 
 // ─── validation ──────────────────────────────────────────────────────────────

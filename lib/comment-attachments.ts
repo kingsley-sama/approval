@@ -48,6 +48,9 @@ export async function uploadCommentAttachments(
   commentId: string,
   projectId: string,
   files: File[],
+  // When the caller already compressed the images (e.g. to show the user the
+  // savings before sending), skip re-encoding so the uploaded file matches.
+  skipCompression = false,
 ): Promise<UploadCommentAttachmentsResult> {
   const failed: string[] = [];
   let uploaded = 0;
@@ -55,7 +58,7 @@ export async function uploadCommentAttachments(
   for (const rawFile of files) {
     try {
       // Shrink images in the browser before uploading (PDFs/other pass through).
-      const file = await compressImageFile(rawFile);
+      const file = skipCompression ? rawFile : await compressImageFile(rawFile);
       const urlResult = await getAttachmentUploadUrl(
         projectId,
         file.name,

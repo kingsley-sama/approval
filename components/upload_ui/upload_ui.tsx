@@ -3,7 +3,7 @@
 import { useRef, useState } from 'react';
 import { Upload } from 'lucide-react';
 import { storageService } from '@/lib/supabase';
-import { compressImageFiles } from '@/lib/image-compression';
+import { compressImageFilesWithStats, formatFileSize } from '@/lib/image-compression';
 
 type UploadedFile = { url: string; path: string; name: string };
 
@@ -40,10 +40,12 @@ export default function UploadUi({
 }: UploadUiProps) {
 	const inputRef = useRef<HTMLInputElement>(null);
 	const [isUploading, setIsUploading] = useState(false);
+	const [compressionSummary, setCompressionSummary] = useState<{ count: number; saved: number } | null>(null);
 
 	const handleSelectFiles = async (event: React.ChangeEvent<HTMLInputElement>) => {
 		const allFiles = Array.from(event.target.files ?? []);
 		if (allFiles.length === 0) return;
+		setCompressionSummary(null);
 
 		if (allFiles.length > maxNumberOfFiles) {
 			const error = new Error(`You can upload up to ${maxNumberOfFiles} files at once.`);
@@ -69,7 +71,11 @@ export default function UploadUi({
 			void bucketName;
 
 			// Compress images client-side before upload (non-images pass through).
-			const filesToUpload = await compressImageFiles(validFiles);
+			const compressed = await compressImageFilesWithStats(validFiles);
+			const filesToUpload = compressed.map(c => c.file);
+			const saved = compressed.reduce((sum, c) => sum + Math.max(0, c.originalSize - c.compressedSize), 0);
+			const count = compressed.filter(c => c.didCompress).length;
+			setCompressionSummary(count > 0 ? { count, saved } : null);
 			const result = await storageService.uploadMultipleFiles(filesToUpload, folder);
 
 			if (result.failedUploads.length > 0 && result.successfulUploads.length === 0) {
@@ -120,6 +126,13 @@ export default function UploadUi({
 					</p>
 				</div>
 			</button>
+
+			{compressionSummary && (
+				<p className="text-xs text-green-600 text-center">
+					Compressed {compressionSummary.count} image{compressionSummary.count !== 1 ? 's' : ''} ·
+					saved {formatFileSize(compressionSummary.saved)}
+				</p>
+			)}
 		</div>
 	);
 }

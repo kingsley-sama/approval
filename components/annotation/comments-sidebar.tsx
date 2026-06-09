@@ -8,6 +8,8 @@ import { createReply, getRepliesForComment, type CommentReply } from '@/app/acti
 import { getCurrentUser } from '@/app/actions/comments';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { uploadCommentAttachments, validateAttachments } from '@/lib/comment-attachments';
+import { compressImageWithStats } from '@/lib/image-compression';
+import { CompressionInfo } from '@/components/compression-info';
 import { IconTooltip } from '@/components/ui/icon-tooltip';
 
 const EMOJI_OPTIONS = [
@@ -51,8 +53,20 @@ interface CommentsSidebarProps {
   onDeleteComment?: (commentId: string) => Promise<void>;
   currentUser?: string;
   userRole?: string;
-  /** Required to enable attachment uploads in replies. */
+  /** Required to enable attachment uploads in replies (authenticated flow). */
   projectId?: string;
+  /** Enable the reply composer + attachment controls even when `readOnly`
+   *  (e.g. share-link guests who are allowed to comment). */
+  allowReply?: boolean;
+  /** Override how a reply is created (e.g. share-link guests post via the
+   *  token-validated API instead of the authenticated server action). */
+  createReplyFn?: (commentId: string, content: string, userName: string) => Promise<{ success: boolean; reply?: CommentReply; error?: string }>;
+  /** Override how reply attachments are uploaded (guests route through the
+   *  share API; the project is derived server-side, so no projectId needed). */
+  uploadAttachmentsFn?: (commentId: string, files: File[]) => Promise<{ failed: string[] }>;
+  /** Only allow deleting attachments on comments the current user authored
+   *  (used for share-link guests). */
+  restrictAttachmentsToOwn?: boolean;
 }
 
 const ELEVATED_ROLES = ['admin', 'pm'];
@@ -78,6 +92,10 @@ interface ThreadDetailProps {
   currentUser?: string;
   userRole?: string;
   projectId?: string;
+  allowReply?: boolean;
+  createReplyFn?: (commentId: string, content: string, userName: string) => Promise<{ success: boolean; reply?: CommentReply; error?: string }>;
+  uploadAttachmentsFn?: (commentId: string, files: File[]) => Promise<{ failed: string[] }>;
+  restrictAttachmentsToOwn?: boolean;
 }
 
 function formatBytes(bytes: number): string {
@@ -86,7 +104,7 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function ThreadDetail({ pin, onBack, onResolve, readOnly, canResolve, onEditComment, onDeleteAttachment, onDeleteComment, currentUser, userRole, projectId }: ThreadDetailProps) {
+function ThreadDetail({ pin, onBack, onResolve, readOnly, canResolve, onEditComment, onDeleteAttachment, onDeleteComment, currentUser, userRole, projectId, allowReply, createReplyFn, uploadAttachmentsFn, restrictAttachmentsToOwn }: ThreadDetailProps) {
   const [reply, setReply] = useState('');
   const [replies, setReplies] = useState<CommentReply[]>([]);
   const [isLoadingReplies, setIsLoadingReplies] = useState(true);
@@ -98,12 +116,15 @@ function ThreadDetail({ pin, onBack, onResolve, readOnly, canResolve, onEditComm
   const [editError, setEditError] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const replyFileInputRef = useRef<HTMLInputElement>(null);
-  const [pendingReplyFiles, setPendingReplyFiles] = useState<{ id: string; file: File }[]>([]);
+  const [pendingReplyFiles, setPendingReplyFiles] = useState<{ id: string; file: File; originalSize: number; compressedSize: number; didCompress: boolean }[]>([]);
   const [replyAttachmentError, setReplyAttachmentError] = useState<string | null>(null);
   const [isDraggingReply, setIsDraggingReply] = useState(false);
   const replyDragDepthRef = useRef(0);
-  const canAttachToReply = !readOnly && !!projectId;
-  const canDeleteAttachment = !readOnly && !!onDeleteAttachment;
+  // Guests are `readOnly` for most controls but may still reply/attach when
+  // `allowReply` is set; injected fns route those writes through the share API.
+  const interactive = !readOnly || !!allowReply;
+  const canAttachToReply = interactive && (!!projectId || !!uploadAttachmentsFn);
+  const canDeleteAttachment = interactive && !!onDeleteAttachment;
   const [deletingAttachmentId, setDeletingAttachmentId] = useState<string | null>(null);
 
   const handleAttachmentDelete = async (commentId: string, attachmentId: string) => {
@@ -215,8 +236,9 @@ function ThreadDetail({ pin, onBack, onResolve, readOnly, canResolve, onEditComm
 
   const handleSendReply = async () => {
     const trimmed = reply.trim();
-    const filesToUpload = pendingReplyFiles.map(f => f.file);
-    if ((!trimmed && filesToUpload.length === 0) || readOnly || isSendingReply) return;
+    const pendingSnapshot = pendingReplyFiles;
+    const filesToUpload = pendingSnapshot.map(f => f.file);
+    if ((!trimmed && filesToUpload.length === 0) || !interactive || isSendingReply) return;
 
     setIsSendingReply(true);
 
@@ -237,14 +259,16 @@ function ThreadDetail({ pin, onBack, onResolve, readOnly, canResolve, onEditComm
     setPendingReplyFiles([]);
     setReplyAttachmentError(null);
 
-    const result = await createReply(pin.id, optimisticContent, currentUserName);
+    const result = await (createReplyFn ?? createReply)(pin.id, optimisticContent, currentUserName);
 
     if (result.success && result.reply) {
       const newReply = result.reply;
       setReplies(prev => prev.map(r => r.id === optimistic.id ? newReply : r));
 
-      if (filesToUpload.length > 0 && projectId) {
-        const { failed } = await uploadCommentAttachments(newReply.id, projectId, filesToUpload);
+      if (filesToUpload.length > 0 && (uploadAttachmentsFn || projectId)) {
+        const { failed } = uploadAttachmentsFn
+          ? await uploadAttachmentsFn(newReply.id, filesToUpload)
+          : await uploadCommentAttachments(newReply.id, projectId!, filesToUpload, true);
         if (failed.length > 0) {
           setReplyAttachmentError(`Failed to upload: ${failed.join(', ')}`);
         }
@@ -255,22 +279,26 @@ function ThreadDetail({ pin, onBack, onResolve, readOnly, canResolve, onEditComm
     } else {
       setReplies(prev => prev.filter(r => r.id !== optimistic.id));
       setReply(trimmed);
-      setPendingReplyFiles(filesToUpload.map(file => ({ id: crypto.randomUUID(), file })));
+      setPendingReplyFiles(pendingSnapshot);
     }
 
     setIsSendingReply(false);
   };
 
-  const addReplyFiles = (files: File[]) => {
+  const addReplyFiles = async (files: File[]) => {
     if (!canAttachToReply) return;
     setReplyAttachmentError(null);
     const { valid, errors } = validateAttachments(files);
     if (errors.length) setReplyAttachmentError(errors.join('; '));
     if (!valid.length) return;
-    setPendingReplyFiles(prev => [
-      ...prev,
-      ...valid.map(file => ({ id: crypto.randomUUID(), file })),
-    ]);
+    // Compress images now so the chip can show the savings before sending.
+    const pending = await Promise.all(
+      valid.map(async file => {
+        const { file: out, originalSize, compressedSize, didCompress } = await compressImageWithStats(file);
+        return { id: crypto.randomUUID(), file: out, originalSize, compressedSize, didCompress };
+      }),
+    );
+    setPendingReplyFiles(prev => [...prev, ...pending]);
   };
 
   const handleReplyFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -320,6 +348,11 @@ function ThreadDetail({ pin, onBack, onResolve, readOnly, canResolve, onEditComm
 
   const isMine = (name: string) =>
     name.trim().toLowerCase() === currentUserName.trim().toLowerCase();
+
+  // The top-level comment's attachments: in guest mode (restrictAttachmentsToOwn)
+  // only the author may remove them.
+  const canDeletePinAttachment =
+    canDeleteAttachment && (!restrictAttachmentsToOwn || isMine(pin.author ?? ''));
 
   return (
     <div className="flex flex-col h-full">
@@ -467,7 +500,7 @@ function ThreadDetail({ pin, onBack, onResolve, readOnly, canResolve, onEditComm
                             }`}
                           />
                         </a>
-                        {canDeleteAttachment && (
+                        {canDeletePinAttachment && (
                           <button
                             type="button"
                             onClick={(e) => {
@@ -502,7 +535,7 @@ function ThreadDetail({ pin, onBack, onResolve, readOnly, canResolve, onEditComm
                         <FileText className="h-3.5 w-3.5 shrink-0" />
                         <span className="truncate max-w-45">{a.original_filename}</span>
                       </a>
-                      {canDeleteAttachment && (
+                      {canDeletePinAttachment && (
                         <button
                           type="button"
                           onClick={() => handleAttachmentDelete(pin.id, a.id)}
@@ -655,7 +688,15 @@ function ThreadDetail({ pin, onBack, onResolve, readOnly, canResolve, onEditComm
                     <FileText className="size-3 text-muted-foreground shrink-0" />
                   )}
                   <span className="flex-1 truncate text-foreground">{p.file.name}</span>
-                  <span className="text-muted-foreground shrink-0">{formatBytes(p.file.size)}</span>
+                  {p.file.type.startsWith('image/')
+                    ? <CompressionInfo
+                        originalSize={p.originalSize}
+                        compressedSize={p.compressedSize}
+                        didCompress={p.didCompress}
+                        className="shrink-0"
+                      />
+                    : <span className="text-muted-foreground shrink-0">{formatBytes(p.file.size)}</span>
+                  }
                   <IconTooltip label="Remove attachment">
                     <button
                       type="button"
@@ -685,8 +726,8 @@ function ThreadDetail({ pin, onBack, onResolve, readOnly, canResolve, onEditComm
                 handleSendReply();
               }
             }}
-            placeholder={readOnly ? 'Read-only thread' : 'Type a reply...'}
-            disabled={readOnly || isSendingReply}
+            placeholder={!interactive ? 'Read-only thread' : 'Type a reply...'}
+            disabled={!interactive || isSendingReply}
             className="w-full bg-transparent text-[13px] text-foreground placeholder:text-muted-foreground/60 focus:outline-none"
             style={{ fontFamily: 'var(--font-body)' }}
           />
@@ -708,7 +749,7 @@ function ThreadDetail({ pin, onBack, onResolve, readOnly, canResolve, onEditComm
                     <button
                       type="button"
                       aria-label="Add emoji"
-                      disabled={readOnly || isSendingReply}
+                      disabled={!interactive || isSendingReply}
                       className="size-7 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-full transition-colors disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
                     >
                       <Smile className="size-3.5" strokeWidth={1.5} />
@@ -763,7 +804,7 @@ function ThreadDetail({ pin, onBack, onResolve, readOnly, canResolve, onEditComm
             <button
               type="button"
               onClick={handleSendReply}
-              disabled={readOnly || isSendingReply || (!reply.trim() && pendingReplyFiles.length === 0)}
+              disabled={!interactive || isSendingReply || (!reply.trim() && pendingReplyFiles.length === 0)}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground text-[10px] font-semibold tracking-[0.12em] uppercase rounded-md hover:opacity-90 disabled:opacity-45 transition-opacity"
             >
               <Send className="size-3.5" />
@@ -791,13 +832,19 @@ export default function CommentsSidebar({
   currentUser,
   userRole,
   projectId,
+  allowReply,
+  createReplyFn,
+  uploadAttachmentsFn,
+  restrictAttachmentsToOwn,
 }: CommentsSidebarProps) {
   const [expandedImages, setExpandedImages] = useState<string[]>([currentImageId]);
   const [activeTab, setActiveTab] = useState<'active' | 'resolved'>('active');
   const [openThreadPin, setOpenThreadPin] = useState<Pin | null>(null);
   const [deletingAttachmentId, setDeletingAttachmentId] = useState<string | null>(null);
 
-  const canDeleteAttachmentInline = !readOnly && !!onDeleteAttachment;
+  const canDeleteAttachmentInline = (!readOnly || !!allowReply) && !!onDeleteAttachment;
+  const isMineInline = (name?: string) =>
+    (name ?? '').trim().toLowerCase() === (currentUser ?? '').trim().toLowerCase();
 
   const handleInlineAttachmentDelete = async (commentId: string, attachmentId: string) => {
     if (!onDeleteAttachment) return;
@@ -920,7 +967,7 @@ export default function CommentsSidebar({
                             deletingAttachmentId === a.id ? 'opacity-40' : ''
                           }`} />
                       </a>
-                      {canDeleteAttachmentInline && (
+                      {canDeleteAttachmentInline && (!restrictAttachmentsToOwn || isMineInline(pin.author)) && (
                         <button
                           type="button"
                           onClick={(e) => {
@@ -951,7 +998,7 @@ export default function CommentsSidebar({
                       <FileText className="h-3 w-3 shrink-0" />
                       <span className="truncate max-w-40">{a.original_filename}</span>
                     </a>
-                    {canDeleteAttachmentInline && (
+                    {canDeleteAttachmentInline && (!restrictAttachmentsToOwn || isMineInline(pin.author)) && (
                       <button
                         type="button"
                         onClick={(e) => {
@@ -1095,6 +1142,10 @@ export default function CommentsSidebar({
             currentUser={currentUser}
             userRole={userRole}
             projectId={projectId}
+            allowReply={allowReply}
+            createReplyFn={createReplyFn}
+            uploadAttachmentsFn={uploadAttachmentsFn}
+            restrictAttachmentsToOwn={restrictAttachmentsToOwn}
           />
         )}
       </div>

@@ -36,7 +36,7 @@ const Navbar = () => {
           onClick={() => router.push("/login")}
           className="bg-accent text-accent-foreground hover:bg-accent/90 rounded-full px-6"
         >
-          Sign in
+          Login
         </Button>
       </div>
     </nav>

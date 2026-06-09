@@ -8,6 +8,7 @@ import { getThreadComments, resolveComment, getCurrentUser, DbComment, updateCom
 import { getAttachmentUploadUrl, registerAttachment, getAttachmentsForComments, deleteAttachment } from '@/app/actions/storage';
 import { useCommentQueue } from '@/hooks/use-comment-queue';
 import { useRealtimeComments } from '@/hooks/use-realtime-comments';
+import { useImagePreloader } from '@/hooks/use-image-preloader';
 import { useToast } from '@/hooks/use-toast';
 import { useConfirm } from '@/components/confirm-dialog';
 import { Upload } from 'lucide-react';
@@ -122,7 +123,8 @@ export default function ProjectPage({ params, searchParams }: ProjectPageProps) 
       const files = pendingAttachments.current.get(localId);
       if (files && files.length > 0) {
         pendingAttachments.current.delete(localId);
-        uploadAttachmentsForComment(comment.id, projectId, files);
+        // Files came from the modal, which already compressed images.
+        uploadAttachmentsForComment(comment.id, projectId, files, true);
       }
     },
     onFailed: (localId: string) => {
@@ -143,12 +145,13 @@ export default function ProjectPage({ params, searchParams }: ProjectPageProps) 
   };
 
   /** Upload files to project-scoped attachment storage after a comment is confirmed. */
-  async function uploadAttachmentsForComment(commentId: string, pid: string, files: File[]) {
+  async function uploadAttachmentsForComment(commentId: string, pid: string, files: File[], skipCompression = false) {
     const failed: string[] = [];
     for (const rawFile of files) {
       try {
         // Compress images client-side before upload (PDFs/other pass through).
-        const file = await compressImageFile(rawFile);
+        // Skipped when the caller (modal) already compressed for the savings UI.
+        const file = skipCompression ? rawFile : await compressImageFile(rawFile);
         const urlResult = await getAttachmentUploadUrl(pid, file.name, file.type, file.size);
         if (!urlResult.success || !urlResult.signedUrl || !urlResult.storagePath) {
           failed.push(file.name);
@@ -270,6 +273,12 @@ export default function ProjectPage({ params, searchParams }: ProjectPageProps) 
 
   const currentImage = numberedImages.find(img => img.id === currentImageId);
   const pins = currentImage?.pins || [];
+
+  // Warm the browser cache for full-size images so switching is instant. The
+  // viewer renders originals unoptimized, so an unwarmed switch otherwise stalls
+  // on a fresh multi-MB fetch + decode.
+  const imageUrls = useMemo(() => imagesState.map(img => img.url), [imagesState]);
+  useImagePreloader(imageUrls, currentImageIndex);
   const visiblePins = useMemo(
     () => pins.filter(p => commentTab === 'resolved' ? p.status === 'resolved' : p.status !== 'resolved'),
     [pins, commentTab]
@@ -442,7 +451,8 @@ export default function ProjectPage({ params, searchParams }: ProjectPageProps) 
   }, [projectId, toast]);
 
   const handleAddAttachmentToComment = async (commentId: string, files: File[]) => {
-    await uploadAttachmentsForComment(commentId, projectId, files);
+    // Files came from the modal, which already compressed images.
+    await uploadAttachmentsForComment(commentId, projectId, files, true);
     const updated = await getAttachmentsForComments([commentId]);
     setImagesState(prev => prev.map(img => {
       if (!img.pins.some(p => p.id === commentId)) return img;

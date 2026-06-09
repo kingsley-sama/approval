@@ -8,6 +8,8 @@ import CommentBody from './comment-body';
 import { getRepliesForComment, createReply, type CommentReply } from '@/app/actions/replies';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { IconTooltip } from '@/components/ui/icon-tooltip';
+import { compressImageWithStats } from '@/lib/image-compression';
+import { CompressionInfo } from '@/components/compression-info';
 
 interface Pin {
   id: string;
@@ -28,7 +30,11 @@ interface ProjectOption {
 
 interface PendingAttachment {
   id: string;
+  /** Upload-ready file: the compressed JPEG for images, or the original. */
   file: File;
+  originalSize: number;
+  compressedSize: number;
+  didCompress: boolean;
 }
 
 interface CommentModalProps {
@@ -48,6 +54,9 @@ interface CommentModalProps {
   onDeleteComment?: (commentId: string) => Promise<void>;
   onUndoShape?: () => void;
   canUndoShape?: boolean;
+  /** Override how a reply is created (e.g. share-link guests post via the
+   *  token-validated API instead of the authenticated server action). */
+  createReplyFn?: (commentId: string, content: string, userName: string) => Promise<{ success: boolean; reply?: CommentReply; error?: string }>;
 }
 
 const ALLOWED_TYPES = new Set([
@@ -83,6 +92,7 @@ export default function CommentModal({
   onDeleteComment,
   onUndoShape,
   canUndoShape = false,
+  createReplyFn,
 }: CommentModalProps) {
   const [deletingAttachmentId, setDeletingAttachmentId] = useState<string | null>(null);
 
@@ -212,7 +222,7 @@ export default function CommentModal({
     };
     setReplies(prev => [...prev, optimistic]);
     setReplyText('');
-    const result = await createReply(existingPin.id, optimistic.content, currentUser);
+    const result = await (createReplyFn ?? createReply)(existingPin.id, optimistic.content, currentUser);
     if (result.success && result.reply) {
       setReplies(prev => prev.map(r => r.id === optimistic.id ? result.reply! : r));
     } else {
@@ -370,15 +380,19 @@ export default function CommentModal({
     return { valid, errors };
   };
 
-  const addPendingAttachments = (files: File[]) => {
+  const addPendingAttachments = async (files: File[]) => {
     setAttachmentError(null);
     const { valid, errors } = validateFiles(files);
     if (errors.length) setAttachmentError(errors.join('; '));
     if (!valid.length) return;
-    setAttachments(prev => [
-      ...prev,
-      ...valid.map(file => ({ id: crypto.randomUUID(), file })),
-    ]);
+    // Compress images now so the chip can show the savings before sending.
+    const pending = await Promise.all(
+      valid.map(async file => {
+        const { file: out, originalSize, compressedSize, didCompress } = await compressImageWithStats(file);
+        return { id: crypto.randomUUID(), file: out, originalSize, compressedSize, didCompress };
+      }),
+    );
+    setAttachments(prev => [...prev, ...pending]);
   };
 
   const uploadEditAttachments = async (files: File[]) => {
@@ -390,7 +404,9 @@ export default function CommentModal({
 
     setIsUploadingAttachment(true);
     try {
-      await onAddAttachment(existingPin.id, valid);
+      // Compress before handing off; the parent uploads with skipCompression.
+      const compressed = await Promise.all(valid.map(f => compressImageWithStats(f).then(r => r.file)));
+      await onAddAttachment(existingPin.id, compressed);
     } finally {
       setIsUploadingAttachment(false);
     }
@@ -788,7 +804,15 @@ export default function CommentModal({
                   : <FileText size={12} className="text-gray-500 shrink-0" />
                 }
                 <span className="flex-1 truncate text-gray-700">{a.file.name}</span>
-                <span className="text-gray-400 shrink-0">{formatBytes(a.file.size)}</span>
+                {isImage(a.file)
+                  ? <CompressionInfo
+                      originalSize={a.originalSize}
+                      compressedSize={a.compressedSize}
+                      didCompress={a.didCompress}
+                      className="shrink-0"
+                    />
+                  : <span className="text-gray-400 shrink-0">{formatBytes(a.file.size)}</span>
+                }
                 <IconTooltip label="Remove attachment">
                   <button
                     onClick={() => removeAttachment(a.id)}

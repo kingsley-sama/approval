@@ -50,7 +50,7 @@ const VideoDemo = () => {
             onClick={() => router.push("/login")}
             className="bg-accent text-accent-foreground hover:bg-accent/90 rounded-full px-8 h-12 text-base font-display font-semibold gap-2"
           >
-            Login to Revision <ArrowRight className="w-4 h-4" />
+            Login <ArrowRight className="w-4 h-4" />
           </Button>
         </div>
       </div>

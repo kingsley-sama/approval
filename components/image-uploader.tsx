@@ -7,7 +7,8 @@ import { IconTooltip } from '@/components/ui/icon-tooltip';
 import { Plus, CheckCircle2, XCircle, Loader2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { xhrUpload, validateFiles, type FileUploadState } from '@/lib/upload';
-import { compressImageFile } from '@/lib/image-compression';
+import { compressImageWithStats, formatFileSize } from '@/lib/image-compression';
+import { CompressionInfo } from '@/components/compression-info';
 
 interface ImageUploaderProps {
   projectId: string;
@@ -28,10 +29,10 @@ export default function ImageUploader({ projectId, onUploadComplete, trigger }: 
   const uploadOne = async (rawFile: File, state: FileUploadState): Promise<boolean> => {
     // 0. Compress in the browser before uploading (best-effort; falls back to
     //    the original on failure or if compression doesn't help).
-    const file = await compressImageFile(rawFile);
+    const { file, originalSize, compressedSize, didCompress } = await compressImageWithStats(rawFile);
 
     // 1. Get presigned URL from server (tiny request — no file data)
-    patch(state.id, { status: 'uploading', progress: 0 });
+    patch(state.id, { status: 'uploading', progress: 0, originalSize, compressedSize, didCompress });
     const urlResult = await getSignedUploadUrl(projectId, file.name);
     if (!urlResult.success || !urlResult.signedUrl || !urlResult.storagePath) {
       patch(state.id, { status: 'error', error: urlResult.error || 'Could not get upload URL' });
@@ -109,6 +110,12 @@ export default function ImageUploader({ projectId, onUploadComplete, trigger }: 
 
   const clearDone = () => setFileStates(prev => prev.filter(f => f.status !== 'done'));
   const isActive = fileStates.some(f => f.status === 'pending' || f.status === 'uploading' || f.status === 'registering');
+
+  // Aggregate compression savings across all files in the panel.
+  const totalSaved = fileStates.reduce(
+    (sum, f) => sum + Math.max(0, (f.originalSize ?? 0) - (f.compressedSize ?? 0)),
+    0,
+  );
 
   const statusColor = (f: FileUploadState) => {
     if (f.status === 'done')       return 'bg-green-500';
@@ -204,12 +211,18 @@ export default function ImageUploader({ projectId, onUploadComplete, trigger }: 
                   )}
                 </div>
 
-                <div className="flex justify-between mt-1">
+                <div className="flex justify-between items-center gap-2 mt-1">
+                  <CompressionInfo
+                    originalSize={f.originalSize}
+                    compressedSize={f.compressedSize}
+                    didCompress={f.didCompress}
+                    className="truncate"
+                  />
                   {f.status === 'uploading' && (
-                    <span className="text-[10px] text-blue-500">{f.progress}%</span>
+                    <span className="text-[10px] text-blue-500 shrink-0">{f.progress}%</span>
                   )}
                   {f.status === 'registering' && (
-                    <span className="text-[10px] text-blue-400">Saving…</span>
+                    <span className="text-[10px] text-blue-400 shrink-0">Saving…</span>
                   )}
                   {f.status === 'error' && (
                     <span className="text-[10px] text-red-500 truncate">{f.error}</span>
@@ -219,7 +232,7 @@ export default function ImageUploader({ projectId, onUploadComplete, trigger }: 
             ))}
           </ul>
 
-          <div className="px-4 py-2.5 border-t border-gray-100">
+          <div className="px-4 py-2.5 border-t border-gray-100 flex items-center justify-between gap-2">
             <button
               onClick={() => fileInputRef.current?.click()}
               disabled={isActive}
@@ -227,6 +240,11 @@ export default function ImageUploader({ projectId, onUploadComplete, trigger }: 
             >
               + Add more images
             </button>
+            {totalSaved > 0 && (
+              <span className="text-[10px] text-green-600 font-medium shrink-0">
+                Saved {formatFileSize(totalSaved)}
+              </span>
+            )}
           </div>
         </div>
       )}

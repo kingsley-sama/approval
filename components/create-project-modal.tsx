@@ -18,7 +18,8 @@ import {
 import { Label } from '@/components/ui/label';
 import { FolderPlus, Upload, X, CheckCircle2, XCircle, Loader2, AlertCircle } from 'lucide-react';
 import { xhrUpload, validateFiles, type FileUploadState } from '@/lib/upload';
-import { compressImageFile } from '@/lib/image-compression';
+import { compressImageWithStats } from '@/lib/image-compression';
+import { CompressionInfo } from '@/components/compression-info';
 
 interface CreateProjectModalProps {
   onProjectCreated: () => void;
@@ -140,8 +141,8 @@ export default function CreateProjectModal({ onProjectCreated, trigger }: Create
         const uploadOne = async (rawFile: File, state: FileUploadState): Promise<string | null> => {
           // Compress in the browser before uploading (best-effort; falls back
           // to the original on failure or if compression doesn't help).
-          const file = await compressImageFile(rawFile);
-          patch(state.id, { status: 'uploading', progress: 0 });
+          const { file, originalSize, compressedSize, didCompress } = await compressImageWithStats(rawFile);
+          patch(state.id, { status: 'uploading', progress: 0, originalSize, compressedSize, didCompress });
 
           const urlResult = await getSignedUploadUrl(projectId, file.name);
           if (!urlResult.success || !urlResult.signedUrl || !urlResult.storagePath) {
@@ -294,9 +295,17 @@ export default function CreateProjectModal({ onProjectCreated, trigger }: Create
                           <div className="h-full w-full rounded-full bg-blue-400 animate-pulse" />
                         ) : null}
                       </div>
-                      {f.status === 'error' && f.error && (
-                        <span className="text-[10px] text-red-500 truncate block mt-0.5">{f.error}</span>
-                      )}
+                      <div className="flex items-center justify-between gap-2 mt-0.5">
+                        <CompressionInfo
+                          originalSize={f.originalSize}
+                          compressedSize={f.compressedSize}
+                          didCompress={f.didCompress}
+                          className="truncate"
+                        />
+                        {f.status === 'error' && f.error && (
+                          <span className="text-[10px] text-red-500 truncate">{f.error}</span>
+                        )}
+                      </div>
                     </li>
                   ))}
                 </ul>

@@ -22,11 +22,18 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
+import { useImagePreloader } from '@/hooks/use-image-preloader';
 import { useConfirm } from '@/components/confirm-dialog';
 import type { ShareLink } from '@/app/actions/share-links';
 import type { Shape } from '@/types/drawing';
 import type { AttachmentRecord } from '@/app/actions/storage';
+import {
+  uploadShareCommentAttachments,
+  deleteShareCommentAttachment,
+} from '@/lib/share-comment-attachments';
 import { ArrowLeft, CheckCircle2, CheckCheck } from 'lucide-react';
+
+type GuestAttachment = AttachmentRecord & { signedUrl: string };
 
 interface Pin {
   id: string;
@@ -172,6 +179,12 @@ export default function ShareViewer({ shareLink, resourceData, token }: ShareVie
 
   const currentThread = numberedThreads[currentIndex];
   const pins = currentThread?.pins || [];
+
+  // Warm the browser cache for full-size images so switching is instant. The
+  // viewer renders originals unoptimized, so an unwarmed switch otherwise stalls
+  // on a fresh multi-MB fetch + decode.
+  const imageUrls = useMemo(() => threads.map(t => t.url), [threads]);
+  useImagePreloader(imageUrls, currentIndex);
   // Pins shown on the image follow the sidebar's active/resolved tab, so resolved
   // pins only appear while viewing the Resolved tab (matching the main project
   // view). Without this, resolved pins linger on the image alongside active ones.
@@ -351,6 +364,83 @@ export default function ShareViewer({ shareLink, resourceData, token }: ShareVie
     }
   }, [guestName, token, toast]);
 
+  // ── Guest attachments & replies ───────────────────────────────────────────
+  // Guests are unauthenticated, so attachment/reply writes go through the
+  // token-validated share API (the server derives the project and enforces that
+  // a guest only touches their own comments).
+
+  const updatePinAttachments = useCallback((
+    commentId: string,
+    updater: (prev: GuestAttachment[]) => GuestAttachment[],
+  ) => {
+    setThreads(prev => prev.map(t => {
+      if (!t.pins.some(p => p.id === commentId)) return t;
+      return {
+        ...t,
+        pins: t.pins.map(p =>
+          p.id === commentId ? { ...p, attachments: updater(p.attachments ?? []) } : p,
+        ),
+      };
+    }));
+  }, []);
+
+  const handleGuestAddAttachment = useCallback(async (commentId: string, files: File[]) => {
+    if (!guestName) return;
+    const { uploaded, failed } = await uploadShareCommentAttachments(token, commentId, guestName, files, true);
+    if (uploaded.length) {
+      updatePinAttachments(commentId, prev => [...prev, ...uploaded]);
+    }
+    if (failed.length) {
+      toast({
+        title: 'Some attachments failed to upload',
+        description: failed.join(', '),
+        variant: 'destructive',
+      });
+    }
+  }, [guestName, token, toast, updatePinAttachments]);
+
+  const handleGuestDeleteAttachment = useCallback(async (commentId: string, attachmentId: string) => {
+    if (!guestName) return;
+    let removed: GuestAttachment | undefined;
+    updatePinAttachments(commentId, prev => {
+      removed = prev.find(a => a.id === attachmentId);
+      return prev.filter(a => a.id !== attachmentId);
+    });
+    const result = await deleteShareCommentAttachment(token, attachmentId, guestName);
+    if (!result.success) {
+      if (removed) updatePinAttachments(commentId, prev => [...prev, removed!]);
+      toast({
+        title: 'Failed to remove attachment',
+        description: result.error ?? 'Please try again.',
+        variant: 'destructive',
+      });
+    }
+  }, [guestName, token, toast, updatePinAttachments]);
+
+  // Used by the thread-detail reply composer to upload attachments on a reply.
+  const handleGuestUploadAttachments = useCallback(async (commentId: string, files: File[]) => {
+    if (!guestName) return { failed: files.map(f => f.name) };
+    const { failed } = await uploadShareCommentAttachments(token, commentId, guestName, files, true);
+    return { failed };
+  }, [guestName, token]);
+
+  const handleGuestCreateReply = useCallback(async (commentId: string, content: string, userName: string) => {
+    try {
+      const res = await fetch('/api/share/comment/reply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, commentId, userName, content }),
+      });
+      const result = await res.json();
+      if (result.success && result.reply) {
+        return { success: true, reply: result.reply };
+      }
+      return { success: false, error: result.error || 'Failed to send reply' };
+    } catch (e: any) {
+      return { success: false, error: e?.message || 'Failed to send reply' };
+    }
+  }, [token]);
+
   // Reviewers with comment access can toggle a comment's resolved state to
   // confirm a revision is done. Optimistically flips the pin, then persists.
   const handleResolve = useCallback(async (commentId: string) => {
@@ -402,7 +492,7 @@ export default function ShareViewer({ shareLink, resourceData, token }: ShareVie
     }
   }, [token, toast]);
 
-  const handleAddComment = async (text: string) => {
+  const handleAddComment = async (text: string, attachmentFiles: File[] = []) => {
     if (!currentThread || !pendingPinPos) return;
     setSaveError(null);
 
@@ -457,6 +547,23 @@ export default function ShareViewer({ shareLink, resourceData, token }: ShareVie
         setSelectedPin(realPin.id);
         setHasAddedComment(true);
         setOwnCommentCount(c => c + 1);
+
+        // Upload any attachments now that we have the real comment id.
+        if (attachmentFiles.length > 0) {
+          const { uploaded, failed } = await uploadShareCommentAttachments(
+            token, realPin.id, guestName, attachmentFiles, true,
+          );
+          if (uploaded.length) {
+            updatePinAttachments(realPin.id, prev => [...prev, ...uploaded]);
+          }
+          if (failed.length) {
+            toast({
+              title: 'Some attachments failed to upload',
+              description: failed.join(', '),
+              variant: 'destructive',
+            });
+          }
+        }
       } else {
         throw new Error(result.error || 'Save failed');
       }
@@ -728,6 +835,11 @@ export default function ShareViewer({ shareLink, resourceData, token }: ShareVie
             readOnly
             canResolve={canComment}
             onEditComment={canComment ? handleEditComment : undefined}
+            onDeleteAttachment={canComment ? handleGuestDeleteAttachment : undefined}
+            allowReply={canComment}
+            createReplyFn={canComment ? handleGuestCreateReply : undefined}
+            uploadAttachmentsFn={canComment ? handleGuestUploadAttachments : undefined}
+            restrictAttachmentsToOwn
             currentUser={guestName || 'Guest'}
             userRole="member"
           />
@@ -892,28 +1004,39 @@ export default function ShareViewer({ shareLink, resourceData, token }: ShareVie
       </Dialog>
 
       {/* Comment modal */}
-      {showModal && (
-        <CommentModal
-          position={modalPosition}
-          isNewPin={isNewPin}
-          existingPin={isNewPin ? undefined : (pins.find(p => p.id === selectedPin) as any)}
-          currentUser={guestName || 'Guest'}
-          userRole="member"
-          onClose={() => {
-            setShowModal(false);
-            setIsNewPin(false);
-            setPendingPinPos(null);
-            setPendingShapes([]);
-          }}
-          onSubmit={canComment ? handleAddComment : async () => {}}
-          onResolve={canComment && !isNewPin ? handleResolve : undefined}
-          onEditComment={canComment ? handleEditComment : undefined}
-          isFullscreen={isFullscreen}
-          disableAttachments
-          onUndoShape={isNewPin ? () => setPendingShapes(prev => prev.slice(0, -1)) : undefined}
-          canUndoShape={pendingShapes.length > 0}
-        />
-      )}
+      {showModal && (() => {
+        const existingPin = isNewPin ? undefined : pins.find(p => p.id === selectedPin);
+        // Guests may only manage attachments on comments they authored.
+        const guestOwnsPin =
+          !!existingPin &&
+          (existingPin.author ?? '').trim().toLowerCase() === guestName.trim().toLowerCase();
+        const canManageOwnAttachments = canComment && !isNewPin && guestOwnsPin;
+        return (
+          <CommentModal
+            position={modalPosition}
+            isNewPin={isNewPin}
+            existingPin={existingPin as any}
+            currentUser={guestName || 'Guest'}
+            userRole="member"
+            onClose={() => {
+              setShowModal(false);
+              setIsNewPin(false);
+              setPendingPinPos(null);
+              setPendingShapes([]);
+            }}
+            onSubmit={canComment ? handleAddComment : async () => {}}
+            onResolve={canComment && !isNewPin ? handleResolve : undefined}
+            onEditComment={canComment ? handleEditComment : undefined}
+            createReplyFn={canComment ? handleGuestCreateReply : undefined}
+            isFullscreen={isFullscreen}
+            disableAttachments={!canComment}
+            onAddAttachment={canManageOwnAttachments ? handleGuestAddAttachment : undefined}
+            onDeleteAttachment={canManageOwnAttachments ? handleGuestDeleteAttachment : undefined}
+            onUndoShape={isNewPin ? () => setPendingShapes(prev => prev.slice(0, -1)) : undefined}
+            canUndoShape={pendingShapes.length > 0}
+          />
+        );
+      })()}
     </div>
   );
 }

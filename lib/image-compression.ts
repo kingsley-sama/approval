@@ -45,28 +45,56 @@ function toJpegName(fileName: string): string {
   return `${fileName.replace(/\.[^./\\]+$/, '')}.jpg`;
 }
 
+/** Outcome of compressing one file — the file to upload plus size accounting so
+ *  the UI can show the user what compression saved. When compression was
+ *  skipped or didn't help, `file` is the original and `didCompress` is false. */
+export interface CompressionResult {
+  file: File;
+  originalSize: number;
+  compressedSize: number;
+  didCompress: boolean;
+}
+
+/** Human-readable byte size, e.g. "845 KB" or "2.3 MB". */
+export function formatFileSize(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 KB';
+  if (bytes < 1024) return `${bytes} B`;
+  const kb = bytes / 1024;
+  if (kb < 1024) return `${Math.round(kb)} KB`;
+  return `${(kb / 1024).toFixed(1)} MB`;
+}
+
 function canvasToBlob(canvas: HTMLCanvasElement, type: string, q: number): Promise<Blob | null> {
   return new Promise(resolve => canvas.toBlob(resolve, type, q));
 }
 
 /**
- * Compress a single image file to JPEG. Returns a new `.jpg` File when
- * compression helps, otherwise returns the original file unchanged (non-images,
- * disabled, no DOM/canvas, errors, or results that aren't smaller).
+ * Compress a single image file to JPEG, returning the result plus size
+ * accounting (so callers can show the user what was saved). A new `.jpg` File
+ * is returned when compression helps; otherwise the original file is returned
+ * unchanged with `didCompress: false` (non-images, disabled, no DOM/canvas,
+ * errors, or results that aren't smaller).
  */
-export async function compressImageFile(file: File): Promise<File> {
+export async function compressImageWithStats(file: File): Promise<CompressionResult> {
   const kb = (n: number) => `${Math.round(n / 1024)}kb`;
+  const original: CompressionResult = {
+    file,
+    originalSize: file.size,
+    compressedSize: file.size,
+    didCompress: false,
+  };
+
   if (!isImageCompressionEnabled()) {
     console.log('[compress] disabled via env → keeping original', file.name);
-    return file;
+    return original;
   }
   if (!COMPRESSIBLE_TYPES.has(file.type)) {
     console.log(`[compress] skipped: type "${file.type}" not compressible →`, file.name);
-    return file;
+    return original;
   }
   if (typeof document === 'undefined' || typeof createImageBitmap === 'undefined') {
     console.log('[compress] skipped: no DOM/createImageBitmap');
-    return file;
+    return original;
   }
 
   try {
@@ -85,7 +113,7 @@ export async function compressImageFile(file: File): Promise<File> {
     if (!ctx) {
       bitmap.close?.();
       console.log('[compress] skipped: no 2d context');
-      return file;
+      return original;
     }
 
     // JPEG has no alpha — flatten any transparency onto white before drawing.
@@ -105,20 +133,40 @@ export async function compressImageFile(file: File): Promise<File> {
     // already-small, already-optimized JPEG).
     if (!blob || blob.size >= file.size) {
       console.log('[compress] result not smaller → keeping original', file.name);
-      return file;
+      return original;
     }
 
-    return new File([blob], toJpegName(file.name), {
+    const compressed = new File([blob], toJpegName(file.name), {
       type: 'image/jpeg',
       lastModified: Date.now(),
     });
+    return {
+      file: compressed,
+      originalSize: file.size,
+      compressedSize: compressed.size,
+      didCompress: true,
+    };
   } catch (err) {
     console.log('[compress] error → keeping original', file.name, err);
-    return file;
+    return original;
   }
+}
+
+/**
+ * Compress a single image file to JPEG. Returns a new `.jpg` File when
+ * compression helps, otherwise returns the original file unchanged. Thin wrapper
+ * over {@link compressImageWithStats} for callers that don't need size stats.
+ */
+export async function compressImageFile(file: File): Promise<File> {
+  return (await compressImageWithStats(file)).file;
 }
 
 /** Compress an array of files in place-order (non-images pass through). */
 export async function compressImageFiles(files: File[]): Promise<File[]> {
   return Promise.all(files.map(compressImageFile));
+}
+
+/** Compress an array of files, keeping per-file size stats in place-order. */
+export async function compressImageFilesWithStats(files: File[]): Promise<CompressionResult[]> {
+  return Promise.all(files.map(compressImageWithStats));
 }
