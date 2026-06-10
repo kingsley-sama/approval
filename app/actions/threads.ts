@@ -4,6 +4,60 @@ import { createClient } from '@/lib/supabase/server';
 import { requireUser } from '@/lib/auth/require-user';
 import { CreateThreadSchema } from '@/lib/validation/schemas';
 import { revalidatePath } from 'next/cache';
+import { getCommentsForThreads, type DbComment } from './comments';
+import { getAttachmentsForComments } from './storage';
+
+export interface WorkspaceData {
+  projectName: string | null;
+  threads: any[];
+  commentsByThread: Record<string, DbComment[]>;
+  currentUser: { name: string; role: string };
+}
+
+/**
+ * Everything the annotation workspace needs to render, in one server call:
+ * threads, all pin comments (attachments attached), project name, and the
+ * current user. Replaces the threads → comments-per-thread → attachments
+ * round-trip chain the client used to make after hydration.
+ */
+export async function getProjectWorkspaceData(projectId: string): Promise<WorkspaceData> {
+  const user = await requireUser();
+  const supabase = await createClient();
+
+  const [threadsRes, projectRes] = await Promise.all([
+    supabase
+      .from('markup_threads')
+      .select('*')
+      .eq('project_id', projectId)
+      .order('created_at', { ascending: true }),
+    supabase
+      .from('markup_projects')
+      .select('project_name')
+      .eq('id', projectId)
+      .maybeSingle(),
+  ]);
+
+  if (threadsRes.error) {
+    console.error('Error fetching workspace threads:', threadsRes.error);
+  }
+  const threads = threadsRes.data ?? [];
+
+  const commentsByThread = await getCommentsForThreads(threads.map((t: any) => t.id));
+  const allCommentIds = Object.values(commentsByThread).flat().map((c) => c.id);
+  const attachmentsByComment = await getAttachmentsForComments(allCommentIds);
+  for (const comments of Object.values(commentsByThread)) {
+    for (const comment of comments) {
+      comment.attachments = attachmentsByComment[comment.id] ?? [];
+    }
+  }
+
+  return {
+    projectName: (projectRes.data as { project_name: string | null } | null)?.project_name ?? null,
+    threads,
+    commentsByThread,
+    currentUser: { name: user.name || user.email, role: user.role ?? 'member' },
+  };
+}
 
 export async function getProjectThreads(projectId: string) {
   await requireUser();

@@ -67,6 +67,8 @@ export type Project = {
   id: string
   title: string
   updatedAt: string
+  /** Raw updated_at epoch millis — used for date sorting on the dashboard. */
+  updatedAtTs?: number
   isNew: boolean
   color: string
   image?: string
@@ -293,7 +295,7 @@ export default function ProjectCard({ project, onOpen, onDuplicate, onDelete, on
       {/* ── Card body ── */}
       <div className="px-3 py-2">
         <h3 className="text-lg font-bold mb-2 truncate">{project.title}</h3>
-        <p className="text-sm text-muted-foreground mb-4">Updated {project.updatedAt}</p>
+        <p className="text-sm text-muted-foreground mb-4" suppressHydrationWarning>Updated {project.updatedAt}</p>
 
         <div className="w-full flex items-center gap-3">
           <div className="flex items-center gap-1 bg-primary/10 rounded-md px-2 py-0.5 text-primary/80 text-xs">

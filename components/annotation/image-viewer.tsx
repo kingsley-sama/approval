@@ -118,6 +118,10 @@ function ImageViewerInner({
   // False from the moment the source changes until the new image has loaded, so
   // a loading overlay can cover the switch instead of showing the stale image.
   const [imageLoaded, setImageLoaded] = useState(false);
+  // The loading overlay shows a small optimized preview of the same image while
+  // the full-resolution original downloads; if the optimizer can't produce one
+  // (e.g. oversized source), fall back to the plain spinner.
+  const [previewFailed, setPreviewFailed] = useState(false);
   const [zoom, setZoom] = useState<ZoomMode>('fit-window');
   const [activeTool, setActiveTool] = useState<DrawingTool | null>(null);
   const [renderedDimensions, setRenderedDimensions] = useState({ width: 0, height: 0 });
@@ -207,6 +211,7 @@ function ImageViewerInner({
     // Reset to "loading" for the new source; if it's already cached (e.g. warmed
     // by the preloader) `complete` is true and the overlay never flashes.
     setImageLoaded(false);
+    setPreviewFailed(false);
     if (img.complete && img.naturalWidth > 0) handleLoad();
     img.addEventListener('load', handleLoad);
     return () => img.removeEventListener('load', handleLoad);
@@ -235,6 +240,15 @@ function ImageViewerInner({
     [drawnShapes, pendingShapes]
   );
 
+  // Actual file extension, derived from the storage URL (or image name) rather
+  // than hardcoded display copy.
+  const fileExtension = useMemo(() => {
+    const fromUrl = currentImageUrl.split('?')[0].split('/').pop() ?? '';
+    const match = /\.([a-zA-Z0-9]{2,5})$/.exec(decodeURIComponent(fromUrl))
+      ?? /\.([a-zA-Z0-9]{2,5})$/.exec(currentImageName ?? '');
+    return match ? match[1].toUpperCase() : null;
+  }, [currentImageUrl, currentImageName]);
+
   // Exit fullscreen on Escape key
   useEffect(() => {
     if (!isFullscreen) return;
@@ -244,6 +258,23 @@ function ImageViewerInner({
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [isFullscreen, onToggleFullscreen]);
+
+  // Arrow keys navigate between images (skipped while typing or drawing)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+      if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+        return;
+      }
+      if (activeTool !== null) return;
+      e.preventDefault();
+      onNavigate(e.key === 'ArrowLeft' ? 'prev' : 'next');
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [onNavigate, activeTool]);
 
   // Ctrl/Cmd+Z to undo the last drawn shape (while pending shapes exist)
   useEffect(() => {
@@ -281,6 +312,10 @@ function ImageViewerInner({
   useEffect(() => {
     if (!draggingPinId) return;
 
+    // Coalesce pointermove updates to one state commit per animation frame so a
+    // fast drag doesn't re-render the whole viewer (pins + Konva layer) per event.
+    let rafId = 0;
+
     const handlePointerMove = (event: PointerEvent) => {
       const dragState = dragStateRef.current;
       if (!dragState || !imageRef.current) return;
@@ -305,7 +340,14 @@ function ImageViewerInner({
       }
 
       draggingPinPositionRef.current = nextPosition;
-      setDraggingPinPosition(nextPosition);
+      if (!rafId) {
+        rafId = requestAnimationFrame(() => {
+          rafId = 0;
+          if (draggingPinPositionRef.current) {
+            setDraggingPinPosition(draggingPinPositionRef.current);
+          }
+        });
+      }
     };
 
     const handlePointerUp = () => {
@@ -335,6 +377,7 @@ function ImageViewerInner({
     window.addEventListener('pointercancel', handlePointerUp);
 
     return () => {
+      if (rafId) cancelAnimationFrame(rafId);
       window.removeEventListener('pointermove', handlePointerMove);
       window.removeEventListener('pointerup', handlePointerUp);
       window.removeEventListener('pointercancel', handlePointerUp);
@@ -406,8 +449,10 @@ function ImageViewerInner({
         {/* Left: File Info */}
         <div className={`flex items-center gap-3 text-sm ${isFullscreen ? 'text-zinc-400' : 'text-muted-foreground'}`}>
           <span className={`font-medium ${isFullscreen ? 'text-zinc-100' : 'text-foreground'}`}>{currentImageName || 'Untitled'}</span>
-          <span>JPG</span>
-          <span>1.4 MB</span>
+          {fileExtension && <span>{fileExtension}</span>}
+          {imageLoaded && imageDimensions.width > 0 && (
+            <span>{imageDimensions.width} × {imageDimensions.height}</span>
+          )}
         </div>
 
         {/* Center: Navigation & Drawing Tools */}
@@ -507,7 +552,23 @@ function ImageViewerInner({
             new image has loaded, hiding the previous image during the swap. */}
         {currentImageUrl && !imageLoaded && (
           <div className={`absolute inset-0 z-40 flex items-center justify-center ${isFullscreen ? 'bg-black' : 'bg-gray-200'}`}>
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+            {/* Small optimized preview of the same image paints near-instantly
+                (the dashboard card usually warmed this optimizer entry) while
+                the full-resolution original downloads. */}
+            {!previewFailed && (
+              <Image
+                src={currentImageUrl}
+                alt=""
+                aria-hidden
+                width={640}
+                height={640}
+                quality={50}
+                priority
+                className="absolute inset-0 h-full w-full object-contain blur-[2px] opacity-90 px-6 py-8"
+                onError={() => setPreviewFailed(true)}
+              />
+            )}
+            <div className="relative animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
           </div>
         )}
         <div className="flex items-center justify-center min-w-full min-h-full py-8 px-6">

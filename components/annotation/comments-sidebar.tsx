@@ -1,7 +1,7 @@
 'use client';
 
 import { MessageSquare, ChevronDown, ChevronRight, Check, FileText, ArrowLeft, MoreHorizontal, Paperclip, Video, Smile, Send, Pencil, X, ImageIcon, XCircle, Trash2 } from 'lucide-react';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import type { AttachmentRecord } from '@/app/actions/storage';
 import CommentBody from './comment-body';
 import { createReply, getRepliesForComment, type CommentReply } from '@/app/actions/replies';
@@ -881,11 +881,15 @@ export default function CommentsSidebar({
     }
   }, [allImages, openThreadPin]);
 
-  const allPins = allImages.flatMap(img => img.pins);
-  const resolvedCount = allPins.filter(p => p.status === 'resolved').length;
-  const activeCount = allPins.filter(p => p.status !== 'resolved').length;
+  const { resolvedCount, activeCount } = useMemo(() => {
+    const allPins = allImages.flatMap(img => img.pins);
+    return {
+      resolvedCount: allPins.filter(p => p.status === 'resolved').length,
+      activeCount: allPins.filter(p => p.status !== 'resolved').length,
+    };
+  }, [allImages]);
 
-  const imageGroups = allImages
+  const imageGroups = useMemo(() => allImages
     .map(img => {
       const filtered = img.pins.filter(p =>
         activeTab === 'resolved' ? p.status === 'resolved' : p.status !== 'resolved'
@@ -894,11 +898,9 @@ export default function CommentsSidebar({
         ...img,
         filteredPins: filtered,
         totalComments: filtered.length,
-        activeComments: img.pins.filter(p => p.status !== 'resolved'),
-        resolvedComments: img.pins.filter(p => p.status === 'resolved'),
       };
     })
-    .filter(g => g.totalComments > 0);
+    .filter(g => g.totalComments > 0), [allImages, activeTab]);
 
   const toggleExpandImage = (imageId: string) => {
     setExpandedImages(prev =>

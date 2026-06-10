@@ -625,6 +625,28 @@ export type Database = {
         Args: { p_token: string }
         Returns: undefined
       }
+      get_projects_with_stats: {
+        Args: {
+          p_project_ids?: string[] | null
+          p_search?: string | null
+          p_sort?: string
+          p_limit?: number
+          p_offset?: number
+        }
+        Returns: {
+          id: string
+          project_name: string
+          markup_url: string | null
+          created_at: string
+          updated_at: string | null
+          first_image: string | null
+          total_images: number
+          total_comments: number
+          total_resolved_comments: number
+          total_commented_threads: number
+          total_count: number
+        }[]
+      }
     }
     Enums: {
       share_permission_type: "view" | "comment" | "draw_and_comment"

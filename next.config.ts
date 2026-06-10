@@ -12,6 +12,10 @@ const nextConfig: NextConfig = {
     },
   },
   images: {
+    // Serve AVIF/WebP for optimized thumbnails (dashboard cards, sidebar) —
+    // roughly 30-50% smaller than JPEG at the same quality. Full-size viewer
+    // images bypass the optimizer (`unoptimized`) and are unaffected.
+    formats: ['image/avif', 'image/webp'],
     remotePatterns: [
       {
         protocol: 'https',

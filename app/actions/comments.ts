@@ -133,6 +133,49 @@ export async function getCurrentUser() {
   return { id: user.id, name: user.name || user.email, email: user.email, role: user.role };
 }
 
+/**
+ * Load all pin comments for a set of threads in one query, keyed by thread id.
+ * Same semantics as getThreadComments (replies excluded but counted, drawing
+ * data hydrated) without the per-thread round-trips.
+ */
+export async function getCommentsForThreads(threadIds: string[]): Promise<Record<string, DbComment[]>> {
+  const byThread: Record<string, DbComment[]> = {};
+  for (const id of threadIds) byThread[id] = [];
+  if (!threadIds.length) return byThread;
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from('markup_comments')
+    .select('*')
+    .in('thread_id', threadIds)
+    .order('created_at', { ascending: true });
+
+  if (error) {
+    console.error('Error loading comments for threads:', error);
+    return byThread;
+  }
+
+  const allRows = (data as DbComment[]) || [];
+  const replyCountByParent = new Map<string, number>();
+  for (const row of allRows) {
+    if (row.type !== 'reply' || !row.parent_comment_id) continue;
+    replyCountByParent.set(row.parent_comment_id, (replyCountByParent.get(row.parent_comment_id) ?? 0) + 1);
+  }
+
+  const pins = allRows
+    .filter((comment) => comment.type !== 'reply' && !comment.parent_comment_id)
+    .map((comment) => ({
+      ...comment,
+      reply_count: replyCountByParent.get(comment.id) ?? 0,
+    }));
+
+  const hydrated = await hydrateDrawingDataForComments(pins, supabase);
+  for (const comment of hydrated) {
+    (byThread[comment.thread_id] ??= []).push(comment);
+  }
+  return byThread;
+}
+
 /** Load all comments (pins) for a thread, ordered by creation time */
 export async function getThreadComments(threadId: string): Promise<DbComment[]> {
   const supabase = await createClient();

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useRef, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { Stage, Layer, Line, Rect, Arrow } from 'react-konva';
 import Konva from 'konva';
 import type {
@@ -83,7 +83,13 @@ function DrawingCanvasInner({
     if (!point) return;
 
     if (currentShape.type === 'pen') {
-      setCurrentShape({ ...currentShape, points: [...currentShape.points, point.x, point.y] });
+      // Skip points closer than 2px to the last one — high-resolution mice fire
+      // far more moves than needed, bloating both render cost and stored JSON.
+      const pts = currentShape.points;
+      const lastX = pts[pts.length - 2];
+      const lastY = pts[pts.length - 1];
+      if (Math.hypot(point.x - lastX, point.y - lastY) < 2) return;
+      setCurrentShape({ ...currentShape, points: [...pts, point.x, point.y] });
     } else if (currentShape.type === 'rectangle') {
       setCurrentShape({ ...currentShape, width: point.x - currentShape.x, height: point.y - currentShape.y });
     } else if (currentShape.type === 'arrow' || currentShape.type === 'line') {
@@ -114,6 +120,14 @@ function DrawingCanvasInner({
     return null;
   };
 
+  // Denormalize saved shapes once per shapes/size change rather than on every
+  // render — while drawing, each mousemove re-renders this component and would
+  // otherwise re-convert the entire saved shape list.
+  const denormalizedShapes = useMemo(
+    () => shapes.map(s => denormalizeShape(s, imageWidth, imageHeight)),
+    [shapes, imageWidth, imageHeight]
+  );
+
   return (
     <Stage
       width={imageWidth}
@@ -123,7 +137,7 @@ function DrawingCanvasInner({
       onMouseUp={handleMouseUp}
     >
       <Layer>
-        {shapes.map((s, index) => renderShape(denormalizeShape(s, imageWidth, imageHeight), `${s.id}_${index}`))}
+        {denormalizedShapes.map((s, index) => renderShape(s, `${s.id}_${index}`))}
         {currentShape && renderShape(currentShape, '__current__')}
       </Layer>
     </Stage>

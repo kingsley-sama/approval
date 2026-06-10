@@ -48,6 +48,7 @@ export async function createProject(input: CreateProjectInput): Promise<CreatePr
     }
 
     revalidatePath('/');
+    revalidatePath('/projects');
     return { success: true, project: data };
   } catch (error) {
     console.error('Unexpected error creating project:', error);
@@ -55,138 +56,77 @@ export async function createProject(input: CreateProjectInput): Promise<CreatePr
   }
 }
 
-function attachThreadStats(data: any[]) {
-  return data.map((p: any) => {
-    const threads: any[] = p.markup_threads ?? [];
-    const sorted = [...threads].sort(
-      (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-    );
-    const firstImage = sorted[0]?.image_path || null;
-    const totalImages = threads.length;
-    const totalComments = threads.reduce((count, thread) => {
-      const comments = Array.isArray(thread.markup_comments) ? thread.markup_comments : [];
-      return count + comments.length;
-    }, 0);
-    const resolvedComments = threads.reduce((count, thread) => {
-      const comments = Array.isArray(thread.markup_comments) ? thread.markup_comments : [];
-      return count + comments.filter((c: any) => c.status === 'resolved').length;
-    }, 0);
-    const commentedThreads = threads.filter((thread) => {
-      const comments = Array.isArray(thread.markup_comments) ? thread.markup_comments : [];
-      return comments.length > 0;
-    }).length;
+const PROJECTS_PAGE_SIZE = 24;
 
-    return {
-      ...p,
-      first_image: firstImage,
-      total_images: totalImages,
-      total_comments: totalComments,
-      total_resolved_comments: resolvedComments,
-      total_commented_threads: commentedThreads,
-    };
-  });
+export type ProjectSort = 'newest' | 'oldest' | 'name';
+
+export interface ProjectListItem {
+  id: string;
+  project_name: string;
+  markup_url: string | null;
+  created_at: string;
+  updated_at: string | null;
+  first_image: string | null;
+  total_images: number;
+  total_comments: number;
+  total_resolved_comments: number;
+  total_commented_threads: number;
 }
 
-const THREAD_SELECT = `
-  id,
-  project_name,
-  markup_url,
-  updated_at,
-  created_at,
-  markup_threads (
-    id,
-    image_path,
-    created_at,
-    markup_comments (
-      id,
-      status
-    )
-  )
-`;
+export interface ProjectsPageResult {
+  projects: ProjectListItem[];
+  total: number;
+  page: number;
+}
 
-export async function getProjects() {
+export async function getProjectsPage(opts?: {
+  page?: number;
+  search?: string;
+  sort?: ProjectSort;
+}): Promise<ProjectsPageResult> {
+  const page = Math.max(1, opts?.page ?? 1);
+  const empty: ProjectsPageResult = { projects: [], total: 0, page };
+
   const user = await getUser();
+  if (!user) return empty;
 
-  // Admin users see all projects
-  if (user?.role === 'admin') {
-    return getAllProjects();
-  }
-
-  // Member users (default) only see projects they've been granted access to
-  if (user?.email) {
-    return getMemberProjects(user.email);
-  }
-
-  return [];
-}
-
-async function getAllProjects() {
-  const supabase = await createClient();
-  try {
-    const { data, error } = await supabase
-      .from('markup_projects')
-      .select(THREAD_SELECT)
-      .order('created_at', { ascending: false });
-
-    if (error) {
-      console.error('Error fetching projects:', error);
-      return [];
-    }
-
-    return attachThreadStats(data || []);
-  } catch (error) {
-    console.error('Unexpected error fetching projects:', error);
-    return [];
-  }
-}
-
-async function getMemberProjects(userEmail: string) {
-  try {
-    // Get project IDs this user has been granted access to
+  // Members only see projects they've been granted access to; admins see all.
+  let projectIds: string[] | null = null;
+  if (user.role !== 'admin') {
+    if (!user.email) return empty;
     const { data: accessRows, error: accessError } = await supabaseAdmin
       .from('project_access')
       .select('project_id')
-      .eq('user_email', userEmail);
+      .eq('user_email', user.email);
 
     if (accessError) {
       console.error('Error fetching project access:', accessError);
-      return [];
+      return empty;
     }
-
-    if (!accessRows || accessRows.length === 0) return [];
-
-    const projectIds = accessRows.map((r: any) => r.project_id);
-
-    const { data, error } = await supabaseAdmin
-      .from('markup_projects')
-      .select(THREAD_SELECT)
-      .in('id', projectIds)
-      .order('created_at', { ascending: false });
-
-    if (error) {
-      console.error('Error fetching member projects:', error);
-      return [];
-    }
-
-    return attachThreadStats(data || []);
-  } catch (error) {
-    console.error('Unexpected error fetching member projects:', error);
-    return [];
+    if (!accessRows || accessRows.length === 0) return empty;
+    projectIds = accessRows.map((r: any) => r.project_id);
   }
-}
 
-export async function getProjectPageData() {
-  const user = await getUser();
-  const role = user ? ((user.role as 'admin' | 'member') ?? 'member') : null;
-  const currentUser = user
-    ? { id: user.id, name: user.name || user.email, email: user.email, role: user.role }
-    : null;
-  const projects = user?.role === 'admin'
-    ? await getAllProjects()
-    : user?.email
-    ? await getMemberProjects(user.email)
-    : [];
-  return { projects, role, currentUser };
+  const { data, error } = await supabaseAdmin.rpc('get_projects_with_stats', {
+    p_project_ids: projectIds,
+    p_search: opts?.search?.trim() || null,
+    p_sort: opts?.sort ?? 'newest',
+    p_limit: PROJECTS_PAGE_SIZE,
+    p_offset: (page - 1) * PROJECTS_PAGE_SIZE,
+  });
+
+  if (error) {
+    console.error('Error fetching projects page:', error);
+    return empty;
+  }
+
+  const rows = (data ?? []) as (ProjectListItem & { total_count: number })[];
+  const total = rows[0]?.total_count ?? 0;
+  return {
+    projects: rows.map(({ total_count, ...item }) => item),
+    total,
+    page,
+  };
 }
 
 /**
@@ -329,6 +269,7 @@ export async function deleteProject(projectId: string) {
     }
 
     revalidatePath('/');
+    revalidatePath('/projects');
     return { success: true };
   } catch (error) {
     console.error('Unexpected error deleting project:', error);
