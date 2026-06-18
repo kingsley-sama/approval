@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import ImageViewer from '@/components/annotation/image-viewer';
 import CommentModal from '@/components/annotation/comment-modal';
-import { getProjectWorkspaceData, type WorkspaceData } from '@/app/actions/threads';
+import { getProjectWorkspaceData, reorderThreads, type WorkspaceData } from '@/app/actions/threads';
 import { resolveComment, DbComment, updateCommentPosition, updateComment, updateCommentDrawing, deleteComment } from '@/app/actions/comments';
 import { getAttachmentUploadUrl, registerAttachment, getAttachmentsForComments, deleteAttachment } from '@/app/actions/storage';
 import { useCommentQueue } from '@/hooks/use-comment-queue';
@@ -121,7 +121,13 @@ export default function ProjectWorkspace({ projectId, initialData, fallbackName 
       if (files && files.length > 0) {
         pendingAttachments.current.delete(localId);
         // Files came from the modal, which already compressed images.
-        uploadAttachmentsForComment(comment.id, projectId, files, true);
+        // Once uploaded, pull the freshly-registered attachments into state so
+        // they appear on the pin right away. Without this refresh the upload
+        // succeeds in storage/DB but the pin keeps its empty attachment list
+        // until some later refetch — which is why a re-upload would suddenly
+        // surface both the first and second file at once.
+        uploadAttachmentsForComment(comment.id, projectId, files, true)
+          .then(() => refreshCommentAttachments(comment.id));
       }
     },
     onFailed: (localId: string) => {
@@ -473,9 +479,9 @@ export default function ProjectWorkspace({ projectId, initialData, fallbackName 
     return result;
   }, [projectId, toast]);
 
-  const handleAddAttachmentToComment = async (commentId: string, files: File[]) => {
-    // Files came from the modal, which already compressed images.
-    await uploadAttachmentsForComment(commentId, projectId, files, true);
+  /** Re-fetch a comment's attachments (each with a fresh signed URL) and merge
+   *  them into the matching pin's state. */
+  async function refreshCommentAttachments(commentId: string) {
     const updated = await getAttachmentsForComments([commentId]);
     setImagesState(prev => prev.map(img => {
       if (!img.pins.some(p => p.id === commentId)) return img;
@@ -486,6 +492,12 @@ export default function ProjectWorkspace({ projectId, initialData, fallbackName 
         ),
       };
     }));
+  }
+
+  const handleAddAttachmentToComment = async (commentId: string, files: File[]) => {
+    // Files came from the modal, which already compressed images.
+    await uploadAttachmentsForComment(commentId, projectId, files, true);
+    await refreshCommentAttachments(commentId);
   };
 
   const handleDeleteComment = async (commentId: string) => {
@@ -541,6 +553,36 @@ export default function ProjectWorkspace({ projectId, initialData, fallbackName 
       });
     }
   };
+
+  /** Persist a drag-reordered image list. Reorders local state optimistically,
+   *  keeps the current image's index in sync, then writes the new order to the DB. */
+  const handleReorderImages = useCallback((orderedIds: string[]) => {
+    const snapshot = imagesState;
+    setImagesState(prev => {
+      const byId = new Map(prev.map(img => [img.id, img]));
+      const reordered = orderedIds
+        .map(id => byId.get(id))
+        .filter((img): img is ImageData => img !== undefined);
+      // Guard against any images missing from the incoming order (shouldn't
+      // happen) by appending them so nothing silently disappears.
+      const missing = prev.filter(img => !orderedIds.includes(img.id));
+      return [...reordered, ...missing];
+    });
+    const newIndex = orderedIds.indexOf(currentImageId);
+    if (newIndex !== -1) setCurrentImageIndex(newIndex);
+
+    reorderThreads(projectId, orderedIds).then(res => {
+      if (!res.success) {
+        setImagesState(snapshot);
+        setCurrentImageIndex(snapshot.findIndex(img => img.id === currentImageId));
+        toast({
+          title: 'Failed to reorder images',
+          description: res.error ?? 'Please try again.',
+          variant: 'destructive',
+        });
+      }
+    });
+  }, [imagesState, currentImageId, projectId, toast]);
 
   const handleSwitchImage = useCallback((imageId: string) => {
     const index = imagesState.findIndex(img => img.id === imageId);
@@ -705,6 +747,7 @@ export default function ProjectWorkspace({ projectId, initialData, fallbackName 
         onResolveComment={handleResolveComment}
         projectId={projectId}
         onSelectImage={handleSwitchImage}
+        onReorderImages={handleReorderImages}
         onUploadComplete={refreshWorkspace}
         onCommentTabChange={setCommentTab}
         onEditComment={handleEditComment}
@@ -730,7 +773,7 @@ export default function ProjectWorkspace({ projectId, initialData, fallbackName 
                 </div>
                 <h2 className="text-xl font-semibold mb-2">Upload to Project</h2>
                 <p className="text-gray-500 mb-6">
-                  This project has no images yet. Upload images to start annotating.
+                  This project has no files yet. Upload images, PDFs, or videos to get started.
                 </p>
                 <div className="flex justify-center">
                   <ImageUploader
@@ -738,7 +781,7 @@ export default function ProjectWorkspace({ projectId, initialData, fallbackName 
                     onUploadComplete={refreshWorkspace}
                     trigger={
                       <button className="px-6 py-3 bg-blue-600 text-white rounded-md font-semibold hover:bg-blue-700 transition-colors">
-                        Select Images
+                        Select Files
                       </button>
                     }
                   />

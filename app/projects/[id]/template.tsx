@@ -79,6 +79,7 @@ interface ProjectShellProps {
 	onResolveComment: (pinId: string) => void;
 	projectId: string;
 	onSelectImage: (imageId: string) => void;
+	onReorderImages?: (orderedIds: string[]) => void;
 	onUploadComplete: () => Promise<void>;
 	onCommentTabChange?: (tab: 'active' | 'resolved') => void;
 	onEditComment?: (commentId: string, newText: string) => Promise<{ success: boolean; error?: string }>;
@@ -192,6 +193,7 @@ export function ProjectShell({
 	onResolveComment,
 	projectId,
 	onSelectImage,
+	onReorderImages,
 	onUploadComplete,
 	onCommentTabChange,
 	onEditComment,
@@ -229,6 +231,7 @@ export function ProjectShell({
 					images={images}
 					currentImageId={currentImageId}
 					onSelectImage={onSelectImage}
+					onReorderImages={onReorderImages}
 					projectId={projectId}
 					onUploadComplete={onUploadComplete}
 				/>

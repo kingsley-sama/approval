@@ -10,6 +10,7 @@ import { getProjectsPage, deleteProject, type ProjectListItem, type ProjectSort 
 import { renameProject } from '@/app/actions/update-project'
 import { formatDistanceToNow } from 'date-fns'
 import { getOptimizedImageUrl, IMAGE_SIZES } from '@/lib/image-url'
+import { getMediaKind } from '@/lib/media-type'
 import { Filter, ArrowUpDown, Search, Upload, Folder, FolderPlus, Trash2, X, CheckSquare, AlertTriangle, Pencil } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -30,10 +31,14 @@ const cardColors = [
 ]
 
 function mapRow(p: ProjectListItem, globalIndex: number): Project {
+  // The preview must be an image — a project whose first item is a PDF/video
+  // would otherwise feed a non-image URL into the card's <img> and break it.
+  const previewSource = p.first_image || p.markup_url || ''
+  const imagePreview = previewSource && getMediaKind(previewSource) === 'image' ? previewSource : '/placeholder.svg'
   return {
     id: p.id,
     title: p.project_name,
-    image: getOptimizedImageUrl(p.first_image || p.markup_url || '/placeholder.svg', IMAGE_SIZES.DASHBOARD_THUMB),
+    image: getOptimizedImageUrl(imagePreview, IMAGE_SIZES.DASHBOARD_THUMB),
     updatedAt: p.updated_at
       ? formatDistanceToNow(new Date(p.updated_at)) + ' ago'
       : 'Just now',

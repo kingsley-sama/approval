@@ -3,7 +3,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { requireUser } from '@/lib/auth/require-user';
 import { CreateThreadSchema } from '@/lib/validation/schemas';
-import { revalidatePath } from 'next/cache';
+import { revalidatePath, unstable_noStore as noStore } from 'next/cache';
 import { getCommentsForThreads, type DbComment } from './comments';
 import { getAttachmentsForComments } from './storage';
 
@@ -21,6 +21,10 @@ export interface WorkspaceData {
  * round-trip chain the client used to make after hydration.
  */
 export async function getProjectWorkspaceData(projectId: string): Promise<WorkspaceData> {
+  // Never serve this from Next's data cache: it's re-fetched right after an
+  // upload to show the new image, and a cached read makes the freshly added
+  // thread silently missing until something else busts the cache.
+  noStore();
   const user = await requireUser();
   const supabase = await createClient();
 
@@ -29,6 +33,7 @@ export async function getProjectWorkspaceData(projectId: string): Promise<Worksp
       .from('markup_threads')
       .select('*')
       .eq('project_id', projectId)
+      .order('image_index', { ascending: true, nullsFirst: false })
       .order('created_at', { ascending: true }),
     supabase
       .from('markup_projects')
@@ -60,6 +65,7 @@ export async function getProjectWorkspaceData(projectId: string): Promise<Worksp
 }
 
 export async function getProjectThreads(projectId: string) {
+  noStore();
   await requireUser();
   const supabase = await createClient();
   try {
@@ -67,6 +73,7 @@ export async function getProjectThreads(projectId: string) {
       .from('markup_threads')
       .select('*')
       .eq('project_id', projectId)
+      .order('image_index', { ascending: true, nullsFirst: false })
       .order('created_at', { ascending: true });
 
     if (error) {
@@ -124,6 +131,46 @@ export async function createThread(projectId: string, fileData: { path: string; 
     return { success: true, thread: data };
   } catch (error) {
     console.error('Unexpected error creating thread:', error);
+    return { success: false, error: 'An unexpected error occurred' };
+  }
+}
+
+/**
+ * Persist a new image (thread) ordering for a project. `orderedThreadIds` is the
+ * full list of the project's thread ids in their desired display order; each
+ * thread's `image_index` is set to its position so subsequent loads (which order
+ * by `image_index`) reflect the new arrangement.
+ */
+export async function reorderThreads(projectId: string, orderedThreadIds: string[]) {
+  await requireUser();
+
+  if (!projectId || !Array.isArray(orderedThreadIds) || orderedThreadIds.length === 0) {
+    return { success: false, error: 'Invalid reorder request' };
+  }
+
+  const supabase = await createClient();
+  try {
+    const now = new Date().toISOString();
+    const results = await Promise.all(
+      orderedThreadIds.map((id, index) =>
+        supabase
+          .from('markup_threads')
+          .update({ image_index: index, updated_at: now })
+          .eq('id', id)
+          .eq('project_id', projectId)
+      )
+    );
+
+    const failed = results.find(r => r.error);
+    if (failed?.error) {
+      console.error('Error reordering threads:', failed.error);
+      return { success: false, error: failed.error.message };
+    }
+
+    revalidatePath(`/projects/${projectId}`);
+    return { success: true };
+  } catch (error) {
+    console.error('Unexpected error reordering threads:', error);
     return { success: false, error: 'An unexpected error occurred' };
   }
 }

@@ -14,6 +14,7 @@ import dynamic from 'next/dynamic';
 import DrawingToolbar, { DRAWING_COLOR, STROKE_WIDTH } from '@/components/drawing-toolbar';
 import { DrawingTool, Shape } from '@/types/drawing';
 import { normalizeShape } from '@/lib/drawing';
+import { getMediaKind } from '@/lib/media-type';
 import { Button } from '../ui/button';
 import {
   DropdownMenu,
@@ -239,6 +240,14 @@ function ImageViewerInner({
     () => [...drawnShapes, ...pendingShapes],
     [drawnShapes, pendingShapes]
   );
+
+  // PDFs and videos are view-only: no zoom/pan, drawing tools, or pins. They
+  // render in an embedded viewer / player instead of the image pipeline below.
+  const mediaKind = useMemo(
+    () => getMediaKind(currentImageUrl, currentImageName),
+    [currentImageUrl, currentImageName]
+  );
+  const isImage = mediaKind === 'image';
 
   // Actual file extension, derived from the storage URL (or image name) rather
   // than hardcoded display copy.
@@ -481,7 +490,7 @@ function ImageViewerInner({
             <ChevronRight className="h-3.5 w-3.5" />
           </Button>
 
-          {showDrawingTools && (
+          {showDrawingTools && isImage && (
             <div className={`ml-4 pl-4 border-l ${isFullscreen ? 'border-zinc-600' : 'border-border/50'}`}>
               <DrawingToolbar
                 activeTool={activeTool}
@@ -495,33 +504,35 @@ function ImageViewerInner({
 
         {/* Right: Zoom & Actions */}
         <div className="flex items-center gap-2">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="sm"
-                className={`h-7 gap-1 text-xs font-normal ${isFullscreen ? 'text-zinc-300 hover:text-white hover:bg-zinc-700' : 'text-muted-foreground'}`}
-              >
-                {getZoomLabel()}
-                <ChevronDown className="h-3 w-3 opacity-50" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {zoomOptions.map((option) => (
-                <DropdownMenuItem key={option.label} onClick={() => setZoom(option.value)}>
-                  {option.label}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {isImage && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className={`h-7 gap-1 text-xs font-normal ${isFullscreen ? 'text-zinc-300 hover:text-white hover:bg-zinc-700' : 'text-muted-foreground'}`}
+                >
+                  {getZoomLabel()}
+                  <ChevronDown className="h-3 w-3 opacity-50" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {zoomOptions.map((option) => (
+                  <DropdownMenuItem key={option.label} onClick={() => setZoom(option.value)}>
+                    {option.label}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
 
-          <IconTooltip label="Download image">
+          <IconTooltip label={mediaKind === 'pdf' ? 'Download PDF' : mediaKind === 'video' ? 'Download video' : 'Download image'}>
             <Button
               variant="ghost"
               size="icon"
               onClick={handleDownload}
               disabled={isDownloading || !currentImageUrl}
-              aria-label="Download image"
+              aria-label="Download file"
               className={`h-7 w-7 ${isFullscreen ? 'text-zinc-300 hover:text-white hover:bg-zinc-700' : 'text-muted-foreground'}`}
             >
               <Download className="h-3.5 w-3.5" />
@@ -547,6 +558,7 @@ function ImageViewerInner({
           vertical panning works. Centering lives on an inner wrapper that grows to fit the
           image (min-w/min-h-full keeps gutters when the image is smaller than the viewport),
           which keeps both horizontal and vertical edges scrollable. */}
+      {isImage ? (
       <div className="flex-1 overflow-auto relative">
         {/* Loading overlay — shows immediately on a switch and stays until the
             new image has loaded, hiding the previous image during the swap. */}
@@ -571,8 +583,13 @@ function ImageViewerInner({
             <div className="relative animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
           </div>
         )}
-        <div className="flex items-center justify-center min-w-full min-h-full py-8 px-6">
-          <div data-annotation-image-container className="relative" onClick={handleClick}>
+        {/* Center with auto-margins, NOT justify/items-center: when the image is
+            larger than the viewport, flex centering pushes the overflowed top/left
+            edges out of the scrollable range (only right/bottom reachable). Auto
+            margins collapse to 0 on overflow, so the image pins to the top-left and
+            both axes stay fully scrollable; when it's smaller they re-center it. */}
+        <div className="flex min-w-full min-h-full py-8 px-6">
+          <div data-annotation-image-container className="relative m-auto" onClick={handleClick}>
           <Image
             ref={imageRef}
             src={currentImageUrl || '/modern-house-exterior.jpg'}
@@ -666,6 +683,30 @@ function ImageViewerInner({
           </div>
         </div>
       </div>
+      ) : (
+        /* View-only media: PDFs render in the browser's embedded viewer, videos
+           in a native player. Drawing tools, zoom, and pins are hidden for these. */
+        <div className={`flex-1 relative flex items-center justify-center overflow-auto ${isFullscreen ? 'bg-black' : 'bg-gray-200'}`}>
+          {mediaKind === 'pdf' ? (
+            <iframe
+              key={currentImageUrl}
+              src={currentImageUrl}
+              title={currentImageName || 'PDF document'}
+              className="w-full h-full border-0 bg-white"
+            />
+          ) : (
+            <video
+              key={currentImageUrl}
+              src={currentImageUrl}
+              controls
+              controlsList="nodownload"
+              className="max-w-full max-h-full"
+            >
+              Your browser does not support embedded video.
+            </video>
+          )}
+        </div>
+      )}
     </div>
   );
 }

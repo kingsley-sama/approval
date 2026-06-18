@@ -14,7 +14,7 @@ export interface FileUploadState {
 
 // ─── validation ──────────────────────────────────────────────────────────────
 
-const ALLOWED_MIME_TYPES = new Set([
+const IMAGE_MIME_TYPES = new Set([
   'image/jpeg',
   'image/png',
   'image/webp',
@@ -22,7 +22,35 @@ const ALLOWED_MIME_TYPES = new Set([
   'image/svg+xml',
 ]);
 
-const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20 MB
+// PDFs (exposés/brochures) and videos are uploaded as view-only project items.
+const PDF_MIME_TYPE = 'application/pdf';
+const VIDEO_MIME_TYPES = new Set([
+  'video/mp4',
+  'video/webm',
+  'video/quicktime', // .mov
+  'video/ogg',
+]);
+
+const MB = 1024 * 1024;
+// Videos are far larger than images/PDFs, so they get their own ceiling.
+const MAX_IMAGE_SIZE = 20 * MB;
+const MAX_PDF_SIZE = 50 * MB;
+const MAX_VIDEO_SIZE = 200 * MB;
+
+type UploadCategory = 'image' | 'pdf' | 'video';
+
+function categorize(file: File): UploadCategory | null {
+  if (IMAGE_MIME_TYPES.has(file.type)) return 'image';
+  if (file.type === PDF_MIME_TYPE) return 'pdf';
+  if (VIDEO_MIME_TYPES.has(file.type)) return 'video';
+  return null;
+}
+
+const MAX_SIZE_BY_CATEGORY: Record<UploadCategory, number> = {
+  image: MAX_IMAGE_SIZE,
+  pdf: MAX_PDF_SIZE,
+  video: MAX_VIDEO_SIZE,
+};
 
 export interface FileValidationError {
   file: File;
@@ -38,10 +66,14 @@ export function validateFiles(files: File[]): {
   const rejected: FileValidationError[] = [];
 
   for (const file of files) {
-    if (!ALLOWED_MIME_TYPES.has(file.type)) {
-      rejected.push({ file, reason: `Unsupported file type: ${file.type || 'unknown'}. Use JPEG, PNG, WebP, GIF, or SVG.` });
-    } else if (file.size > MAX_FILE_SIZE) {
-      rejected.push({ file, reason: `File too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Max 20 MB.` });
+    const category = categorize(file);
+    if (!category) {
+      rejected.push({ file, reason: `Unsupported file type: ${file.type || 'unknown'}. Use an image, PDF, or video.` });
+      continue;
+    }
+    const maxSize = MAX_SIZE_BY_CATEGORY[category];
+    if (file.size > maxSize) {
+      rejected.push({ file, reason: `File too large (${(file.size / MB).toFixed(1)} MB). Max ${Math.round(maxSize / MB)} MB.` });
     } else if (file.size === 0) {
       rejected.push({ file, reason: 'File is empty.' });
     } else {

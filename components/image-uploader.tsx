@@ -102,7 +102,7 @@ export default function ImageUploader({ projectId, onUploadComplete, trigger }: 
     const failed = results.filter(r => !r).length;
 
     if (succeeded > 0) {
-      toast.success(`${succeeded} image${succeeded > 1 ? 's' : ''} uploaded`);
+      toast.success(`${succeeded} file${succeeded > 1 ? 's' : ''} uploaded`);
       onUploadComplete?.();
     }
     if (failed > 0) toast.error(`${failed} upload${failed > 1 ? 's' : ''} failed`);
@@ -140,7 +140,7 @@ export default function ImageUploader({ projectId, onUploadComplete, trigger }: 
         onChange={handleFileSelect}
         className="hidden"
         multiple
-        accept="image/*"
+        accept="image/*,application/pdf,video/mp4,video/webm,video/quicktime,video/ogg"
       />
 
       {trigger ? (
@@ -148,13 +148,13 @@ export default function ImageUploader({ projectId, onUploadComplete, trigger }: 
           {trigger}
         </div>
       ) : (
-        <IconTooltip label="Upload images">
+        <IconTooltip label="Upload images, PDFs, or videos">
           <Button
             variant="outline"
             size="icon"
             className="h-8 w-8 rounded-full"
             onClick={() => fileInputRef.current?.click()}
-            aria-label="Upload images"
+            aria-label="Upload files"
           >
             {isActive ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
           </Button>
@@ -238,7 +238,7 @@ export default function ImageUploader({ projectId, onUploadComplete, trigger }: 
               disabled={isActive}
               className="text-xs text-blue-600 hover:underline disabled:opacity-40 disabled:no-underline"
             >
-              + Add more images
+              + Add more files
             </button>
             {totalSaved > 0 && (
               <span className="text-[10px] text-green-600 font-medium shrink-0">
