@@ -15,7 +15,6 @@ import {
   resolvePanoramaComment,
   updatePanoramaComment,
   deletePanoramaComment,
-  createPanoramaReply,
   type PanoramaComment,
 } from '@/app/actions/panorama-comments';
 import { useToast } from '@/hooks/use-toast';
@@ -146,8 +145,9 @@ export default function PanoramaWorkspace({ projectId, initialData, fallbackName
   const handleSubmitComment = async (text: string) => {
     if (!currentImageId || !pendingCoords) return;
     const { pitch, yaw } = pendingCoords;
+    // Keep add-mode ON after submitting so the user can keep dropping comments
+    // (persistent toggle, like the drawing tool); the modal just closes.
     closeModal();
-    setAddMode(false);
 
     const result = await createPanoramaComment(currentImageId, text, currentUserName, pitch, yaw, projectId);
     if (!result.success || !result.comment) {
@@ -162,19 +162,20 @@ export default function PanoramaWorkspace({ projectId, initialData, fallbackName
   };
 
   const handleSelectPin = useCallback((id: string) => {
-    setAddMode(false);
+    // Empty id = deselect (the thread panel "back" button sends this).
+    if (!id) { setSelectedPin(null); return; }
     const img = imagesState.find(i => i.pins.some(p => p.id === id));
     if (img && img.id !== currentImageId) {
       const idx = imagesState.findIndex(i => i.id === img.id);
       setCurrentImageId(img.id);
       if (idx !== -1) setCurrentImageIndex(idx);
     }
+    // Existing comments open in the sidebar slide-in thread (not the floating
+    // modal); the floating modal is only used for creating a new comment.
     setSelectedPin(id);
+    setShowModal(false);
     setIsNewPin(false);
     setPendingCoords(null);
-    // Open the detail card near the screen centre (hotspot may be off-view).
-    setModalPos({ x: window.innerWidth / 2 - 160, y: 120 });
-    setShowModal(true);
   }, [imagesState, currentImageId]);
 
   const handleResolve = async (id: string) => {
@@ -232,26 +233,13 @@ export default function PanoramaWorkspace({ projectId, initialData, fallbackName
     }
   };
 
-  const handleReply = async (id: string, text: string) => {
-    const result = await createPanoramaReply(id, text, currentUserName, projectId);
-    if (result.success) {
-      setImagesState(prev => prev.map(img => ({
-        ...img,
-        pins: img.pins.map(p => p.id === id ? { ...p, replyCount: (p.replyCount ?? 0) + 1 } : p),
-      })));
-    } else {
-      toast({ title: 'Failed to add reply', description: result.error ?? 'Please try again.', variant: 'destructive' });
-    }
-    return result;
-  };
-
   const handleSwitchImage = useCallback((imageId: string) => {
     const index = imagesState.findIndex(img => img.id === imageId);
     if (index !== -1) setCurrentImageIndex(index);
     setCurrentImageId(imageId);
     setSelectedPin(null);
     setShowModal(false);
-    setAddMode(false);
+    // add-mode persists across panorama switches until toggled off
   }, [imagesState]);
 
   const handleNavigate = useCallback((direction: 'prev' | 'next') => {
@@ -267,10 +255,6 @@ export default function PanoramaWorkspace({ projectId, initialData, fallbackName
     const idx = imagesState.findIndex(img => img.id === currentImageId);
     if (idx !== -1 && idx !== currentImageIndex) setCurrentImageIndex(idx);
   }, [imagesState, currentImageId, currentImageIndex]);
-
-  const selectedPinData = selectedPin
-    ? numberedImages.flatMap(i => i.pins).find(p => p.id === selectedPin)
-    : undefined;
 
   const commentImages = numberedImages.map(img => ({
     id: img.id,
@@ -314,6 +298,10 @@ export default function PanoramaWorkspace({ projectId, initialData, fallbackName
         projectId={projectId}
         onUploadComplete={refreshWorkspace}
         canUpload={canEdit}
+        currentUser={currentUserName}
+        userRole={currentUserRole}
+        onEditComment={handleEdit}
+        onDeleteComment={handleDelete}
       >
         {imagesState.length === 0 ? (
           isLoading ? (
@@ -353,28 +341,17 @@ export default function PanoramaWorkspace({ projectId, initialData, fallbackName
         )}
       </PanoramaShell>
 
-      {showModal && (
+      {/* Floating modal is only for creating a new comment; existing comments
+          open in the sidebar's slide-in thread panel. */}
+      {showModal && isNewPin && (
         <PanoramaCommentModal
           position={modalPos}
-          isNew={isNewPin}
-          existingPin={!isNewPin && selectedPinData ? {
-            id: selectedPinData.id,
-            number: selectedPinData.number,
-            content: selectedPinData.content,
-            author: selectedPinData.author,
-            timestamp: selectedPinData.timestamp,
-            status: selectedPinData.status,
-            replyCount: selectedPinData.replyCount,
-          } : undefined}
+          isNew
           currentUser={currentUserName}
           userRole={currentUserRole}
           projectId={projectId}
           onClose={closeModal}
           onSubmit={handleSubmitComment}
-          onResolve={!isNewPin ? handleResolve : undefined}
-          onEdit={!isNewPin ? handleEdit : undefined}
-          onDelete={!isNewPin ? handleDelete : undefined}
-          onReply={!isNewPin ? handleReply : undefined}
         />
       )}
     </div>

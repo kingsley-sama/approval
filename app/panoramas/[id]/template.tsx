@@ -116,6 +116,10 @@ export function PanoramaShell({
   projectId,
   onUploadComplete,
   canUpload,
+  currentUser,
+  userRole,
+  onEditComment,
+  onDeleteComment,
   children,
 }: {
   isFullscreen: boolean;
@@ -131,6 +135,10 @@ export function PanoramaShell({
   projectId: string;
   onUploadComplete: () => void | Promise<void>;
   canUpload: boolean;
+  currentUser: string;
+  userRole: string;
+  onEditComment: (id: string, text: string) => Promise<{ success: boolean; error?: string }>;
+  onDeleteComment: (id: string) => void;
   children: React.ReactNode;
 }) {
   const showSidebars = !isFullscreen && !sidebarsCollapsed;
@@ -139,10 +147,16 @@ export function PanoramaShell({
       {showSidebars && (
         <PanoramaCommentsSidebar
           images={commentImages}
+          currentImageId={currentImageId}
           selectedPinId={selectedPinId}
           onSelectPin={onSelectPin}
           onResolve={onResolve}
           onTabChange={onTabChange}
+          currentUser={currentUser}
+          userRole={userRole}
+          projectId={projectId}
+          onEditComment={onEditComment}
+          onDeleteComment={onDeleteComment}
         />
       )}
 

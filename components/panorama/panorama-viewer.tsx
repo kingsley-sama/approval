@@ -100,6 +100,14 @@ export default function PanoramaViewer({
   onAddRef.current = onAddHotspot;
   onSelectRef.current = onSelectHotspot;
 
+  // Escape exits the persistent comment mode.
+  useEffect(() => {
+    if (!addMode) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onToggleAddMode(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [addMode, onToggleAddMode]);
+
   // (Re)create the viewer when the image changes.
   useEffect(() => {
     if (!containerRef.current || !imageUrl || typeof window === 'undefined' || !window.pannellum) return;
@@ -235,13 +243,14 @@ export default function PanoramaViewer({
         {!readOnly && (
           <button
             onClick={onToggleAddMode}
+            aria-pressed={addMode}
             className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium backdrop-blur-sm transition-colors ${
-              addMode ? 'bg-orange-500 text-white' : 'bg-black/50 text-white hover:bg-black/70'
+              addMode ? 'bg-orange-500 text-white ring-2 ring-orange-300/70' : 'bg-black/50 text-white hover:bg-black/70'
             }`}
-            title={addMode ? 'Click the panorama to drop a comment' : 'Add a comment'}
+            title={addMode ? 'Comment mode is ON — click the panorama to drop comments. Click here or press Esc to stop.' : 'Turn on comment mode'}
           >
             {addMode ? <MousePointer2 size={13} /> : <Plus size={13} />}
-            {addMode ? 'Click to place' : 'Add comment'}
+            {addMode ? 'Comment mode: ON' : 'Add comment'}
           </button>
         )}
       </div>

@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
-import { Check, MessageSquare, RotateCcw } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Check, ChevronDown, ChevronRight, MessageSquare } from 'lucide-react';
+import PanoramaThreadDetail from './panorama-thread-detail';
 
 export interface PanoramaSidebarPin {
   id: string;
@@ -21,104 +22,242 @@ export interface PanoramaSidebarImage {
 
 interface PanoramaCommentsSidebarProps {
   images: PanoramaSidebarImage[];
+  currentImageId: string;
   selectedPinId: string | null;
   onSelectPin: (id: string) => void;
   onResolve: (id: string) => void;
   onTabChange?: (tab: 'active' | 'resolved') => void;
+  // Thread-detail wiring
+  currentUser: string;
+  userRole: string;
+  projectId: string;
+  onEditComment: (id: string, text: string) => Promise<{ success: boolean; error?: string }>;
+  onDeleteComment: (id: string) => void;
 }
 
 export default function PanoramaCommentsSidebar({
   images,
+  currentImageId,
   selectedPinId,
   onSelectPin,
   onResolve,
   onTabChange,
+  currentUser,
+  userRole,
+  projectId,
+  onEditComment,
+  onDeleteComment,
 }: PanoramaCommentsSidebarProps) {
-  const [tab, setTab] = useState<'active' | 'resolved'>('active');
+  const [activeTab, setActiveTab] = useState<'active' | 'resolved'>('active');
+  const [expandedImages, setExpandedImages] = useState<string[]>(currentImageId ? [currentImageId] : []);
+  const [openThreadPin, setOpenThreadPin] = useState<PanoramaSidebarPin | null>(null);
 
-  const rows = useMemo(() => {
-    const out: (PanoramaSidebarPin & { imageName: string })[] = [];
+  // Auto-expand the current panorama's group when it changes.
+  useEffect(() => {
+    if (!currentImageId) return;
+    setExpandedImages(prev => (prev.includes(currentImageId) ? prev : [...prev, currentImageId]));
+  }, [currentImageId]);
+
+  // Open the thread when a hotspot is selected (e.g. clicked in the viewer);
+  // close it when the selection is cleared.
+  useEffect(() => {
+    if (!selectedPinId) { setOpenThreadPin(null); return; }
     for (const img of images) {
-      for (const pin of img.pins) {
-        if (tab === 'resolved' ? pin.status === 'resolved' : pin.status !== 'resolved') {
-          out.push({ ...pin, imageName: img.name });
-        }
-      }
+      const fresh = img.pins.find(p => p.id === selectedPinId);
+      if (fresh) { setOpenThreadPin(fresh); return; }
     }
-    return out;
-  }, [images, tab]);
+  }, [selectedPinId, images]);
+
+  const { activeCount, resolvedCount } = useMemo(() => {
+    const all = images.flatMap(img => img.pins);
+    return {
+      activeCount: all.filter(p => p.status !== 'resolved').length,
+      resolvedCount: all.filter(p => p.status === 'resolved').length,
+    };
+  }, [images]);
+
+  const imageGroups = useMemo(
+    () =>
+      images
+        .map(img => {
+          const filteredPins = img.pins.filter(p =>
+            activeTab === 'resolved' ? p.status === 'resolved' : p.status !== 'resolved',
+          );
+          return { ...img, filteredPins, totalComments: filteredPins.length };
+        })
+        .filter(g => g.totalComments > 0),
+    [images, activeTab],
+  );
+
+  const toggleExpand = (id: string) =>
+    setExpandedImages(prev => (prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]));
 
   const switchTab = (t: 'active' | 'resolved') => {
-    setTab(t);
+    setActiveTab(t);
     onTabChange?.(t);
   };
 
-  return (
-    <aside className="w-72 shrink-0 border-r border-border bg-background flex flex-col">
-      <div className="px-3 py-2.5 border-b border-border flex items-center gap-2">
-        <MessageSquare size={14} className="text-accent" />
-        <span className="text-xs font-semibold text-foreground">Comments</span>
-      </div>
+  const handleSelectPin = (pin: PanoramaSidebarPin) => {
+    onSelectPin(pin.id);
+    setOpenThreadPin(pin);
+  };
 
-      <div className="flex border-b border-border">
-        {(['active', 'resolved'] as const).map(t => (
-          <button
-            key={t}
-            onClick={() => switchTab(t)}
-            className={`flex-1 py-2 text-xs font-medium capitalize transition-colors ${
-              tab === t ? 'text-accent border-b-2 border-accent' : 'text-muted-foreground hover:text-foreground'
+  const renderPin = (pin: PanoramaSidebarPin) => {
+    return (
+      <div
+        key={pin.id}
+        onClick={() => handleSelectPin(pin)}
+        className={`border-t border-border/40 px-4 py-3 ml-2 cursor-pointer transition-colors ${
+          pin.status === 'resolved'
+            ? 'bg-gray-50 opacity-70'
+            : selectedPinId === pin.id
+            ? 'bg-blue-50'
+            : 'hover:bg-white'
+        }`}
+      >
+        <div className="flex items-start gap-3">
+          <span
+            className={`shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold ${
+              pin.status === 'resolved' ? 'bg-green-100 text-green-700' : 'bg-primary text-white'
             }`}
           >
-            {t}
+            {pin.number}
+          </span>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-0.5">
+              <span
+                className={`text-sm font-semibold ${
+                  pin.status === 'resolved' ? 'line-through text-gray-500' : 'text-foreground'
+                }`}
+              >
+                {pin.author}
+              </span>
+            </div>
+            <p className="text-xs text-muted-foreground mb-1.5">{pin.timestamp}</p>
+            <p
+              className={`text-sm leading-relaxed line-clamp-3 break-words ${
+                pin.status === 'resolved' ? 'line-through text-gray-500' : 'text-foreground'
+              }`}
+            >
+              {pin.content}
+            </p>
+            <div className="mt-2 flex items-center justify-end gap-1.5">
+              {(pin.replyCount ?? 0) > 0 && (
+                <span
+                  className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded bg-blue-50 text-blue-700"
+                  title={`${pin.replyCount} ${pin.replyCount === 1 ? 'reply' : 'replies'}`}
+                >
+                  <MessageSquare size={12} strokeWidth={1.75} />
+                  {pin.replyCount}
+                </span>
+              )}
+              <button
+                onClick={e => { e.stopPropagation(); onResolve(pin.id); }}
+                className={`text-[11px] px-2 py-0.5 rounded flex items-center gap-1 transition-colors ${
+                  pin.status === 'resolved'
+                    ? 'bg-green-100 text-green-700 hover:bg-green-200'
+                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                }`}
+              >
+                <Check size={12} />
+                {pin.status === 'resolved' ? 'Resolved' : 'Resolve'}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <aside className="w-72 shrink-0 border-r border-border/50 bg-background flex flex-col overflow-hidden relative">
+      {/* Main list — slides left when a thread opens */}
+      <div className={`flex flex-col h-full transition-transform duration-300 ease-in-out ${openThreadPin ? '-translate-x-full' : 'translate-x-0'}`}>
+        {/* Tabs */}
+        <div className="flex items-center gap-6 px-5 py-3 border-b border-border/50">
+          <button
+            onClick={() => switchTab('active')}
+            className={`text-sm font-semibold pb-1 transition-colors ${
+              activeTab === 'active'
+                ? 'text-foreground border-b-2 border-primary'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            {activeCount} Active
           </button>
-        ))}
+          <button
+            onClick={() => switchTab('resolved')}
+            className={`text-sm pb-1 transition-colors ${
+              activeTab === 'resolved'
+                ? 'text-foreground font-semibold border-b-2 border-primary'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            {resolvedCount} Resolved
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto">
+          {imageGroups.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-2 p-6 text-center">
+              <MessageSquare size={26} className="opacity-40" />
+              <p className="text-sm">
+                {activeTab === 'resolved'
+                  ? 'No resolved comments.'
+                  : 'No comments yet. Click “Add comment”, then click the panorama.'}
+              </p>
+            </div>
+          ) : (
+            <div className="divide-y divide-border/40">
+              {imageGroups.map(group => {
+                const expanded = expandedImages.includes(group.id);
+                return (
+                  <div key={group.id}>
+                    <button
+                      onClick={() => toggleExpand(group.id)}
+                      className={`w-full flex items-center gap-2 p-4 transition-colors hover:bg-gray-50 ${
+                        group.id === currentImageId ? 'bg-accent/5' : ''
+                      }`}
+                    >
+                      {expanded ? (
+                        <ChevronDown size={16} className="text-gray-600 shrink-0" />
+                      ) : (
+                        <ChevronRight size={16} className="text-gray-600 shrink-0" />
+                      )}
+                      <span className="text-sm font-semibold text-gray-900 truncate" title={group.name}>
+                        {group.name}
+                      </span>
+                      {group.id === currentImageId && (
+                        <span className="text-[9px] font-medium uppercase tracking-wide text-accent bg-accent/10 px-1.5 py-0.5 rounded">
+                          Viewing
+                        </span>
+                      )}
+                      <span className="ml-auto text-xs text-muted-foreground bg-gray-100 px-2 py-1 rounded shrink-0">
+                        {group.totalComments}
+                      </span>
+                    </button>
+                    {expanded && <div className="bg-gray-50">{group.filteredPins.map(renderPin)}</div>}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto">
-        {rows.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-2 p-6 text-center">
-            <MessageSquare size={28} className="opacity-40" />
-            <p className="text-xs">{tab === 'resolved' ? 'No resolved comments.' : 'No comments yet. Click "Add comment", then click the panorama.'}</p>
-          </div>
-        ) : (
-          <ul className="p-2 space-y-1.5">
-            {rows.map(pin => (
-              <li key={pin.id}>
-                <button
-                  onClick={() => onSelectPin(pin.id)}
-                  className={`w-full text-left rounded-lg border p-2.5 transition-colors ${
-                    pin.id === selectedPinId ? 'border-accent bg-accent/5' : 'border-border hover:bg-muted/50'
-                  }`}
-                >
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className={`shrink-0 w-5 h-5 rounded-full text-[10px] font-bold text-white flex items-center justify-center ${
-                      pin.status === 'resolved' ? 'bg-green-500' : 'bg-orange-500'
-                    }`}>
-                      {pin.number}
-                    </span>
-                    <span className="text-xs font-medium text-foreground truncate">{pin.author}</span>
-                    <span className="ml-auto text-[10px] text-muted-foreground truncate max-w-[80px]" title={pin.imageName}>{pin.imageName}</span>
-                  </div>
-                  <p className="text-xs text-muted-foreground line-clamp-2 break-words">{pin.content}</p>
-                  <div className="flex items-center gap-2 mt-1.5">
-                    <span
-                      role="button"
-                      tabIndex={0}
-                      onClick={(e) => { e.stopPropagation(); onResolve(pin.id); }}
-                      onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); onResolve(pin.id); } }}
-                      className="inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground"
-                    >
-                      {pin.status === 'resolved' ? <RotateCcw size={10} /> : <Check size={10} />}
-                      {pin.status === 'resolved' ? 'Reopen' : 'Resolve'}
-                    </span>
-                    {(pin.replyCount ?? 0) > 0 && (
-                      <span className="text-[10px] text-muted-foreground">{pin.replyCount} repl{(pin.replyCount ?? 0) > 1 ? 'ies' : 'y'}</span>
-                    )}
-                  </div>
-                </button>
-              </li>
-            ))}
-          </ul>
+      {/* Thread detail — slides in from the right */}
+      <div className={`absolute inset-0 bg-background transition-transform duration-300 ease-in-out z-10 ${openThreadPin ? 'translate-x-0' : 'translate-x-full'}`}>
+        {openThreadPin && (
+          <PanoramaThreadDetail
+            pin={openThreadPin}
+            projectId={projectId}
+            currentUser={currentUser}
+            userRole={userRole}
+            onBack={() => { setOpenThreadPin(null); onSelectPin(''); }}
+            onResolve={onResolve}
+            onEditComment={onEditComment}
+            onDeleteComment={(id) => { onDeleteComment(id); setOpenThreadPin(null); }}
+          />
         )}
       </div>
     </aside>
