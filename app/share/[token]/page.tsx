@@ -84,6 +84,8 @@ export default async function SharePage({ params }: SharePageProps) {
       <PanoramaShareViewer
         projectName={(project as any).project_name ?? 'Panorama'}
         images={shareImages}
+        token={token}
+        canComment={shareLink!.permissions !== 'view'}
       />
     );
   }

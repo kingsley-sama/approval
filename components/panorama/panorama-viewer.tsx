@@ -45,6 +45,17 @@ interface PanoramaViewerProps {
 const ACTIVE_COLOR = '#f97316';   // orange-500
 const RESOLVED_COLOR = '#22c55e'; // green-500
 
+/**
+ * Pannellum uploads the panorama to a WebGL texture, which requires a same-origin
+ * (or CORS-enabled) image. Route remote http(s) images through our same-origin
+ * proxy; leave local paths (placeholders, blob URLs) untouched.
+ */
+function panoramaSrc(url: string): string {
+  if (!url) return url;
+  if (/^https?:\/\//i.test(url)) return `/api/panorama-proxy?url=${encodeURIComponent(url)}`;
+  return url;
+}
+
 /** Build the DOM for a numbered hotspot marker. Called by Pannellum, which
  *  positions the returned element at the hotspot's pitch/yaw. */
 function buildHotspotTooltip(
@@ -117,7 +128,7 @@ export default function PanoramaViewer({
 
     const viewer = window.pannellum.viewer(containerRef.current, {
       type: 'equirectangular',
-      panorama: imageUrl,
+      panorama: panoramaSrc(imageUrl),
       autoLoad: true,
       showControls: false, // we render our own controls
       showZoomCtrl: false,
@@ -132,7 +143,10 @@ export default function PanoramaViewer({
     // as a friendly overlay instead of a silent blank canvas.
     try {
       viewer.on('load', () => setIsLoaded(true));
-      viewer.on('error', (msg: string) => setLoadError(msg || 'This panorama could not be loaded.'));
+      viewer.on('error', (msg: string) => {
+        console.error('Pannellum load error:', msg, 'for', imageUrl);
+        setLoadError(msg || 'This panorama could not be loaded.');
+      });
     } catch { /* older builds may not expose .on */ }
 
     const el = containerRef.current;
@@ -229,6 +243,9 @@ export default function PanoramaViewer({
               This image failed to load. Make sure it’s a reachable, equirectangular
               (2:1 ratio) photo and that the storage URL is publicly accessible.
             </p>
+            {loadError && (
+              <p className="mt-2 text-xs text-white/40 break-words">{loadError}</p>
+            )}
           </div>
         </div>
       )}

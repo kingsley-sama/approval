@@ -5,6 +5,7 @@ import dynamic from 'next/dynamic';
 import Image from 'next/image';
 import { X } from 'lucide-react';
 import type { PanoramaHotspot } from '@/components/panorama/panorama-viewer';
+import PanoramaCommentModal from '@/components/panorama/panorama-comment-modal';
 
 const PanoramaViewer = dynamic(() => import('@/components/panorama/panorama-viewer'), {
   ssr: false,
@@ -35,14 +36,29 @@ export interface ShareImage {
 interface PanoramaShareViewerProps {
   projectName: string;
   images: ShareImage[];
+  token: string;
+  canComment: boolean;
 }
 
-export default function PanoramaShareViewer({ projectName, images }: PanoramaShareViewerProps) {
+const GUEST_NAME_KEY = 'annot8_panorama_guest_name';
+
+export default function PanoramaShareViewer({ projectName, images, token, canComment }: PanoramaShareViewerProps) {
+  const [imagesState, setImagesState] = useState<ShareImage[]>(images);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [guestName, setGuestName] = useState('');
+  const [addMode, setAddMode] = useState(false);
+  const [showModal, setShowModal] = useState(false);
+  const [modalPos, setModalPos] = useState({ x: 0, y: 0 });
+  const [pendingCoords, setPendingCoords] = useState<{ pitch: number; yaw: number } | null>(null);
 
-  const current = images[currentIndex];
+  const current = imagesState[currentIndex];
+
+  const totalComments = useMemo(
+    () => imagesState.reduce((sum, img) => sum + img.comments.length, 0),
+    [imagesState],
+  );
 
   const hotspots = useMemo<PanoramaHotspot[]>(
     () => (current?.comments ?? []).map(c => ({
@@ -52,6 +68,62 @@ export default function PanoramaShareViewer({ projectName, images }: PanoramaSha
   );
 
   const selected = current?.comments.find(c => c.id === selectedId) ?? null;
+
+  /** Ask for a display name once (stored locally) before a guest can comment. */
+  const ensureGuestName = (): string | null => {
+    if (guestName) return guestName;
+    const stored = typeof window !== 'undefined' ? window.localStorage.getItem(GUEST_NAME_KEY) : null;
+    if (stored) { setGuestName(stored); return stored; }
+    const entered = typeof window !== 'undefined' ? window.prompt('Enter your name to comment:')?.trim() : '';
+    if (!entered) return null;
+    window.localStorage.setItem(GUEST_NAME_KEY, entered);
+    setGuestName(entered);
+    return entered;
+  };
+
+  const handleToggleAddMode = () => {
+    if (!addMode) {
+      if (!ensureGuestName()) return; // need a name first
+      setSelectedId(null);
+    }
+    setAddMode(v => !v);
+    setShowModal(false);
+  };
+
+  const handleAddHotspot = (pitch: number, yaw: number, screen: { x: number; y: number }) => {
+    setPendingCoords({ pitch, yaw });
+    setModalPos(screen);
+    setShowModal(true);
+  };
+
+  const handleSubmit = async (text: string) => {
+    if (!current || !pendingCoords) return;
+    const name = ensureGuestName();
+    if (!name) return;
+    const { pitch, yaw } = pendingCoords;
+    setShowModal(false);
+    setPendingCoords(null);
+
+    try {
+      const res = await fetch('/api/share/panorama/comment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, imageId: current.id, userName: name, content: text, pitch, yaw }),
+      });
+      const json = await res.json();
+      if (!json.success || !json.comment) return;
+      const c = json.comment;
+      const newComment: ShareComment = {
+        id: c.id, number: totalComments + 1, pitch: c.pitch, yaw: c.yaw,
+        content: c.content, author: c.user_name, status: 'active',
+      };
+      setImagesState(prev => prev.map((img, i) =>
+        i === currentIndex ? { ...img, comments: [...img.comments, newComment] } : img,
+      ));
+    } catch {
+      /* swallow — guest can retry */
+    }
+  };
 
   if (!current) {
     return (
@@ -65,7 +137,7 @@ export default function PanoramaShareViewer({ projectName, images }: PanoramaSha
     <div className="h-screen flex flex-col bg-gray-950">
       <header className="h-12 flex items-center justify-between px-4 bg-black/60 text-white shrink-0">
         <span className="text-sm font-medium truncate">{projectName}</span>
-        <span className="text-xs text-white/60">Shared panorama</span>
+        <span className="text-xs text-white/60">{canComment ? 'Shared panorama — you can comment' : 'Shared panorama'}</span>
       </header>
 
       <div className="flex-1 flex overflow-hidden relative">
@@ -74,19 +146,19 @@ export default function PanoramaShareViewer({ projectName, images }: PanoramaSha
           imageName={current.name}
           hotspots={hotspots}
           selectedId={selectedId}
-          addMode={false}
-          onToggleAddMode={() => {}}
-          onAddHotspot={() => {}}
+          addMode={addMode}
+          onToggleAddMode={handleToggleAddMode}
+          onAddHotspot={handleAddHotspot}
           onSelectHotspot={setSelectedId}
           isFullscreen={isFullscreen}
           onToggleFullscreen={() => setIsFullscreen(v => !v)}
           currentImageIndex={currentIndex}
-          totalImages={images.length}
+          totalImages={imagesState.length}
           onNavigate={(dir) => {
             setSelectedId(null);
-            setCurrentIndex(i => dir === 'prev' ? Math.max(0, i - 1) : Math.min(images.length - 1, i + 1));
+            setCurrentIndex(i => dir === 'prev' ? Math.max(0, i - 1) : Math.min(imagesState.length - 1, i + 1));
           }}
-          readOnly
+          readOnly={!canComment}
         />
 
         {selected && (
@@ -106,11 +178,23 @@ export default function PanoramaShareViewer({ projectName, images }: PanoramaSha
             </div>
           </div>
         )}
+
+        {showModal && canComment && (
+          <PanoramaCommentModal
+            position={modalPos}
+            isNew
+            currentUser={guestName || 'Guest'}
+            userRole="guest"
+            projectId=""
+            onClose={() => { setShowModal(false); setPendingCoords(null); }}
+            onSubmit={handleSubmit}
+          />
+        )}
       </div>
 
-      {images.length > 1 && (
+      {imagesState.length > 1 && (
         <div className="h-20 shrink-0 bg-black/60 flex items-center gap-2 px-3 overflow-x-auto">
-          {images.map((img, i) => (
+          {imagesState.map((img, i) => (
             <button
               key={img.id}
               onClick={() => { setSelectedId(null); setCurrentIndex(i); }}
