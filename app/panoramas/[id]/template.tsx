@@ -10,6 +10,14 @@ import { Button } from '@/components/ui/button';
 import { IconTooltip } from '@/components/ui/icon-tooltip';
 import { ArrowLeft, PanelsTopLeft } from 'lucide-react';
 
+// `template.tsx` is a reserved Next.js route convention: Next renders this
+// file's DEFAULT export as a wrapper around the page. We only use this module
+// for the named TopNav/Shell helpers below, so the default is a pass-through
+// (mirrors app/projects/[id]/template.tsx).
+export default function PanoramaRouteTemplate({ children }: { children: React.ReactNode }) {
+  return <>{children}</>;
+}
+
 export interface PanoramaPin {
   id: string;
   number: number;

@@ -6,8 +6,8 @@
 import 'pannellum/build/pannellum.css';
 import 'pannellum';
 
-import React, { useEffect, useRef } from 'react';
-import { ChevronLeft, ChevronRight, Maximize2, Minimize2, RotateCw, Plus, MousePointer2 } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { ChevronLeft, ChevronRight, Maximize2, Minimize2, RotateCw, Plus, MousePointer2, AlertTriangle, Loader2 } from 'lucide-react';
 
 declare global {
   interface Window {
@@ -88,6 +88,8 @@ export default function PanoramaViewer({
 }: PanoramaViewerProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const viewerRef = useRef<any>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [isLoaded, setIsLoaded] = useState(false);
   // Keep latest values reachable from persistent DOM listeners without re-init.
   const addModeRef = useRef(addMode);
   const onAddRef = useRef(onAddHotspot);
@@ -102,6 +104,9 @@ export default function PanoramaViewer({
   useEffect(() => {
     if (!containerRef.current || !imageUrl || typeof window === 'undefined' || !window.pannellum) return;
 
+    setLoadError(null);
+    setIsLoaded(false);
+
     const viewer = window.pannellum.viewer(containerRef.current, {
       type: 'equirectangular',
       panorama: imageUrl,
@@ -114,6 +119,13 @@ export default function PanoramaViewer({
       friction: 0.15,
     });
     viewerRef.current = viewer;
+
+    // Surface load failures (unreachable URL, CORS, non-equirectangular image)
+    // as a friendly overlay instead of a silent blank canvas.
+    try {
+      viewer.on('load', () => setIsLoaded(true));
+      viewer.on('error', (msg: string) => setLoadError(msg || 'This panorama could not be loaded.'));
+    } catch { /* older builds may not expose .on */ }
 
     const el = containerRef.current;
     const onMouseDown = (e: MouseEvent) => { downRef.current = { x: e.clientX, y: e.clientY }; };
@@ -191,6 +203,27 @@ export default function PanoramaViewer({
         ref={containerRef}
         className={`absolute inset-0 ${addMode && !readOnly ? 'cursor-crosshair' : ''}`}
       />
+
+      {/* Loading spinner until the equirectangular texture is ready */}
+      {!isLoaded && !loadError && (
+        <div className="absolute inset-0 z-10 flex items-center justify-center bg-gray-900/60 pointer-events-none">
+          <Loader2 className="h-7 w-7 text-white animate-spin" />
+        </div>
+      )}
+
+      {/* Friendly failure state instead of a blank canvas */}
+      {loadError && (
+        <div className="absolute inset-0 z-30 flex items-center justify-center bg-gray-900 p-6">
+          <div className="max-w-sm text-center text-white/90">
+            <AlertTriangle className="h-9 w-9 mx-auto mb-3 text-amber-400" />
+            <h3 className="text-base font-semibold mb-1">Panorama couldn’t be displayed</h3>
+            <p className="text-sm text-white/60">
+              This image failed to load. Make sure it’s a reachable, equirectangular
+              (2:1 ratio) photo and that the storage URL is publicly accessible.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Top-left: image name + add-comment toggle */}
       <div className="absolute top-3 left-3 z-20 flex items-center gap-2">
