@@ -57,6 +57,35 @@ export const RegisterUploadSchema = z.object({
   storagePath: z.string().min(1),
 });
 
+// ─── panorama (Pannellum) ──────────────────────────────────────────────────
+// Hotspot comments are positioned on a sphere: pitch ∈ [-90, 90], yaw ∈ [-180, 180].
+
+export const CreatePanoramaCommentSchema = z.object({
+  imageId: z.string().uuid(),
+  content: z.string().min(1).max(5000),
+  userName: z.string().min(1).max(200),
+  pitch: z.number().min(-90).max(90),
+  yaw: z.number().min(-180).max(180),
+});
+
+export const UpdatePanoramaCommentPositionSchema = z.object({
+  commentId: z.string().min(1),
+  pitch: z.number().min(-90).max(90),
+  yaw: z.number().min(-180).max(180),
+});
+
+export const CreatePanoramaReplySchema = z.object({
+  parentCommentId: z.string().min(1),
+  content: z.string().min(1).max(5000),
+  userName: z.string().min(1).max(200),
+});
+
+export const RegisterPanoramaImageSchema = z.object({
+  projectId: z.string().uuid(),
+  fileName: z.string().min(1).max(255),
+  storagePath: z.string().min(1),
+});
+
 export const ALLOWED_UPLOAD_MIME_TYPES = [
   'image/jpeg',
   'image/png',

@@ -19,6 +19,7 @@ import {
 import React from 'react'
 import NextImage from 'next/image'
 import ShareLinkManager from '@/components/share-link-manager'
+import type { ShareResourceType } from '@/app/actions/share-links'
 
 // ── Blur-up lazy image ──────────────────────────────────────────────────────
 function BlurImage({
@@ -91,6 +92,10 @@ type ProjectCardProps = {
   isSelected?: boolean
   onSelect?: (projectId: string) => void
   index?: number
+  /** Route prefix for "open in new tab". Defaults to /projects. */
+  basePath?: string
+  /** Resource type used by the card's share button. Defaults to 'project'. */
+  shareResourceType?: ShareResourceType
 }
 
 const Tip: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
@@ -102,14 +107,14 @@ const Tip: React.FC<{ label: string; children: React.ReactNode }> = ({ label, ch
   </div>
 )
 
-export default function ProjectCard({ project, onOpen, onDuplicate, onDelete, onRename, isAdmin = false, isSelected = false, onSelect, index = 0 }: ProjectCardProps) {
+export default function ProjectCard({ project, onOpen, onDuplicate, onDelete, onRename, isAdmin = false, isSelected = false, onSelect, index = 0, basePath = '/projects', shareResourceType = 'project' }: ProjectCardProps) {
   const [isHovered, setIsHovered] = React.useState(false)
   const [activeIndex, setActiveIndex] = React.useState(0)
   const [menuOpen, setMenuOpen] = React.useState(false)
   const menuRef = React.useRef<HTMLDivElement>(null)
 
   const MENU_ITEMS = [
-    { label: 'Open in new tab',  icon: ExternalLink, destructive: false, adminOnly: false, action: () => window.open(`/projects/${project.id}`, '_blank', 'noopener,noreferrer') },
+    { label: 'Open in new tab',  icon: ExternalLink, destructive: false, adminOnly: false, action: () => window.open(`${basePath}/${project.id}`, '_blank', 'noopener,noreferrer') },
     { label: 'Rename project',   icon: Pencil,       destructive: false, adminOnly: true,  action: () => onRename?.(project) },
     { label: 'Project settings', icon: Settings2,    destructive: false, adminOnly: true,  action: () => {} },
     { label: 'Archive canvas',   icon: Archive,      destructive: false, adminOnly: true,  action: () => {} },
@@ -168,7 +173,7 @@ export default function ProjectCard({ project, onOpen, onDuplicate, onDelete, on
                 {isAdmin && (
                   <Tip label="Share">
                     <ShareLinkManager
-                      resourceType="project"
+                      resourceType={shareResourceType}
                       resourceId={project.id}
                       createdBy="user"
                       resourceName={project.title}

@@ -27,7 +27,7 @@ async function getRequestOrigin(): Promise<string> {
 
 // Types
 export type SharePermission = 'view' | 'comment' | 'draw_and_comment';
-export type ShareResourceType = 'thread' | 'project';
+export type ShareResourceType = 'thread' | 'project' | 'panorama_project';
 
 export interface ShareLink {
   id: string;
@@ -44,7 +44,7 @@ export interface ShareLink {
 
 // Validation schemas
 const CreateShareLinkSchema = z.object({
-  resourceType: z.enum(['thread', 'project']),
+  resourceType: z.enum(['thread', 'project', 'panorama_project']),
   resourceId: z.string().uuid(),
   permissions: z.enum(['view', 'comment', 'draw_and_comment']),
   createdBy: z.string().min(1),
@@ -78,8 +78,12 @@ export async function createShareLink(
 
     // Verify resource exists
     const tableName =
-      validated.resourceType === 'thread' ? 'markup_threads' : 'markup_projects';
-    
+      validated.resourceType === 'thread'
+        ? 'markup_threads'
+        : validated.resourceType === 'panorama_project'
+        ? 'panorama_projects'
+        : 'markup_projects';
+
     const { data: resource, error: checkError } = await supabase
       .from(tableName)
       .select('id')
@@ -270,7 +274,21 @@ export async function getSharedProjectSummaries(
         let projectName = 'Shared Project';
         let thumbnailUrl: string | null = null;
 
-        if (row.resource_type === 'project') {
+        if (row.resource_type === 'panorama_project') {
+          const { data: project } = await supabase
+            .from('panorama_projects')
+            .select('project_name, preview_url, panorama_images(image_path, created_at)')
+            .eq('id', row.resource_id)
+            .single();
+
+          if (project) {
+            projectName = (project as any).project_name;
+            const imgs: any[] = ((project as any).panorama_images || []).sort(
+              (a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+            );
+            thumbnailUrl = imgs[0]?.image_path || (project as any).preview_url || null;
+          }
+        } else if (row.resource_type === 'project') {
           const { data: project } = await supabase
             .from('markup_projects')
             .select('project_name, markup_url, markup_threads(image_path, created_at)')

@@ -598,6 +598,165 @@ export type Database = {
         }
         Relationships: []
       }
+      panorama_projects: {
+        Row: {
+          id: string
+          project_name: string
+          preview_url: string | null
+          raw_payload: Json | null
+          total_images: number | null
+          created_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: string
+          project_name: string
+          preview_url?: string | null
+          raw_payload?: Json | null
+          total_images?: number | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          id?: string
+          project_name?: string
+          preview_url?: string | null
+          raw_payload?: Json | null
+          total_images?: number | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      panorama_images: {
+        Row: {
+          id: string
+          panorama_project_id: string
+          image_path: string
+          image_filename: string | null
+          name: string | null
+          image_index: number | null
+          created_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: string
+          panorama_project_id: string
+          image_path: string
+          image_filename?: string | null
+          name?: string | null
+          image_index?: number | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          id?: string
+          panorama_project_id?: string
+          image_path?: string
+          image_filename?: string | null
+          name?: string | null
+          image_index?: number | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "panorama_images_panorama_project_id_fkey"
+            columns: ["panorama_project_id"]
+            isOneToOne: false
+            referencedRelation: "panorama_projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      panorama_comments: {
+        Row: {
+          id: string
+          panorama_image_id: string
+          pin_number: number
+          display_number: number | null
+          content: string
+          user_name: string
+          pitch: number
+          yaw: number
+          status: string | null
+          type: string | null
+          parent_comment_id: string | null
+          created_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id: string
+          panorama_image_id: string
+          pin_number: number
+          display_number?: number | null
+          content: string
+          user_name: string
+          pitch: number
+          yaw: number
+          status?: string | null
+          type?: string | null
+          parent_comment_id?: string | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          id?: string
+          panorama_image_id?: string
+          pin_number?: number
+          display_number?: number | null
+          content?: string
+          user_name?: string
+          pitch?: number
+          yaw?: number
+          status?: string | null
+          type?: string | null
+          parent_comment_id?: string | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "panorama_comments_panorama_image_id_fkey"
+            columns: ["panorama_image_id"]
+            isOneToOne: false
+            referencedRelation: "panorama_images"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      panorama_project_access: {
+        Row: {
+          id: string
+          panorama_project_id: string
+          user_email: string
+          granted_by: string | null
+          granted_at: string | null
+        }
+        Insert: {
+          id?: string
+          panorama_project_id: string
+          user_email: string
+          granted_by?: string | null
+          granted_at?: string | null
+        }
+        Update: {
+          id?: string
+          panorama_project_id?: string
+          user_email?: string
+          granted_by?: string | null
+          granted_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "panorama_project_access_panorama_project_id_fkey"
+            columns: ["panorama_project_id"]
+            isOneToOne: false
+            referencedRelation: "panorama_projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
@@ -647,10 +806,32 @@ export type Database = {
           total_count: number
         }[]
       }
+      get_panorama_projects_with_stats: {
+        Args: {
+          p_project_ids?: string[] | null
+          p_search?: string | null
+          p_sort?: string
+          p_limit?: number
+          p_offset?: number
+        }
+        Returns: {
+          id: string
+          project_name: string
+          preview_url: string | null
+          created_at: string
+          updated_at: string | null
+          first_image: string | null
+          total_images: number
+          total_comments: number
+          total_resolved_comments: number
+          total_commented_images: number
+          total_count: number
+        }[]
+      }
     }
     Enums: {
       share_permission_type: "view" | "comment" | "draw_and_comment"
-      share_resource_type: "thread" | "project"
+      share_resource_type: "thread" | "project" | "panorama_project"
     }
     CompositeTypes: {
       [_ in never]: never
