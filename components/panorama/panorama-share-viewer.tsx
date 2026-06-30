@@ -42,12 +42,19 @@ interface PanoramaShareViewerProps {
 
 const GUEST_NAME_KEY = 'annot8_panorama_guest_name';
 
+function getGuestNameStorageKey() {
+  if (typeof window === 'undefined') return GUEST_NAME_KEY;
+  return `${GUEST_NAME_KEY}:${window.location.hostname}`;
+}
+
 export default function PanoramaShareViewer({ projectName, images, token, canComment }: PanoramaShareViewerProps) {
   const [imagesState, setImagesState] = useState<ShareImage[]>(images);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [guestName, setGuestName] = useState('');
+  const [guestNameDraft, setGuestNameDraft] = useState('');
+  const [isGuestNameModalOpen, setIsGuestNameModalOpen] = useState(false);
   const [addMode, setAddMode] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [modalPos, setModalPos] = useState({ x: 0, y: 0 });
@@ -69,28 +76,42 @@ export default function PanoramaShareViewer({ projectName, images, token, canCom
 
   const selected = current?.comments.find(c => c.id === selectedId) ?? null;
 
-  /** Ask for a display name once (stored locally) before a guest can comment. */
-  const ensureGuestName = (): string => {
+  /** Ask for a display name once (stored per-host) before a guest can comment. */
+  const persistGuestName = (name: string) => {
+    const normalized = name.trim() || 'Guest';
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(getGuestNameStorageKey(), normalized);
+    }
+    setGuestName(normalized);
+    return normalized;
+  };
+
+  const ensureGuestName = (): string | null => {
     if (guestName) return guestName;
-    const stored = typeof window !== 'undefined' ? window.localStorage.getItem(GUEST_NAME_KEY) : null;
+    const stored = typeof window !== 'undefined' ? window.localStorage.getItem(getGuestNameStorageKey()) : null;
     if (stored) { setGuestName(stored); return stored; }
 
-    const entered = typeof window !== 'undefined' ? window.prompt('Enter your name to comment:')?.trim() : '';
-    const fallbackName = entered || 'Guest';
-    if (typeof window !== 'undefined') {
-      window.localStorage.setItem(GUEST_NAME_KEY, fallbackName);
-    }
-    setGuestName(fallbackName);
-    return fallbackName;
+    setGuestNameDraft('');
+    setIsGuestNameModalOpen(true);
+    return null;
   };
 
   const handleToggleAddMode = () => {
     if (!addMode) {
-      ensureGuestName();
+      const name = ensureGuestName();
+      if (!name) return;
       setSelectedId(null);
     }
     setAddMode(v => !v);
     setShowModal(false);
+  };
+
+  const handleGuestNameSubmit = () => {
+    const normalized = persistGuestName(guestNameDraft);
+    setIsGuestNameModalOpen(false);
+    setAddMode(true);
+    setSelectedId(null);
+    return normalized;
   };
 
   const handleAddHotspot = (pitch: number, yaw: number, screen: { x: number; y: number }) => {
@@ -204,6 +225,39 @@ export default function PanoramaShareViewer({ projectName, images, token, canCom
             onClose={() => { setShowModal(false); setPendingCoords(null); }}
             onSubmit={handleSubmit}
           />
+        )}
+
+        {isGuestNameModalOpen && canComment && (
+          <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/70 p-4">
+            <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-white p-4 shadow-2xl">
+              <h3 className="text-sm font-semibold text-gray-900">Tell us your name</h3>
+              <p className="mt-1 text-sm text-gray-600">
+                This will be used for your comment on {typeof window !== 'undefined' ? window.location.host : 'this share link'}.
+              </p>
+              <input
+                autoFocus
+                value={guestNameDraft}
+                onChange={(e) => setGuestNameDraft(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleGuestNameSubmit(); }}
+                placeholder="Your name"
+                className="mt-3 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-orange-500"
+              />
+              <div className="mt-4 flex justify-end gap-2">
+                <button
+                  onClick={() => { setIsGuestNameModalOpen(false); setGuestNameDraft(''); }}
+                  className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleGuestNameSubmit}
+                  className="rounded-lg bg-orange-500 px-3 py-2 text-sm font-semibold text-white hover:bg-orange-600"
+                >
+                  Continue
+                </button>
+              </div>
+            </div>
+          </div>
         )}
       </div>
 
