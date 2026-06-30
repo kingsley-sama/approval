@@ -70,20 +70,23 @@ export default function PanoramaShareViewer({ projectName, images, token, canCom
   const selected = current?.comments.find(c => c.id === selectedId) ?? null;
 
   /** Ask for a display name once (stored locally) before a guest can comment. */
-  const ensureGuestName = (): string | null => {
+  const ensureGuestName = (): string => {
     if (guestName) return guestName;
     const stored = typeof window !== 'undefined' ? window.localStorage.getItem(GUEST_NAME_KEY) : null;
     if (stored) { setGuestName(stored); return stored; }
+
     const entered = typeof window !== 'undefined' ? window.prompt('Enter your name to comment:')?.trim() : '';
-    if (!entered) return null;
-    window.localStorage.setItem(GUEST_NAME_KEY, entered);
-    setGuestName(entered);
-    return entered;
+    const fallbackName = entered || 'Guest';
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(GUEST_NAME_KEY, fallbackName);
+    }
+    setGuestName(fallbackName);
+    return fallbackName;
   };
 
   const handleToggleAddMode = () => {
     if (!addMode) {
-      if (!ensureGuestName()) return; // need a name first
+      ensureGuestName();
       setSelectedId(null);
     }
     setAddMode(v => !v);
@@ -135,9 +138,21 @@ export default function PanoramaShareViewer({ projectName, images, token, canCom
 
   return (
     <div className="h-screen flex flex-col bg-gray-950">
-      <header className="h-12 flex items-center justify-between px-4 bg-black/60 text-white shrink-0">
+      <header className="h-12 flex items-center justify-between px-4 bg-black/60 text-white shrink-0 gap-3">
         <span className="text-sm font-medium truncate">{projectName}</span>
-        <span className="text-xs text-white/60">{canComment ? 'Shared panorama — you can comment' : 'Shared panorama'}</span>
+        <div className="flex items-center gap-2 shrink-0">
+          {canComment && (
+            <button
+              onClick={handleToggleAddMode}
+              className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
+                addMode ? 'bg-orange-500 text-white' : 'bg-white/10 text-white hover:bg-white/20'
+              }`}
+            >
+              {addMode ? 'Cancel comment' : 'Add comment'}
+            </button>
+          )}
+          <span className="text-xs text-white/60">{canComment ? 'Shared panorama — you can comment' : 'Shared panorama'}</span>
+        </div>
       </header>
 
       <div className="flex-1 flex overflow-hidden relative">
