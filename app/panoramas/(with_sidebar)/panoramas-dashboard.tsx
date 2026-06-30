@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import CreatePanoramaModal from '@/components/panorama/create-panorama-modal'
+import PanoramaDuplicator from '@/components/panorama/panorama-duplicator'
 import ProjectCard, { type Project } from '@/components/project-card'
 import ProjectGridSkeleton from '@/components/project-grid-skeleton'
 import {
@@ -60,9 +61,10 @@ type PanoramasDashboardProps = {
   initialProjects: PanoramaProjectListItem[]
   initialTotal: number
   isAdmin: boolean
+  userEmail?: string
 }
 
-export default function PanoramasDashboard({ initialProjects, initialTotal, isAdmin }: PanoramasDashboardProps) {
+export default function PanoramasDashboard({ initialProjects, initialTotal, isAdmin, userEmail = 'system' }: PanoramasDashboardProps) {
   const router = useRouter()
   const [projects, setProjects] = useState<Project[]>(() => initialProjects.map(mapRow))
   const [total, setTotal] = useState(initialTotal)
@@ -78,6 +80,7 @@ export default function PanoramasDashboard({ initialProjects, initialTotal, isAd
   const [renameValue, setRenameValue] = useState('')
   const [isRenaming, setIsRenaming] = useState(false)
   const [renameError, setRenameError] = useState<string | null>(null)
+  const [duplicateTarget, setDuplicateTarget] = useState<{ id: string; name: string } | null>(null)
 
   const hasMore = projects.length < total
   const requestSeq = useRef(0)
@@ -186,6 +189,10 @@ export default function PanoramasDashboard({ initialProjects, initialTotal, isAd
     setRenameTarget({ id: project.id, title: project.title })
     setRenameValue(project.title)
     setRenameError(null)
+  }
+
+  const handleDuplicate = (project: Project) => {
+    setDuplicateTarget({ id: project.id, name: project.title })
   }
 
   const handleConfirmRename = async () => {
@@ -369,7 +376,7 @@ export default function PanoramasDashboard({ initialProjects, initialTotal, isAd
                   key={project.id}
                   project={project}
                   onOpen={handleOpen}
-                  onDuplicate={() => {}}
+                  onDuplicate={isAdmin ? handleDuplicate : () => {}}
                   onDelete={handleDelete}
                   onRename={isAdmin ? handleRenameRequest : undefined}
                   isAdmin={isAdmin}
@@ -464,6 +471,22 @@ export default function PanoramasDashboard({ initialProjects, initialTotal, isAd
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {duplicateTarget && isAdmin && (
+        <PanoramaDuplicator
+          projectId={duplicateTarget.id}
+          projectName={duplicateTarget.name}
+          createdBy={userEmail}
+          isOpen={!!duplicateTarget}
+          onOpenChange={(open) => {
+            if (!open) setDuplicateTarget(null)
+          }}
+          onSuccess={(newProjectId) => {
+            setDuplicateTarget(null)
+            refresh()
+          }}
+        />
+      )}
     </>
   )
 }

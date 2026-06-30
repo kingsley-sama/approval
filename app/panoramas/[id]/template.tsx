@@ -8,7 +8,7 @@ import PanoramaCommentsSidebar, { type PanoramaSidebarImage } from '@/components
 import PanoramaThumbnailsSidebar, { type PanoramaImageItem } from '@/components/panorama/panorama-thumbnails-sidebar';
 import { Button } from '@/components/ui/button';
 import { IconTooltip } from '@/components/ui/icon-tooltip';
-import { ArrowLeft, PanelsTopLeft } from 'lucide-react';
+import { ArrowLeft, PanelsTopLeft, Download } from 'lucide-react';
 
 // `template.tsx` is a reserved Next.js route convention: Next renders this
 // file's DEFAULT export as a wrapper around the page. We only use this module
@@ -44,12 +44,20 @@ export function PanoramaTopNav({
   projectId,
   sidebarsCollapsed,
   onToggleSidebars,
+  currentImageUrl,
+  currentImageName,
+  onDownload,
+  isDownloading,
 }: {
   isFullscreen: boolean;
   projectName: string;
   projectId: string;
   sidebarsCollapsed: boolean;
   onToggleSidebars: () => void;
+  currentImageUrl?: string;
+  currentImageName?: string;
+  onDownload?: () => Promise<void>;
+  isDownloading?: boolean;
 }) {
   const router = useRouter();
   if (isFullscreen) return null;
@@ -91,6 +99,20 @@ export function PanoramaTopNav({
       <span className="text-sm font-medium text-foreground truncate max-w-xs">{projectName}</span>
 
       <div className="flex items-center gap-2">
+        {currentImageUrl && onDownload && (
+          <IconTooltip label="Download panorama image">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-muted-foreground hover:text-foreground"
+              onClick={onDownload}
+              disabled={isDownloading}
+              aria-label="Download panorama"
+            >
+              <Download className={`h-4 w-4 ${isDownloading ? 'animate-pulse' : ''}`} />
+            </Button>
+          </IconTooltip>
+        )}
         <ShareLinkManager
           resourceType="panorama_project"
           resourceId={projectId}
@@ -120,6 +142,10 @@ export function PanoramaShell({
   userRole,
   onEditComment,
   onDeleteComment,
+  currentImageUrl,
+  currentImageName,
+  onDownload,
+  isDownloading,
   children,
 }: {
   isFullscreen: boolean;
@@ -139,6 +165,10 @@ export function PanoramaShell({
   userRole: string;
   onEditComment: (id: string, text: string) => Promise<{ success: boolean; error?: string }>;
   onDeleteComment: (id: string) => void;
+  currentImageUrl?: string;
+  currentImageName?: string;
+  onDownload?: () => Promise<void>;
+  isDownloading?: boolean;
   children: React.ReactNode;
 }) {
   const showSidebars = !isFullscreen && !sidebarsCollapsed;

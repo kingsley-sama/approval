@@ -11,6 +11,7 @@ export default async function PanoramasPage() {
       initialProjects={projects}
       initialTotal={total}
       isAdmin={user?.role === 'admin'}
+      userEmail={user?.email || 'system'}
     />
   )
 }

@@ -6,6 +6,8 @@ import { Upload } from 'lucide-react';
 import { PanoramaTopNav, PanoramaShell, type PanoramaImageData, type PanoramaPin } from './template';
 import PanoramaCommentModal from '@/components/panorama/panorama-comment-modal';
 import type { PanoramaHotspot } from '@/components/panorama/panorama-viewer';
+import { usePanoramaPreloader } from '@/hooks/use-panorama-preloader';
+import { downloadPanorama } from '@/lib/panorama-download';
 import {
   getPanoramaWorkspaceData,
   type PanoramaWorkspaceData,
@@ -77,9 +79,14 @@ export default function PanoramaWorkspace({ projectId, initialData, fallbackName
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [sidebarsCollapsed, setSidebarsCollapsed] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
 
   const { toast } = useToast();
   const confirm = useConfirm();
+
+  // Preload panorama images in the background
+  const imageUrls = useMemo(() => imagesState.map(img => img.url), [imagesState]);
+  usePanoramaPreloader(imageUrls, currentImageIndex);
 
   // Continuous pin numbering across every panorama in the project.
   const numberedImages = useMemo<PanoramaImageData[]>(() => {
@@ -250,6 +257,11 @@ export default function PanoramaWorkspace({ projectId, initialData, fallbackName
     }
   }, [currentImageIndex, imagesState, handleSwitchImage]);
 
+  const handleDownload = useCallback(async () => {
+    if (!currentImage?.url) return;
+    await downloadPanorama(currentImage.url, currentImage.name, () => setIsDownloading(true), () => setIsDownloading(false));
+  }, [currentImage]);
+
   useEffect(() => {
     // Keep the index aligned if the image list changes underneath us.
     const idx = imagesState.findIndex(img => img.id === currentImageId);
@@ -282,6 +294,10 @@ export default function PanoramaWorkspace({ projectId, initialData, fallbackName
         projectId={projectId}
         sidebarsCollapsed={sidebarsCollapsed}
         onToggleSidebars={() => setSidebarsCollapsed(v => !v)}
+        currentImageUrl={currentImage?.url}
+        currentImageName={currentImage?.name}
+        onDownload={handleDownload}
+        isDownloading={isDownloading}
       />
 
       <PanoramaShell
@@ -302,6 +318,10 @@ export default function PanoramaWorkspace({ projectId, initialData, fallbackName
         userRole={currentUserRole}
         onEditComment={handleEdit}
         onDeleteComment={handleDelete}
+        currentImageUrl={currentImage?.url}
+        currentImageName={currentImage?.name}
+        onDownload={handleDownload}
+        isDownloading={isDownloading}
       >
         {imagesState.length === 0 ? (
           isLoading ? (
