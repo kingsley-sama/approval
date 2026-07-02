@@ -65,7 +65,7 @@ export default async function PanoramaEmbedPage({ params }: PanoramaEmbedPagePro
         projectName={(project as any).project_name ?? 'Panorama'}
         images={shareImages}
         token={token}
-        canComment={shareLink.permissions !== 'view'}
+        canComment={false}
         showHeader={false}
         showImageStrip={false}
       />

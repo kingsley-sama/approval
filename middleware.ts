@@ -5,7 +5,7 @@ import { signToken, verifyToken } from '@/lib/auth/session';
 // Routes that redirect logged-in users away (auth pages only)
 const authOnlyRoutes = ['/', '/sign-in', '/sign-up', '/login', '/landing'];
 // Routes that are publicly accessible but do NOT redirect logged-in users
-const publicPrefixes = ['/share', '/api/share'];
+const publicPrefixes = ['/share', '/api/share', '/panoramas/embed'];
 
 function isPublicPath(pathname: string): boolean {
   if (authOnlyRoutes.some((route) => pathname === route)) return true;
