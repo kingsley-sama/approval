@@ -59,7 +59,8 @@ export default function ShareLinkManager({
   // Form state
   const [permission, setPermission] = useState<SharePermission>('view');
   const [generatedUrl, setGeneratedUrl] = useState('');
-  const [generatedEmbedCode, setGeneratedEmbedCode] = useState('');
+  const [embedUrl, setEmbedUrl] = useState('');
+  const [embedCode, setEmbedCode] = useState('');
   const [error, setError] = useState('');
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
@@ -81,7 +82,6 @@ export default function ShareLinkManager({
   const handleCreateLink = async () => {
     setError('');
     setGeneratedUrl('');
-    setGeneratedEmbedCode('');
     setIsLoading(true);
 
     const result = await createShareLink({
@@ -93,15 +93,36 @@ export default function ShareLinkManager({
 
     if (result.success && result.url) {
       setGeneratedUrl(result.url);
-      if (resourceType === 'panorama_project') {
-        const origin = typeof window !== 'undefined' ? window.location.origin : '';
-        const embedUrl = result.url.replace('/share/', '/panoramas/embed/');
-        const iframeCode = `<iframe src="${origin ? `${origin}${embedUrl.replace(origin, '')}` : embedUrl}" title="Panorama viewer" width="100%" height="600" style="border:0; border-radius:12px;"></iframe>`;
-        setGeneratedEmbedCode(iframeCode);
-      }
       await loadShareLinks();
     } else {
       setError(result.error || 'Failed to create share link');
+    }
+
+    setIsLoading(false);
+  };
+
+  const handleCreateEmbedLink = async () => {
+    setError('');
+    setEmbedUrl('');
+    setEmbedCode('');
+    setIsLoading(true);
+
+    const result = await createShareLink({
+      resourceType,
+      resourceId,
+      permissions: 'view',
+      createdBy,
+    });
+
+    if (result.success && result.url) {
+      const embedTarget = result.url.replace('/share/', '/panoramas/embed/');
+      const origin = typeof window !== 'undefined' ? window.location.origin : '';
+      const iframeCode = `<iframe src="${origin ? `${origin}${embedTarget.replace(origin, '')}` : embedTarget}" title="Panorama viewer" width="100%" height="600" style="border:0; border-radius:12px;"></iframe>`;
+      setEmbedUrl(embedTarget);
+      setEmbedCode(iframeCode);
+      await loadShareLinks();
+    } else {
+      setError(result.error || 'Failed to create embed link');
     }
 
     setIsLoading(false);
@@ -182,6 +203,42 @@ export default function ShareLinkManager({
           </DialogDescription>
         </DialogHeader>
 
+        {resourceType === 'panorama_project' && (
+          <div className="space-y-4 py-4 border-b">
+            <div className="space-y-1">
+              <h3 className="font-semibold">Public embed viewer</h3>
+              <p className="text-sm text-muted-foreground">
+                Generate a read-only panorama viewer for client websites. No comments, no protected access.
+              </p>
+            </div>
+
+            <Button onClick={handleCreateEmbedLink} disabled={isLoading}>
+              {isLoading ? 'Generating...' : 'Generate embed link'}
+            </Button>
+
+            {embedUrl && (
+              <div className="space-y-3 rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+                <div className="space-y-2">
+                  <Label className="text-xs font-semibold uppercase tracking-wide text-emerald-800">Embed URL</Label>
+                  <div className="flex gap-2">
+                    <Input value={embedUrl} readOnly className="flex-1" />
+                    <Button onClick={() => copyToClipboard(embedUrl, 'embed-url')} variant="outline" size="sm" aria-live="polite">
+                      {copiedKey === 'embed-url' ? <><Check className="h-3.5 w-3.5 mr-1" />Copied</> : <><Copy className="h-3.5 w-3.5 mr-1" />Copy</>}
+                    </Button>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs font-semibold uppercase tracking-wide text-emerald-800">Iframe embed code</Label>
+                  <textarea readOnly value={embedCode} className="min-h-24 w-full rounded-md border border-emerald-200 bg-white px-3 py-2 text-xs font-mono text-gray-700" />
+                  <Button onClick={() => copyToClipboard(embedCode, 'embed-code')} variant="outline" size="sm" aria-live="polite">
+                    {copiedKey === 'embed-code' ? <><Check className="h-3.5 w-3.5 mr-1" />Copied</> : <><Copy className="h-3.5 w-3.5 mr-1" />Copy embed</>}
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Create New Link */}
         <div className="space-y-4 py-4 border-b">
           <h3 className="font-semibold">Create New Share Link</h3>
@@ -209,50 +266,25 @@ export default function ShareLinkManager({
             </Button>
 
             {generatedUrl && (
-              <div className="p-4 bg-green-50 border border-green-200 rounded space-y-3">
-                <p className="text-sm font-medium text-green-800">
+              <div className="p-4 bg-green-50 border border-green-200 rounded">
+                <p className="text-sm font-medium text-green-800 mb-2">
                   Link created successfully!
                 </p>
-                <div className="space-y-2">
-                  <Label className="text-xs font-semibold uppercase tracking-wide text-green-800">Public viewer URL</Label>
-                  <div className="flex gap-2">
-                    <Input value={generatedUrl} readOnly className="flex-1" />
-                    <Button
-                      onClick={() => copyToClipboard(generatedUrl, 'generated')}
-                      variant="outline"
-                      size="sm"
-                      aria-live="polite"
-                    >
-                      {copiedKey === 'generated' ? (
-                        <><Check className="h-3.5 w-3.5 mr-1" />Copied</>
-                      ) : (
-                        <><Copy className="h-3.5 w-3.5 mr-1" />Copy</>
-                      )}
-                    </Button>
-                  </div>
+                <div className="flex gap-2">
+                  <Input value={generatedUrl} readOnly className="flex-1" />
+                  <Button
+                    onClick={() => copyToClipboard(generatedUrl, 'generated')}
+                    variant="outline"
+                    size="sm"
+                    aria-live="polite"
+                  >
+                    {copiedKey === 'generated' ? (
+                      <><Check className="h-3.5 w-3.5 mr-1" />Copied</>
+                    ) : (
+                      <><Copy className="h-3.5 w-3.5 mr-1" />Copy</>
+                    )}
+                  </Button>
                 </div>
-                {resourceType === 'panorama_project' && generatedEmbedCode && (
-                  <div className="space-y-2">
-                    <Label className="text-xs font-semibold uppercase tracking-wide text-green-800">Embed iframe</Label>
-                    <textarea
-                      readOnly
-                      value={generatedEmbedCode}
-                      className="min-h-24 w-full rounded-md border border-green-200 bg-white px-3 py-2 text-xs font-mono text-gray-700"
-                    />
-                    <Button
-                      onClick={() => copyToClipboard(generatedEmbedCode, 'embed')}
-                      variant="outline"
-                      size="sm"
-                      aria-live="polite"
-                    >
-                      {copiedKey === 'embed' ? (
-                        <><Check className="h-3.5 w-3.5 mr-1" />Copied</>
-                      ) : (
-                        <><Copy className="h-3.5 w-3.5 mr-1" />Copy embed code</>
-                      )}
-                    </Button>
-                  </div>
-                )}
               </div>
             )}
 
