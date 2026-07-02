@@ -10,8 +10,16 @@ import PanoramaCommentModal from '@/components/panorama/panorama-comment-modal';
 const PanoramaViewer = dynamic(() => import('@/components/panorama/panorama-viewer'), {
   ssr: false,
   loading: () => (
-    <div className="flex-1 flex items-center justify-center bg-gray-900">
-      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white" />
+    <div className="flex-1 flex items-center justify-center bg-gray-950">
+      <div className="w-64 rounded-2xl border border-white/10 bg-black/60 px-5 py-4 text-center shadow-2xl">
+        <div className="mb-3 flex items-center justify-center">
+          <div className="h-7 w-7 animate-spin rounded-full border-2 border-white/20 border-t-orange-500" />
+        </div>
+        <div className="mb-2 h-2 w-full overflow-hidden rounded-full bg-white/15">
+          <div className="h-full w-40 rounded-full bg-orange-500" />
+        </div>
+        <p className="text-sm font-medium text-white/80">Preparing panorama viewer…</p>
+      </div>
     </div>
   ),
 });
