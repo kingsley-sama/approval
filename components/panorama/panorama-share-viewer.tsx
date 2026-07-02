@@ -38,6 +38,8 @@ interface PanoramaShareViewerProps {
   images: ShareImage[];
   token: string;
   canComment: boolean;
+  showHeader?: boolean;
+  showImageStrip?: boolean;
 }
 
 const GUEST_NAME_KEY = 'annot8_panorama_guest_name';
@@ -47,7 +49,14 @@ function getGuestNameStorageKey() {
   return `${GUEST_NAME_KEY}:${window.location.hostname}`;
 }
 
-export default function PanoramaShareViewer({ projectName, images, token, canComment }: PanoramaShareViewerProps) {
+export default function PanoramaShareViewer({
+  projectName,
+  images,
+  token,
+  canComment,
+  showHeader = true,
+  showImageStrip = true,
+}: PanoramaShareViewerProps) {
   const [imagesState, setImagesState] = useState<ShareImage[]>(images);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -159,6 +168,7 @@ export default function PanoramaShareViewer({ projectName, images, token, canCom
 
   return (
     <div className="h-screen flex flex-col bg-gray-950">
+      {showHeader && (
       <header className="h-12 flex items-center justify-between px-4 bg-black/60 text-white shrink-0 gap-3">
         <span className="text-sm font-medium truncate">{projectName}</span>
         <div className="flex items-center gap-2 shrink-0">
@@ -175,6 +185,7 @@ export default function PanoramaShareViewer({ projectName, images, token, canCom
           <span className="text-xs text-white/60">{canComment ? 'Shared panorama — you can comment' : 'Shared panorama'}</span>
         </div>
       </header>
+      )}
 
       <div className="flex-1 flex overflow-hidden relative">
         <PanoramaViewer
@@ -261,7 +272,7 @@ export default function PanoramaShareViewer({ projectName, images, token, canCom
         )}
       </div>
 
-      {imagesState.length > 1 && (
+      {showImageStrip && imagesState.length > 1 && (
         <div className="h-20 shrink-0 bg-black/60 flex items-center gap-2 px-3 overflow-x-auto">
           {imagesState.map((img, i) => (
             <button
