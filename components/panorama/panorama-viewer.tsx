@@ -7,7 +7,7 @@ import 'pannellum/build/pannellum.css';
 import 'pannellum';
 
 import React, { useEffect, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, Maximize2, Minimize2, RotateCw, Plus, MousePointer2, AlertTriangle, Loader2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Maximize2, Minimize2, RotateCw, Plus, Minus, MousePointer2, AlertTriangle, Loader2 } from 'lucide-react';
 
 declare global {
   interface Window {
@@ -101,6 +101,8 @@ export default function PanoramaViewer({
   const viewerRef = useRef<any>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
+  const [loadProgress, setLoadProgress] = useState(0);
+  const [currentHfov, setCurrentHfov] = useState(100);
   // Keep latest values reachable from persistent DOM listeners without re-init.
   const addModeRef = useRef(addMode);
   const onAddRef = useRef(onAddHotspot);
@@ -125,6 +127,12 @@ export default function PanoramaViewer({
 
     setLoadError(null);
     setIsLoaded(false);
+    setLoadProgress(0);
+    setCurrentHfov(100);
+
+    const progressTimer = window.setInterval(() => {
+      setLoadProgress((prev) => (prev < 90 ? prev + Math.max(4, Math.floor(Math.random() * 8)) : prev));
+    }, 120);
 
     const viewer = window.pannellum.viewer(containerRef.current, {
       type: 'equirectangular',
@@ -142,8 +150,13 @@ export default function PanoramaViewer({
     // Surface load failures (unreachable URL, CORS, non-equirectangular image)
     // as a friendly overlay instead of a silent blank canvas.
     try {
-      viewer.on('load', () => setIsLoaded(true));
+      viewer.on('load', () => {
+        window.clearInterval(progressTimer);
+        setLoadProgress(100);
+        setIsLoaded(true);
+      });
       viewer.on('error', (msg: string) => {
+        window.clearInterval(progressTimer);
         console.error('Pannellum load error:', msg, 'for', imageUrl);
         setLoadError(msg || 'This panorama could not be loaded.');
       });
@@ -168,9 +181,23 @@ export default function PanoramaViewer({
     el.addEventListener('mousedown', onMouseDown);
     el.addEventListener('click', onClick);
 
+    const img = new window.Image();
+    img.onload = () => {
+      window.clearInterval(progressTimer);
+      setLoadProgress(100);
+    };
+    img.onerror = () => {
+      window.clearInterval(progressTimer);
+      setLoadError('The panorama image could not be loaded.');
+    };
+    img.src = panoramaSrc(imageUrl);
+
     return () => {
+      window.clearInterval(progressTimer);
       el.removeEventListener('mousedown', onMouseDown);
       el.removeEventListener('click', onClick);
+      img.onload = null;
+      img.onerror = null;
       try { viewer.destroy(); } catch { /* noop */ }
       viewerRef.current = null;
     };
@@ -219,6 +246,18 @@ export default function PanoramaViewer({
     else viewer.startAutoRotate(-2);
   };
 
+  const applyZoom = (nextHfov: number) => {
+    const viewer = viewerRef.current;
+    const clamped = Math.max(60, Math.min(160, nextHfov));
+    setCurrentHfov(clamped);
+    if (!viewer) return;
+    if (typeof viewer.setHfov === 'function') {
+      viewer.setHfov(clamped);
+    } else if (typeof viewer.setZoom === 'function') {
+      viewer.setZoom(clamped / 100);
+    }
+  };
+
   return (
     <div className={`relative flex-1 ${isFullscreen ? 'bg-black' : 'bg-gray-900'}`}>
       <div
@@ -228,8 +267,19 @@ export default function PanoramaViewer({
 
       {/* Loading spinner until the equirectangular texture is ready */}
       {!isLoaded && !loadError && (
-        <div className="absolute inset-0 z-10 flex items-center justify-center bg-gray-900/60 pointer-events-none">
-          <Loader2 className="h-7 w-7 text-white animate-spin" />
+        <div className="absolute inset-0 z-10 flex items-center justify-center bg-gray-900/70 pointer-events-none">
+          <div className="w-56 rounded-xl border border-white/10 bg-black/55 p-4 text-center text-white shadow-xl">
+            <div className="mb-3 flex items-center justify-center">
+              <Loader2 className="h-6 w-6 text-white animate-spin" />
+            </div>
+            <div className="mb-2 h-2 w-full overflow-hidden rounded-full bg-white/15">
+              <div
+                className="h-full rounded-full bg-orange-500 transition-all duration-300"
+                style={{ width: `${Math.max(4, loadProgress)}%` }}
+              />
+            </div>
+            <p className="text-xs font-medium text-white/80">{loadProgress}% loading</p>
+          </div>
         </div>
       )}
 
@@ -274,6 +324,24 @@ export default function PanoramaViewer({
 
       {/* Top-right: controls */}
       <div className="absolute top-3 right-3 z-20 flex items-center gap-2">
+        <div className="flex items-center rounded-md bg-black/50 p-1 backdrop-blur-sm">
+          <button
+            onClick={() => applyZoom(currentHfov - 10)}
+            className="p-1.5 text-white hover:bg-white/10 rounded-sm transition-colors"
+            title="Zoom out"
+            aria-label="Zoom out"
+          >
+            <Minus size={15} />
+          </button>
+          <button
+            onClick={() => applyZoom(currentHfov + 10)}
+            className="p-1.5 text-white hover:bg-white/10 rounded-sm transition-colors"
+            title="Zoom in"
+            aria-label="Zoom in"
+          >
+            <Plus size={15} />
+          </button>
+        </div>
         <button
           onClick={toggleAutoRotate}
           className="p-1.5 rounded-md bg-black/50 text-white hover:bg-black/70 backdrop-blur-sm transition-colors"
