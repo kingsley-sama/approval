@@ -203,10 +203,10 @@ export default function PanoramaViewer({
     };
   }, [imageUrl, readOnly]);
 
-  // Sync hotspots whenever the comments or selection change.
+  // Sync hotspots whenever the comments or selection change, or when the image finishes loading.
   useEffect(() => {
     const viewer = viewerRef.current;
-    if (!viewer) return;
+    if (!viewer || !isLoaded) return;
 
     // Pannellum has no "clear all" — track what we added and remove each.
     const added: string[] = [];
@@ -227,7 +227,8 @@ export default function PanoramaViewer({
           },
         });
         added.push(h.id);
-      } catch {
+      } catch (err) {
+        console.warn('Failed to add hotspot', h.id, err);
         /* a duplicate id or not-yet-loaded scene — skip */
       }
     }
@@ -236,7 +237,7 @@ export default function PanoramaViewer({
         try { viewer.removeHotSpot(id); } catch { /* noop */ }
       }
     };
-  }, [hotspots, selectedId]);
+  }, [hotspots, selectedId, isLoaded]);
 
   const toggleAutoRotate = () => {
     const viewer = viewerRef.current;
