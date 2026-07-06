@@ -5,7 +5,7 @@
 
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   duplicateProject,
   type DuplicateProjectInput,
@@ -14,6 +14,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
+import { getProjectThreads } from '@/app/actions/threads';
 import {
   Dialog,
   DialogContent,
@@ -48,6 +49,10 @@ export default function ProjectDuplicator({
   const [copyComments, setCopyComments] = useState(false);
   const [copyDrawings, setCopyDrawings] = useState(false);
   const [anonymizeCommenters, setAnonymizeCommenters] = useState(false);
+  const [copyAllThreads, setCopyAllThreads] = useState(true);
+  const [availableThreads, setAvailableThreads] = useState<any[]>([]);
+  const [selectedThreadIds, setSelectedThreadIds] = useState<string[]>([]);
+  const [isFetchingThreads, setIsFetchingThreads] = useState(false);
   const [result, setResult] = useState<DuplicationResult | null>(null);
 
   const isControlled = controlledIsOpen !== undefined;
@@ -60,11 +65,30 @@ export default function ProjectDuplicator({
     }
   };
 
+  useEffect(() => {
+    if (isOpen && !copyAllThreads && availableThreads.length === 0) {
+      setIsFetchingThreads(true);
+      getProjectThreads(projectId).then(threads => {
+        setAvailableThreads(threads);
+        setSelectedThreadIds(threads.map(t => t.id)); // Select all by default when initially loaded
+        setIsFetchingThreads(false);
+      });
+    }
+  }, [isOpen, copyAllThreads, projectId, availableThreads.length]);
+
   const handleDuplicate = async () => {
     if (!newName.trim()) {
       setResult({
         success: false,
         error: 'Please enter a name for the duplicated project',
+      });
+      return;
+    }
+
+    if (!copyAllThreads && selectedThreadIds.length === 0) {
+      setResult({
+        success: false,
+        error: 'Please select at least one image/thread to duplicate',
       });
       return;
     }
@@ -79,6 +103,7 @@ export default function ProjectDuplicator({
         copyComments,
         copyDrawings,
         anonymizeCommenters,
+        selectedThreadIds: copyAllThreads ? undefined : selectedThreadIds,
       },
       createdBy,
     };
@@ -106,6 +131,9 @@ export default function ProjectDuplicator({
     setCopyComments(false);
     setCopyDrawings(false);
     setAnonymizeCommenters(false);
+    setCopyAllThreads(true);
+    setAvailableThreads([]);
+    setSelectedThreadIds([]);
     setResult(null);
   };
 
@@ -152,22 +180,55 @@ export default function ProjectDuplicator({
             <div className="space-y-3 pl-2">
               <div className="flex items-start space-x-3">
                 <Checkbox
-                  id="copy-images"
-                  checked={true}
-                  disabled={true}
+                  id="copy-all-threads"
+                  checked={copyAllThreads}
+                  onCheckedChange={(checked) => setCopyAllThreads(checked as boolean)}
+                  disabled={isLoading}
                 />
                 <div className="space-y-1">
                   <label
-                    htmlFor="copy-images"
+                    htmlFor="copy-all-threads"
                     className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
                   >
-                    Images (Always included)
+                    All images/threads
                   </label>
                   <p className="text-xs text-gray-500">
-                    All images/threads will be duplicated
+                    If unchecked, you can select specific images to duplicate
                   </p>
                 </div>
               </div>
+
+              {!copyAllThreads && (
+                <div className="pl-6 space-y-2 border-l-2 border-gray-100 ml-1">
+                  {isFetchingThreads ? (
+                    <p className="text-xs text-gray-500">Loading images...</p>
+                  ) : availableThreads.length === 0 ? (
+                    <p className="text-xs text-gray-500">No images found.</p>
+                  ) : (
+                    <div className="max-h-40 overflow-y-auto space-y-2 pr-2">
+                      {availableThreads.map(thread => (
+                        <div key={thread.id} className="flex items-center space-x-2">
+                          <Checkbox
+                            id={`thread-${thread.id}`}
+                            checked={selectedThreadIds.includes(thread.id)}
+                            onCheckedChange={(checked) => {
+                              if (checked) setSelectedThreadIds(prev => [...prev, thread.id]);
+                              else setSelectedThreadIds(prev => prev.filter(id => id !== thread.id));
+                            }}
+                            disabled={isLoading}
+                          />
+                          <label
+                            htmlFor={`thread-${thread.id}`}
+                            className="text-xs font-medium cursor-pointer"
+                          >
+                            {thread.thread_name || thread.image_filename || 'Untitled'}
+                          </label>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="flex items-start space-x-3">
                 <Checkbox

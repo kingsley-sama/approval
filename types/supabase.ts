@@ -773,6 +773,7 @@ export type Database = {
           p_copy_comments?: boolean
           p_copy_drawings?: boolean
           p_created_by?: string
+          p_selected_thread_ids?: string[] | null
         }
         Returns: string
       }

@@ -16,6 +16,7 @@ const DuplicateProjectSchema = z.object({
     copyComments: z.boolean().default(false),
     copyDrawings: z.boolean().default(false),
     anonymizeCommenters: z.boolean().default(false),
+    selectedThreadIds: z.array(z.string().uuid()).optional(),
   }),
   createdBy: z.string().min(1),
 });
@@ -65,6 +66,7 @@ export async function duplicateProject(
       p_copy_comments: validated.options.copyComments,
       p_copy_drawings: validated.options.copyDrawings,
       p_created_by: validated.createdBy,
+      p_selected_thread_ids: validated.options.selectedThreadIds || null,
     });
 
     if (error) {
