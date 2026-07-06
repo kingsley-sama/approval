@@ -7,6 +7,7 @@
 
 import { supabaseAdmin as supabase } from '@/lib/supabase';
 import { z } from 'zod';
+import { randomUUID } from 'crypto';
 
 // Validation schema for duplication request
 const DuplicatePanoramaSchema = z.object({
@@ -121,6 +122,12 @@ export async function duplicatePanoramaProject(
           .in('panorama_image_id', Array.from(imageIdMap.keys()));
 
         if (sourceComments && sourceComments.length > 0) {
+          // Create a mapping for comment IDs to handle replies correctly
+          const commentIdMap = new Map<string, string>();
+          for (const comment of sourceComments) {
+            commentIdMap.set(comment.id, randomUUID());
+          }
+
           // Group comments by image to re-number them
           const commentsByImage = new Map<string, typeof sourceComments>();
           for (const comment of sourceComments) {
@@ -140,10 +147,13 @@ export async function duplicatePanoramaProject(
                 ? 'Client'
                 : comment.user_name;
 
+              const newCommentId = commentIdMap.get(comment.id)!;
+              const newParentId = comment.parent_comment_id ? commentIdMap.get(comment.parent_comment_id) || null : null;
+
               const { error: insertError } = await supabase
                 .from('panorama_comments')
                 .insert({
-                  id: comment.id,
+                  id: newCommentId,
                   panorama_image_id: newImageId,
                   pin_number: globalCommentNumber,
                   display_number: globalCommentNumber,
@@ -153,11 +163,13 @@ export async function duplicatePanoramaProject(
                   yaw: comment.yaw,
                   status: comment.status,
                   type: comment.type,
-                  parent_comment_id: comment.parent_comment_id, // May need to be remapped if replies exist
+                  parent_comment_id: newParentId,
                 });
 
               if (!insertError) {
                 commentsCopied++;
+              } else {
+                console.error('Error inserting duplicated comment:', insertError);
               }
             }
           }
