@@ -22,7 +22,11 @@ SUPABASE_SERVICE_ROLE_KEY=
 NEXT_PUBLIC_SUPABASE_BUCKET_NAME=screenshots
 AUTH_SECRET=                  # Secret for JWT signing (jose HS256)
 POSTGRES_URL=                 # PostgreSQL connection string for Drizzle ORM
+MARKUP_API_KEYS=              # Comma-separated bearer tokens for the /api/v1 automation API (optional)
+NEXT_PUBLIC_APP_URL=          # Public app origin used in API-generated URLs (production: https://revision.exposeprofi.de)
 ```
+
+The production deployment lives at **https://revision.exposeprofi.de**.
 
 ## Architecture
 
@@ -68,6 +72,10 @@ All data mutations are Next.js Server Actions (`'use server'`):
 - `storage.ts` — File upload helpers
 - `auth.ts` — Sign-in/sign-up server actions
 - `duplicate-project.ts` — Deep-copy a project including threads, comments, and storage files
+
+### Automation API (`app/api/v1/`)
+
+Bearer-token REST API for n8n/Zapier/scripts, documented in `docs/API.md`. Keys come from the `MARKUP_API_KEYS` env var (comma-separated); auth helper is `lib/api/auth.ts`, image ingestion (URL/base64/multipart → Storage + `markup_threads`) is `lib/api/ingest-images.ts`. Endpoints: create/list/get/delete projects, add images, read project comments, create/list/revoke share links. The middleware matcher already excludes `/api`, so these routes handle their own auth.
 
 ### Key Pages
 
