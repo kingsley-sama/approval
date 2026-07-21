@@ -757,6 +757,183 @@ export type Database = {
           },
         ]
       }
+      tour_projects: {
+        Row: {
+          id: string
+          project_name: string
+          description: string | null
+          preview_url: string | null
+          start_scene_id: string | null
+          total_scenes: number | null
+          created_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: string
+          project_name: string
+          description?: string | null
+          preview_url?: string | null
+          start_scene_id?: string | null
+          total_scenes?: number | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          id?: string
+          project_name?: string
+          description?: string | null
+          preview_url?: string | null
+          start_scene_id?: string | null
+          total_scenes?: number | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tour_projects_start_scene_fkey"
+            columns: ["start_scene_id"]
+            isOneToOne: false
+            referencedRelation: "tour_scenes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tour_scenes: {
+        Row: {
+          id: string
+          tour_project_id: string
+          name: string | null
+          image_path: string
+          image_filename: string | null
+          scene_index: number | null
+          initial_pitch: number | null
+          initial_yaw: number | null
+          initial_hfov: number | null
+          created_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: string
+          tour_project_id: string
+          name?: string | null
+          image_path: string
+          image_filename?: string | null
+          scene_index?: number | null
+          initial_pitch?: number | null
+          initial_yaw?: number | null
+          initial_hfov?: number | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          id?: string
+          tour_project_id?: string
+          name?: string | null
+          image_path?: string
+          image_filename?: string | null
+          scene_index?: number | null
+          initial_pitch?: number | null
+          initial_yaw?: number | null
+          initial_hfov?: number | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tour_scenes_tour_project_id_fkey"
+            columns: ["tour_project_id"]
+            isOneToOne: false
+            referencedRelation: "tour_projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tour_hotspots: {
+        Row: {
+          id: string
+          scene_id: string
+          target_scene_id: string
+          pitch: number
+          yaw: number
+          label: string | null
+          target_pitch: number | null
+          target_yaw: number | null
+          created_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: string
+          scene_id: string
+          target_scene_id: string
+          pitch: number
+          yaw: number
+          label?: string | null
+          target_pitch?: number | null
+          target_yaw?: number | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          id?: string
+          scene_id?: string
+          target_scene_id?: string
+          pitch?: number
+          yaw?: number
+          label?: string | null
+          target_pitch?: number | null
+          target_yaw?: number | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tour_hotspots_scene_id_fkey"
+            columns: ["scene_id"]
+            isOneToOne: false
+            referencedRelation: "tour_scenes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tour_hotspots_target_scene_id_fkey"
+            columns: ["target_scene_id"]
+            isOneToOne: false
+            referencedRelation: "tour_scenes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tour_project_access: {
+        Row: {
+          id: string
+          tour_project_id: string
+          user_email: string
+          granted_by: string | null
+          granted_at: string | null
+        }
+        Insert: {
+          id?: string
+          tour_project_id: string
+          user_email: string
+          granted_by?: string | null
+          granted_at?: string | null
+        }
+        Update: {
+          id?: string
+          tour_project_id?: string
+          user_email?: string
+          granted_by?: string | null
+          granted_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tour_project_access_tour_project_id_fkey"
+            columns: ["tour_project_id"]
+            isOneToOne: false
+            referencedRelation: "tour_projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
@@ -829,10 +1006,31 @@ export type Database = {
           total_count: number
         }[]
       }
+      get_tour_projects_with_stats: {
+        Args: {
+          p_project_ids?: string[] | null
+          p_search?: string | null
+          p_sort?: string
+          p_limit?: number
+          p_offset?: number
+        }
+        Returns: {
+          id: string
+          project_name: string
+          preview_url: string | null
+          created_at: string
+          updated_at: string | null
+          first_image: string | null
+          total_scenes: number
+          total_hotspots: number
+          total_linked_scenes: number
+          total_count: number
+        }[]
+      }
     }
     Enums: {
       share_permission_type: "view" | "comment" | "draw_and_comment"
-      share_resource_type: "thread" | "project" | "panorama_project"
+      share_resource_type: "thread" | "project" | "panorama_project" | "tour_project"
     }
     CompositeTypes: {
       [_ in never]: never

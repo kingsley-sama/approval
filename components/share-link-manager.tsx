@@ -44,6 +44,31 @@ interface ShareLinkManagerProps {
   trigger?: React.ReactNode;
 }
 
+/** Resource types that offer a public read-only iframe viewer. */
+const EMBED_CONFIG: Partial<Record<ShareResourceType, {
+  embedPathPrefix: string;
+  iframeTitle: string;
+  description: string;
+}>> = {
+  panorama_project: {
+    embedPathPrefix: '/panoramas/embed/',
+    iframeTitle: 'Panorama viewer',
+    description: 'Generate a read-only panorama viewer for client websites. No comments, no protected access.',
+  },
+  tour_project: {
+    embedPathPrefix: '/tours/embed/',
+    iframeTitle: 'Virtual tour',
+    description: 'Generate a read-only walkable tour for client websites. Visitors can move between scenes but nothing can be edited.',
+  },
+};
+
+const RESOURCE_LABELS: Record<ShareResourceType, string> = {
+  thread: 'image',
+  project: 'project',
+  panorama_project: 'panorama',
+  tour_project: 'virtual tour',
+};
+
 export default function ShareLinkManager({
   resourceType,
   resourceId,
@@ -102,6 +127,9 @@ export default function ShareLinkManager({
   };
 
   const handleCreateEmbedLink = async () => {
+    const embedConfig = EMBED_CONFIG[resourceType];
+    if (!embedConfig) return;
+
     setError('');
     setEmbedUrl('');
     setEmbedCode('');
@@ -115,9 +143,9 @@ export default function ShareLinkManager({
     });
 
     if (result.success && result.url) {
-      const embedTarget = result.url.replace('/share/', '/panoramas/embed/');
+      const embedTarget = result.url.replace('/share/', embedConfig.embedPathPrefix);
       const origin = typeof window !== 'undefined' ? window.location.origin : '';
-      const iframeCode = `<iframe src="${origin ? `${origin}${embedTarget.replace(origin, '')}` : embedTarget}" title="Panorama viewer" width="100%" height="600" style="border:0; border-radius:12px;"></iframe>`;
+      const iframeCode = `<iframe src="${origin ? `${origin}${embedTarget.replace(origin, '')}` : embedTarget}" title="${embedConfig.iframeTitle}" width="100%" height="600" style="border:0; border-radius:12px;" allowfullscreen></iframe>`;
       setEmbedUrl(embedTarget);
       setEmbedCode(iframeCode);
       await loadShareLinks();
@@ -199,16 +227,16 @@ export default function ShareLinkManager({
         <DialogHeader>
           <DialogTitle>Share: {resourceName}</DialogTitle>
           <DialogDescription>
-            Create secure links for clients to access this {resourceType}
+            Create secure links for clients to access this {RESOURCE_LABELS[resourceType] ?? resourceType}
           </DialogDescription>
         </DialogHeader>
 
-        {resourceType === 'panorama_project' && (
+        {EMBED_CONFIG[resourceType] && (
           <div className="space-y-4 py-4 border-b">
             <div className="space-y-1">
               <h3 className="font-semibold">Public embed viewer</h3>
               <p className="text-sm text-muted-foreground">
-                Generate a read-only panorama viewer for client websites. No comments, no protected access.
+                {EMBED_CONFIG[resourceType]!.description}
               </p>
             </div>
 

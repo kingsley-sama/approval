@@ -1,6 +1,6 @@
 'use client'
 import React from 'react'
-import { Users, Settings, ChevronDown, LogOut, Folder, Archive, Globe } from 'lucide-react'
+import { Users, Settings, ChevronDown, LogOut, Folder, Archive, Globe, Orbit } from 'lucide-react'
 import { signOut } from '@/app/actions/auth'
 import { usePathname } from 'next/navigation'
 import Link from 'next/link'
@@ -23,6 +23,7 @@ interface NavItem {
 const adminNavItems: NavItem[] = [
   { title: 'Projects', href: '/projects', icon: Folder },
   { title: 'Panorama', href: '/panoramas', icon: Globe, badge: 'New' },
+  { title: 'Tours', href: '/tours', icon: Orbit, badge: 'New' },
   { title: 'Team', href: '/projects/team', icon: Users },
   { title: 'Archive', href: '/projects/archive', icon: Archive, badge: 'Beta' },
   { title: 'Settings', href: '/projects/settings', icon: Settings },
@@ -31,6 +32,7 @@ const adminNavItems: NavItem[] = [
 const memberNavItems: NavItem[] = [
   { title: 'Projects', href: '/projects', icon: Folder },
   { title: 'Panorama', href: '/panoramas', icon: Globe, badge: 'New' },
+  { title: 'Tours', href: '/tours', icon: Orbit, badge: 'New' },
   { title: 'Settings', href: '/projects/settings', icon: Settings },
 ]
 

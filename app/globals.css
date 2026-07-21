@@ -159,3 +159,13 @@
     @apply max-w-7xl mx-auto;
   }
 }
+
+/* Virtual-tour navigation hotspots (Pannellum markers, see components/tour/) */
+.tour-nav-hotspot {
+  z-index: 2;
+}
+@keyframes tour-hotspot-pulse {
+  0%   { opacity: .8; scale: 1; }
+  70%  { opacity: 0;  scale: 1.7; }
+  100% { opacity: 0;  scale: 1.7; }
+}

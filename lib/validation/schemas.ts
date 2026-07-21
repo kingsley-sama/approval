@@ -86,6 +86,44 @@ export const RegisterPanoramaImageSchema = z.object({
   storagePath: z.string().min(1),
 });
 
+// ─── virtual tours (Biganto-style, Pannellum multi-scene) ──────────────────
+// Navigation hotspots sit on the sphere like panorama comments; each one
+// links its scene to a target scene in the same tour.
+
+export const RegisterTourSceneSchema = z.object({
+  projectId: z.string().uuid(),
+  fileName: z.string().min(1).max(255),
+  storagePath: z.string().min(1),
+});
+
+export const RenameTourSceneSchema = z.object({
+  sceneId: z.string().uuid(),
+  name: z.string().trim().min(1).max(300),
+});
+
+export const UpdateTourSceneViewSchema = z.object({
+  sceneId: z.string().uuid(),
+  pitch: z.number().min(-90).max(90),
+  yaw: z.number().min(-180).max(180),
+  hfov: z.number().min(30).max(160),
+});
+
+export const CreateTourHotspotSchema = z.object({
+  sceneId: z.string().uuid(),
+  targetSceneId: z.string().uuid(),
+  pitch: z.number().min(-90).max(90),
+  yaw: z.number().min(-180).max(180),
+  label: z.string().trim().max(200).optional(),
+});
+
+export const UpdateTourHotspotSchema = z.object({
+  hotspotId: z.string().uuid(),
+  targetSceneId: z.string().uuid().optional(),
+  pitch: z.number().min(-90).max(90).optional(),
+  yaw: z.number().min(-180).max(180).optional(),
+  label: z.string().trim().max(200).nullable().optional(),
+});
+
 export const ALLOWED_UPLOAD_MIME_TYPES = [
   'image/jpeg',
   'image/png',

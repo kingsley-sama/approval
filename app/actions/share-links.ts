@@ -27,7 +27,7 @@ async function getRequestOrigin(): Promise<string> {
 
 // Types
 export type SharePermission = 'view' | 'comment' | 'draw_and_comment';
-export type ShareResourceType = 'thread' | 'project' | 'panorama_project';
+export type ShareResourceType = 'thread' | 'project' | 'panorama_project' | 'tour_project';
 
 export interface ShareLink {
   id: string;
@@ -44,7 +44,7 @@ export interface ShareLink {
 
 // Validation schemas
 const CreateShareLinkSchema = z.object({
-  resourceType: z.enum(['thread', 'project', 'panorama_project']),
+  resourceType: z.enum(['thread', 'project', 'panorama_project', 'tour_project']),
   resourceId: z.string().uuid(),
   permissions: z.enum(['view', 'comment', 'draw_and_comment']),
   createdBy: z.string().min(1),
@@ -82,6 +82,8 @@ export async function createShareLink(
         ? 'markup_threads'
         : validated.resourceType === 'panorama_project'
         ? 'panorama_projects'
+        : validated.resourceType === 'tour_project'
+        ? 'tour_projects'
         : 'markup_projects';
 
     const { data: resource, error: checkError } = await supabase
@@ -287,6 +289,20 @@ export async function getSharedProjectSummaries(
               (a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
             );
             thumbnailUrl = imgs[0]?.image_path || (project as any).preview_url || null;
+          }
+        } else if (row.resource_type === 'tour_project') {
+          const { data: project } = await supabase
+            .from('tour_projects')
+            .select('project_name, preview_url, tour_scenes(image_path, created_at)')
+            .eq('id', row.resource_id)
+            .single();
+
+          if (project) {
+            projectName = (project as any).project_name;
+            const scenes: any[] = ((project as any).tour_scenes || []).sort(
+              (a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+            );
+            thumbnailUrl = scenes[0]?.image_path || (project as any).preview_url || null;
           }
         } else if (row.resource_type === 'project') {
           const { data: project } = await supabase

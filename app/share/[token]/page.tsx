@@ -8,6 +8,8 @@ import { validateShareToken } from '@/app/actions/share-links';
 import { supabaseAdmin as supabase } from '@/lib/supabase';
 import ShareViewer from '@/components/share-viewer';
 import PanoramaShareViewer from '@/components/panorama/panorama-share-viewer';
+import TourShareViewer from '@/components/tour/tour-share-viewer';
+import { mapScenesToPlayer } from '@/lib/tours';
 import { getAttachmentsForComments } from '@/app/actions/storage';
 import { getUser } from '@/lib/db/queries';
 
@@ -26,6 +28,50 @@ export default async function SharePage({ params }: SharePageProps) {
 
   if (!success || !shareLink) {
     notFound();
+  }
+
+  // ── Virtual tour share ────────────────────────────────────────────────────
+  if (shareLink!.resourceType === 'tour_project') {
+    const { data: project, error: projectError } = await supabase
+      .from('tour_projects')
+      .select('id, project_name, start_scene_id')
+      .eq('id', shareLink!.resourceId)
+      .single();
+
+    if (projectError || !project) notFound();
+
+    // Logged-in users get the full editor instead of the guest player.
+    if (sessionUser) {
+      redirect(`/tours/${project.id}?name=${encodeURIComponent(project.project_name ?? 'Tour')}`);
+    }
+
+    const { data: sceneRows } = await supabase
+      .from('tour_scenes')
+      .select('*')
+      .eq('tour_project_id', shareLink!.resourceId)
+      .order('scene_index', { ascending: true, nullsFirst: false })
+      .order('created_at', { ascending: true });
+
+    const scenes = sceneRows || [];
+    const { data: hotspotRows } = scenes.length
+      ? await supabase
+          .from('tour_hotspots')
+          .select('*')
+          .in('scene_id', scenes.map((s: any) => s.id))
+      : { data: [] };
+
+    const hotspotsByScene: Record<string, any[]> = {};
+    for (const h of hotspotRows || []) {
+      (hotspotsByScene[h.scene_id] ??= []).push(h);
+    }
+
+    return (
+      <TourShareViewer
+        tourName={project.project_name ?? 'Virtual tour'}
+        scenes={mapScenesToPlayer(scenes, hotspotsByScene)}
+        startSceneId={project.start_scene_id}
+      />
+    );
   }
 
   // ── Panorama project share ────────────────────────────────────────────────

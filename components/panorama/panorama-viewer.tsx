@@ -46,14 +46,66 @@ const ACTIVE_COLOR = '#f97316';   // orange-500
 const RESOLVED_COLOR = '#22c55e'; // green-500
 
 /**
- * Pannellum uploads the panorama to a WebGL texture, which requires a same-origin
- * (or CORS-enabled) image. Route remote http(s) images through our same-origin
- * proxy; leave local paths (placeholders, blob URLs) untouched.
+ * Pannellum uploads the panorama to a WebGL texture, which requires a
+ * CORS-enabled image. Pannellum requests panoramas with `crossOrigin:
+ * 'anonymous'` (its default) and Supabase Storage serves public objects with
+ * `Access-Control-Allow-Origin: *`, so images load directly from Supabase's CDN
+ * — no same-origin proxy needed. (Previously routed through /api/panorama-proxy,
+ * which streamed every full-size image through a serverless function and burned
+ * host bandwidth; serving direct is free.)
  */
 function panoramaSrc(url: string): string {
-  if (!url) return url;
-  if (/^https?:\/\//i.test(url)) return `/api/panorama-proxy?url=${encodeURIComponent(url)}`;
   return url;
+}
+
+/**
+ * Load a panorama image with retries. The first cold load of a not-yet-cached
+ * image can transiently fail (proxy cold start / large file); a plain onerror
+ * would then strand the user on the error overlay even though a reload fixes it.
+ * Retrying a couple of times with backoff — and a cache-busting param so a
+ * failed response isn't reused — makes that self-heal automatically.
+ * Returns a cleanup function that cancels any pending retry.
+ */
+function loadPanoramaWithRetry(
+  src: string,
+  { onLoad, onError }: { onLoad: () => void; onError: () => void },
+  maxAttempts = 3,
+): () => void {
+  let attempt = 0;
+  let cancelled = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let img: HTMLImageElement | null = null;
+
+  const tryLoad = () => {
+    if (cancelled) return;
+    attempt += 1;
+    img = new window.Image();
+    // Match Pannellum's CORS request so this probe and the WebGL texture load
+    // share one browser cache entry instead of downloading the image twice.
+    img.crossOrigin = 'anonymous';
+    img.onload = () => { if (!cancelled) onLoad(); };
+    img.onerror = () => {
+      if (cancelled) return;
+      if (attempt < maxAttempts) {
+        // Exponential backoff (500ms, 1000ms); bust the cache so we don't
+        // re-read a cached error response.
+        timer = setTimeout(tryLoad, 500 * attempt);
+      } else {
+        onError();
+      }
+    };
+    // Only add the cache-buster on retries, so the first (usually successful)
+    // load shares the same URL Pannellum uses and hits the same cache entry.
+    img.src = attempt === 1 ? src : `${src}${src.includes('?') ? '&' : '?'}_retry=${attempt}`;
+  };
+
+  tryLoad();
+
+  return () => {
+    cancelled = true;
+    if (timer) clearTimeout(timer);
+    if (img) { img.onload = null; img.onerror = null; }
+  };
 }
 
 /** Build the DOM for a numbered hotspot marker. Called by Pannellum, which
@@ -181,23 +233,22 @@ export default function PanoramaViewer({
     el.addEventListener('mousedown', onMouseDown);
     el.addEventListener('click', onClick);
 
-    const img = new window.Image();
-    img.onload = () => {
-      window.clearInterval(progressTimer);
-      setLoadProgress(100);
-    };
-    img.onerror = () => {
-      window.clearInterval(progressTimer);
-      setLoadError('The panorama image could not be loaded.');
-    };
-    img.src = panoramaSrc(imageUrl);
+    const cancelImageLoad = loadPanoramaWithRetry(panoramaSrc(imageUrl), {
+      onLoad: () => {
+        window.clearInterval(progressTimer);
+        setLoadProgress(100);
+      },
+      onError: () => {
+        window.clearInterval(progressTimer);
+        setLoadError('The panorama image could not be loaded.');
+      },
+    });
 
     return () => {
       window.clearInterval(progressTimer);
       el.removeEventListener('mousedown', onMouseDown);
       el.removeEventListener('click', onClick);
-      img.onload = null;
-      img.onerror = null;
+      cancelImageLoad();
       try { viewer.destroy(); } catch { /* noop */ }
       viewerRef.current = null;
     };
