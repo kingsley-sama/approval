@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
+import { panoramaImageUrl } from '@/lib/panorama-image';
 
 /**
  * Preloads panorama images in the background so switching between panoramas
@@ -25,8 +26,13 @@ export function usePanoramaPreloader(urls: string[], currentIndex: number) {
     const preload = (url: string | undefined) => {
       if (!url || cache.current.has(url)) return;
       const img = new window.Image();
+      // Warm the exact request the viewer makes: the transformed (small)
+      // Supabase URL, fetched with CORS. A plain non-CORS fetch of the raw URL
+      // lands in a different cache entry that Pannellum never reads — so the
+      // preload would be wasted and the image would download twice.
+      img.crossOrigin = 'anonymous';
       img.decoding = 'async';
-      img.src = url;
+      img.src = panoramaImageUrl(url);
       cache.current.set(url, img);
     };
 
