@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '@/lib/supabase';
+import { compressImageBuffer } from '@/lib/api/compress-image';
 
 const BUCKET = process.env.NEXT_PUBLIC_SUPABASE_BUCKET_NAME || 'screenshots';
 
@@ -137,6 +138,13 @@ async function uploadAndCreateThread(
   displayName: string,
   imageIndex: number
 ): Promise<IngestedImage> {
+  // Same downscale/re-encode the in-app uploader applies client-side, so
+  // API-ingested files land in Storage at comparable sizes.
+  const compressed = await compressImageBuffer(buffer, contentType, fileName);
+  buffer = compressed.buffer;
+  contentType = compressed.contentType;
+  fileName = compressed.fileName;
+
   const path = storagePath(projectId, fileName);
 
   const { error: uploadError } = await supabaseAdmin.storage

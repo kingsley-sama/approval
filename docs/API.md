@@ -145,6 +145,8 @@ curl -X POST https://revision.exposeprofi.de/api/v1/projects \
 
 Allowed image types: `image/jpeg`, `image/png`, `image/webp`, `image/gif`. Max 20 MB each.
 
+Ingested jpeg/png/webp images are compressed server-side before storage (downscaled to max 2560px and re-encoded as JPEG), matching the in-app uploader. GIFs are stored as-is to preserve animation.
+
 ### Response — `201 Created`
 
 ```json

@@ -227,9 +227,17 @@ export default function TourEditor({ projectId, initialData, fallbackName }: Tou
   const handleSelectHotspot = useCallback((id: string) => {
     const hotspot = Object.values(hotspotsByScene).flat().find(h => h.id === id);
     if (!hotspot) return;
-    setPendingCoords(null);
-    setEditingHotspot(hotspot);
-  }, [hotspotsByScene]);
+    // Link mode ON: clicking an existing marker opens it for editing.
+    if (linkMode) {
+      setPendingCoords(null);
+      setEditingHotspot(hotspot);
+      return;
+    }
+    // Link mode OFF: clicking a marker walks to its target scene, like the player.
+    if (sceneNameById.has(hotspot.target_scene_id)) {
+      handleSelectScene(hotspot.target_scene_id);
+    }
+  }, [hotspotsByScene, linkMode, sceneNameById, handleSelectScene]);
 
   const closeLinkModal = () => {
     setPendingCoords(null);
