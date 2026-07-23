@@ -177,6 +177,8 @@ Ingested jpeg/png/webp images are compressed server-side before storage (downsca
 - `failedImages` — per-image failures (bad URL, wrong type, too big). The project is still created with whatever succeeded; **check this array in your automation**.
 - `shareLink` is `null` unless you passed `share`.
 
+If images were requested but **none** could be ingested, the response is `422 all_images_failed` (with `failedImages` details) and the just-created project is rolled back — a failed run never leaves an empty project behind. Creating a project with no `images` at all remains valid and returns `201`.
+
 ---
 
 ## GET /api/v1/projects — list projects

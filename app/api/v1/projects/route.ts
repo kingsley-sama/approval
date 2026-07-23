@@ -139,6 +139,23 @@ export async function POST(request: NextRequest) {
   const projectId = (project as any).id as string;
   const { images, failed } = await ingestImages(projectId, body.images, body.files, 0);
 
+  // Images were requested but none could be ingested: roll the project back so
+  // a failed run doesn't leave an empty shell behind. Failed images never reach
+  // Storage (ingestImages cleans up per-image), so deleting the row suffices.
+  const imagesRequested = body.images.length + body.files.length > 0;
+  if (imagesRequested && images.length === 0) {
+    const { error: rollbackError } = await supabaseAdmin
+      .from('markup_projects')
+      .delete()
+      .eq('id', projectId);
+    if (rollbackError) {
+      console.error('Failed to roll back empty project', projectId, rollbackError);
+    }
+    return apiError(422, 'all_images_failed', 'None of the images could be ingested; the project was not created.', {
+      failedImages: failed,
+    });
+  }
+
   let shareLink: { url: string; token: string; permissions: string } | null = null;
   if (body.share) {
     const result = await createShareLink({
