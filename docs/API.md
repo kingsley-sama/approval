@@ -179,6 +179,8 @@ Ingested jpeg/png/webp images are compressed server-side before storage (downsca
 
 If images were requested but **none** could be ingested, the response is `422 all_images_failed` (with `failedImages` details) and the just-created project is rolled back — a failed run never leaves an empty project behind. Creating a project with no `images` at all remains valid and returns `201`.
 
+Project names are unique (case-insensitive). If a project with the same name already exists, the response is `409 duplicate_name` and includes `existingProject: { id, url }` so automations can reuse or link to it instead of creating a duplicate.
+
 ---
 
 ## GET /api/v1/projects — list projects

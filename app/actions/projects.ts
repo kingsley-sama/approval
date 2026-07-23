@@ -5,6 +5,7 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { getUser } from '@/lib/db/queries';
 import { requireUser, requireAdmin } from '@/lib/auth/require-user';
 import { CreateProjectSchema } from '@/lib/validation/schemas';
+import { findProjectIdByName } from '@/lib/project-name';
 import { revalidatePath } from 'next/cache';
 
 export interface CreateProjectInput {
@@ -24,6 +25,10 @@ export async function createProject(input: CreateProjectInput): Promise<CreatePr
   const parsed = CreateProjectSchema.safeParse(input);
   if (!parsed.success) {
     return { success: false, error: 'Invalid input: ' + parsed.error.issues[0]?.message };
+  }
+
+  if (await findProjectIdByName(input.name)) {
+    return { success: false, error: `A project named "${input.name.trim()}" already exists.` };
   }
 
   const supabase = await createClient()

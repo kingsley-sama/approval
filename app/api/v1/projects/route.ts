@@ -4,6 +4,7 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { requireApiKey, apiError, getRequestOrigin } from '@/lib/api/auth';
 import { ingestImages, type ImageInput } from '@/lib/api/ingest-images';
 import { createShareLink } from '@/app/actions/share-links';
+import { findProjectIdByName } from '@/lib/project-name';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120; // downloading + uploading batches of images takes time
@@ -113,6 +114,14 @@ export async function POST(request: NextRequest) {
 
   const body = await parseBody(request);
   if (body instanceof NextResponse) return body;
+
+  const existingId = await findProjectIdByName(body.name);
+  if (existingId) {
+    const origin = getRequestOrigin(request);
+    return apiError(409, 'duplicate_name', `A project named "${body.name}" already exists.`, {
+      existingProject: { id: existingId, url: `${origin}/projects/${existingId}` },
+    });
+  }
 
   const now = new Date().toISOString();
   const { data: project, error } = await supabaseAdmin
