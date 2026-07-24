@@ -214,7 +214,7 @@
       "name": "Switch1",
       "type": "n8n-nodes-base.switch",
       "position": [
-        2816,
+        2592,
         1008
       ],
       "typeVersion": 3.2
@@ -236,14 +236,14 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"subject\": \"Ihre Visualisierungen sind fertig – erste Version zur Ansicht (Pr. Nr. {{ $('Derive Markup name1').item.json.projectId }}-{{ $('Derive Markup name1').item.json.subProjectId }})\",\n  \"importance\": \"normal\",\n  \"body\": {\n    \"contentType\": \"HTML\",\n    \"content\": \"<div style=\\\"font-family: Aptos, Aptos_EmbeddedFont, Aptos_MSFontService, Calibri, Helvetica, sans-serif, serif, EmojiFont; font-size: 12pt; color: rgb(0, 0, 0);\\\">Hallo XXX,<br><br>nun ist es soweit – die erste Version Ihrer Visualisierungen ist fertig! Sie können sich die Dateien hier downloaden:<br><br><a href=\\\"{{ $node[\"Create render on revision tool\"].json[\"project\"][\"url\"] }}\\\" target=\\\"_blank\\\">ZUM DOWNLOAD</a><br><br>Unser Ziel war es, nicht nur die Architektur zu zeigen, sondern die Atmosphäre spürbar zu machen. Ich hoffe, das Projekt gefällt Ihnen!<br><br>Falls etwas nicht zu 100% Ihren Vorstellungen entsprechen sollte, ändern wir dies in einer Gratis Revisionsrunde sehr gerne für Sie. Tragen Sie dazu einfach innerhalb von 7 Tagen Ihre Änderungswünsche in unser Tool ein und informieren Sie uns per E-Mail, sobald Sie damit fertig sind:<br><br><a href=\\\"{{ $node[\"Create render on revision tool\"].json[\"project\"][\"url\"] }}\\\" target=\\\"_blank\\\">ZUM REVISIONSTOOL</a><br><br>Wir freuen uns auf Ihre Rückmeldung!<br><br>Nochmals vielen Dank und herzliche Grüße<br><br>{{ $node[\"Get email signature1\"].json[\"htmlSignature\"] }}<br><br><strong>Noch ein paar kurze Hinweise zur Revision, Tool-Nutzung & Rechnungsstellung:</strong><br><br><strong>Revisions-Tool – so funktioniert’s:</strong><br><br>· Keine Registrierung nötig: Einfach als „Gast“ mit Namen anmelden (E-Mail-Adresse ist nicht erforderlich)<br>· Zum Kommentieren klicken Sie direkt auf die entsprechende Stelle im Bild<br>· Alle Ansichten lassen sich über die Pfeile oben im Bild aufrufen<br>· Ihre Kommentare werden automatisch gespeichert – Sie müssen nichts hochladen oder senden, <strong>ABER:</strong> Nach Abschluss benötigen wir eine kurze E-Mail von Ihnen an uns, dass Sie fertig sind – wir beginnen dann mit der Umsetzung<br><br><strong>Revisionen:</strong><br><br>Eine kostenlose Überarbeitungsrunde ist im Angebot enthalten. Sollten Sie darüber hinaus weitere Änderungen wünschen, die nicht durch uns verschuldet sind, bieten wir Ihnen gern eine zweite Revision zum halben Preis der Visualisierung an.<br><br>Bitte beachten Sie: Änderungswünsche berücksichtigen wir ausschließlich dann im Rahmen der kostenlosen Revision, wenn sie direkt im Revisions-Tool eingetragen wurden. Wünsche, die uns auf anderem Weg (z. B. per E-Mail oder Telefon) mitgeteilt werden, setzen wir auf Wunsch gern um – allerdings außerhalb des offiziellen Revisionsprozesses und ohne Gewähr für die vollständige Umsetzung.<br><br>Sollten wir innerhalb von 7 Tagen keine Änderungswünsche über das Revisions-Tool erhalten und auch keine Information über eine spätere Rückmeldung von Ihnen vorliegen, gehen wir davon aus, dass Sie keine Revision wünschen.<br><br><strong>Rechnungsadresse:</strong><br><br>Sollte sich Ihre Rechnungsadresse geändert haben, geben Sie uns diese bitte vor Rechnungsstellung bekannt. Bei einer nachträglichen Änderung nach Versand der Rechnung berechnen wir eine Bearbeitungsgebühr in Höhe von 20 €.<br><br>Die Rechnung wird nach vollständiger Lieferung aller bestellten Produkte gestellt.<br><br>Die im Angebot enthaltene kostenlose Revision kann selbstverständlich auch nach Rechnungsstellung noch in Anspruch genommen werden.<br><br></div>\"\n  },\n  \"toRecipients\": [\n    {\n      \"emailAddress\": {\n        \"address\": \"someone@example.com\"\n      }\n    }\n  ]\n}",
+        "jsonBody": "={\n  \"subject\": \"Ihre Visualisierungen sind fertig – erste Version zur Ansicht (Pr. Nr. {{ $('Derive Markup name1').item.json.projectId }}-{{ $('Derive Markup name1').item.json.subProjectId }})\",\n  \"importance\": \"normal\",\n  \"body\": {\n    \"contentType\": \"HTML\",\n    \"content\": \"<div style=\\\"font-family: Aptos, Aptos_EmbeddedFont, Aptos_MSFontService, Calibri, Helvetica, sans-serif, serif, EmojiFont; font-size: 12pt; color: rgb(0, 0, 0);\\\">Hallo XXX,<br><br>nun ist es soweit – die erste Version Ihrer Visualisierungen ist fertig! Sie können sich die Dateien hier downloaden:<br><br><a href=\\\"{{ $node[\"Extract link field1\"].json.link }}\\\" target=\\\"_blank\\\">ZUM DOWNLOAD</a><br><br>Unser Ziel war es, nicht nur die Architektur zu zeigen, sondern die Atmosphäre spürbar zu machen. Ich hoffe, das Projekt gefällt Ihnen!<br><br>Falls etwas nicht zu 100% Ihren Vorstellungen entsprechen sollte, ändern wir dies in einer Gratis Revisionsrunde sehr gerne für Sie. Tragen Sie dazu einfach innerhalb von 7 Tagen Ihre Änderungswünsche in unser Tool ein und informieren Sie uns per E-Mail, sobald Sie damit fertig sind:<br><br><a href=\\\"{{ $node[\"Create revision project\"].json[\"shareLink\"][\"url\"] }}\\\" target=\\\"_blank\\\">ZUM REVISIONSTOOL</a><br><br>Wir freuen uns auf Ihre Rückmeldung!<br><br>Nochmals vielen Dank und herzliche Grüße<br><br>{{ $node[\"Get email signature1\"].json[\"htmlSignature\"] }}<br><br><strong>Noch ein paar kurze Hinweise zur Revision, Tool-Nutzung & Rechnungsstellung:</strong><br><br><strong>Revisions-Tool – so funktioniert’s:</strong><br><br>· Keine Registrierung nötig: Einfach als „Gast“ mit Namen anmelden (E-Mail-Adresse ist nicht erforderlich)<br>· Zum Kommentieren klicken Sie direkt auf die entsprechende Stelle im Bild<br>· Alle Ansichten lassen sich über die Pfeile oben im Bild aufrufen<br>· Ihre Kommentare werden automatisch gespeichert – Sie müssen nichts hochladen oder senden, <strong>ABER:</strong> Nach Abschluss benötigen wir eine kurze E-Mail von Ihnen an uns, dass Sie fertig sind – wir beginnen dann mit der Umsetzung<br><br><strong>Revisionen:</strong><br><br>Eine kostenlose Überarbeitungsrunde ist im Angebot enthalten. Sollten Sie darüber hinaus weitere Änderungen wünschen, die nicht durch uns verschuldet sind, bieten wir Ihnen gern eine zweite Revision zum halben Preis der Visualisierung an.<br><br>Bitte beachten Sie: Änderungswünsche berücksichtigen wir ausschließlich dann im Rahmen der kostenlosen Revision, wenn sie direkt im Revisions-Tool eingetragen wurden. Wünsche, die uns auf anderem Weg (z. B. per E-Mail oder Telefon) mitgeteilt werden, setzen wir auf Wunsch gern um – allerdings außerhalb des offiziellen Revisionsprozesses und ohne Gewähr für die vollständige Umsetzung.<br><br>Sollten wir innerhalb von 7 Tagen keine Änderungswünsche über das Revisions-Tool erhalten und auch keine Information über eine spätere Rückmeldung von Ihnen vorliegen, gehen wir davon aus, dass Sie keine Revision wünschen.<br><br><strong>Rechnungsadresse:</strong><br><br>Sollte sich Ihre Rechnungsadresse geändert haben, geben Sie uns diese bitte vor Rechnungsstellung bekannt. Bei einer nachträglichen Änderung nach Versand der Rechnung berechnen wir eine Bearbeitungsgebühr in Höhe von 20 €.<br><br>Die Rechnung wird nach vollständiger Lieferung aller bestellten Produkte gestellt.<br><br>Die im Angebot enthaltene kostenlose Revision kann selbstverständlich auch nach Rechnungsstellung noch in Anspruch genommen werden.<br><br></div>\"\n  },\n  \"toRecipients\": [\n    {\n      \"emailAddress\": {\n        \"address\": \"someone@example.com\"\n      }\n    }\n  ]\n}",
         "options": {}
       },
       "id": "69e8153e-47dd-4943-b2d7-f33b38e6a2f5",
       "name": "Create email draft I1",
       "type": "n8n-nodes-base.httpRequest",
       "position": [
-        3040,
+        2816,
         912
       ],
       "retryOnFail": true,
@@ -272,14 +272,14 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"subject\": \"Überarbeitete Visualisierungen – Ihre Änderungswünsche sind umgesetzt (Pr. Nr. {{ $('Derive Markup name1').item.json.projectId }}-{{ $('Derive Markup name1').item.json.subProjectId }})\",\n  \"importance\": \"normal\",\n  \"body\": {\n    \"contentType\": \"HTML\",\n    \"content\": \"<div style=\\\"font-family: Aptos, Aptos_EmbeddedFont, Aptos_MSFontService, Calibri, Helvetica, sans-serif, serif, EmojiFont; font-size: 12pt; color: rgb(0, 0, 0);\\\">Hallo Frau/Herr ,<br><br>ich hoffe, es geht Ihnen gut.<br><br>Anbei sende ich Ihnen die revidierten Visualisierungen, die wir nach Ihren Wünschen angepasst haben. Sie können sich die Dateien hier downloaden:<br><br><a href=\\\"{{ $node[\"Create render on revision tool\"].json[\"project\"][\"url\"] }}\\\" target=\\\"_blank\\\">ZUM DOWNLOAD</a><br><br>Bei Bedarf einer weiteren Revision, die nicht durch uns verschuldet ist, bieten wir diese für 50% des Preises pro Visualisierung an. Falls dies gewünscht ist, fügen Sie Ihre Änderungswünsche einfach im Tool ein und geben Sie uns per E-Mail Bescheid, sobald Sie fertig sind:<br><br><a href=\\\"{{ $node[\"Create render on revision tool\"].json[\"project\"][\"url\"] }}\\\" target=\\\"_blank\\\">ZUM REVISIONSTOOL</a><br><br>Wir freuen uns auf Ihre Rückmeldung und hoffen, Sie sind nun zu 100% zufrieden!<br><br>Nochmals vielen Dank und herzliche Grüße<br><br></div>{{ $node[\"Get email signature1\"].json[\"htmlSignature\"] }}\"\n  },\n  \"toRecipients\": [\n    {\n      \"emailAddress\": {\n        \"address\": \"someone@example.com\"\n      }\n    }\n  ]\n}",
+        "jsonBody": "={\n  \"subject\": \"Überarbeitete Visualisierungen – Ihre Änderungswünsche sind umgesetzt (Pr. Nr. {{ $('Derive Markup name1').item.json.projectId }}-{{ $('Derive Markup name1').item.json.subProjectId }})\",\n  \"importance\": \"normal\",\n  \"body\": {\n    \"contentType\": \"HTML\",\n    \"content\": \"<div style=\\\"font-family: Aptos, Aptos_EmbeddedFont, Aptos_MSFontService, Calibri, Helvetica, sans-serif, serif, EmojiFont; font-size: 12pt; color: rgb(0, 0, 0);\\\">Hallo Frau/Herr ,<br><br>ich hoffe, es geht Ihnen gut.<br><br>Anbei sende ich Ihnen die revidierten Visualisierungen, die wir nach Ihren Wünschen angepasst haben. Sie können sich die Dateien hier downloaden:<br><br><a href=\\\"{{ $node[\"Extract link field1\"].json.link }}\\\" target=\\\"_blank\\\">ZUM DOWNLOAD</a><br><br>Bei Bedarf einer weiteren Revision, die nicht durch uns verschuldet ist, bieten wir diese für 50% des Preises pro Visualisierung an. Falls dies gewünscht ist, fügen Sie Ihre Änderungswünsche einfach im Tool ein und geben Sie uns per E-Mail Bescheid, sobald Sie fertig sind:<br><br><a href=\\\"{{ $node['Create revision project'].json['shareLink']['url'] }}\\\" target=\\\"_blank\\\">ZUM REVISIONSTOOL</a><br><br>Wir freuen uns auf Ihre Rückmeldung und hoffen, Sie sind nun zu 100% zufrieden!<br><br>Nochmals vielen Dank und herzliche Grüße<br><br></div>{{ $node[\"Get email signature1\"].json[\"htmlSignature\"] }}\"\n  },\n  \"toRecipients\": [\n    {\n      \"emailAddress\": {\n        \"address\": \"someone@example.com\"\n      }\n    }\n  ]\n}",
         "options": {}
       },
       "id": "9106f649-77d1-40ce-b31a-ebc6af9b8e0c",
       "name": "Create email draft II1",
       "type": "n8n-nodes-base.httpRequest",
       "position": [
-        3040,
+        2816,
         1104
       ],
       "retryOnFail": true,
@@ -299,7 +299,7 @@
       "name": "HTML1",
       "type": "n8n-nodes-base.html",
       "position": [
-        2368,
+        2144,
         1008
       ],
       "typeVersion": 1.2
@@ -312,7 +312,7 @@
       "name": "Get email signature1",
       "type": "n8n-nodes-base.code",
       "position": [
-        2592,
+        2368,
         1008
       ],
       "typeVersion": 2
@@ -340,8 +340,8 @@
       "name": "Download file",
       "type": "n8n-nodes-base.microsoftSharePoint",
       "position": [
-        128,
-        1008
+        560,
+        768
       ],
       "typeVersion": 1,
       "credentials": {
@@ -367,7 +367,7 @@
     {
       "parameters": {
         "httpMethod": "POST",
-        "path": "e94322d1-5fc0-4a9c-b2f0-f471bf3be592",
+        "path": "revision_tool_delivery",
         "options": {}
       },
       "id": "e57a8757-354c-45ac-830e-a7e13f155053",
@@ -399,15 +399,15 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"data\": {\n    \"type\": \"files\", \n    \"attributes\": {\n      \"name\": \"{{ $('Create render on revision tool').item.json.project.name }}\",\n      \"parent_id\": \"8rx9x7c03a216a95b495cbd04830597cee3a5\" \n    }\n  }\n}",
+        "jsonBody": "={\n  \"data\": {\n    \"type\": \"files\", \n    \"attributes\": {\n      \"name\": \"{{ $('Create revision project').item.json.project.name }}\",\n      \"parent_id\": \"8rx9x7c03a216a95b495cbd04830597cee3a5\" \n    }\n  }\n}",
         "options": {}
       },
       "id": "34277e28-1f09-4fb6-97f6-4df7d9bc177a",
       "name": "Zoho Workdrive -Create folder1",
       "type": "n8n-nodes-base.httpRequest",
       "position": [
-        1024,
-        1088
+        816,
+        1008
       ],
       "retryOnFail": true,
       "typeVersion": 4.2
@@ -420,8 +420,8 @@
       "name": "Extract folder id1",
       "type": "n8n-nodes-base.code",
       "position": [
-        1248,
-        1088
+        1040,
+        1008
       ],
       "typeVersion": 2
     },
@@ -451,7 +451,7 @@
       "name": "Create external share link1",
       "type": "n8n-nodes-base.httpRequest",
       "position": [
-        1920,
+        1696,
         1008
       ],
       "executeOnce": true,
@@ -465,7 +465,7 @@
       "name": "Extract link field1",
       "type": "n8n-nodes-base.code",
       "position": [
-        2144,
+        1920,
         1008
       ],
       "typeVersion": 2
@@ -482,8 +482,8 @@
       "name": "Generate Access Token1",
       "type": "n8n-nodes-base.httpRequest",
       "position": [
-        800,
-        1088
+        592,
+        1008
       ],
       "typeVersion": 4.2,
       "executeOnce": true,
@@ -532,7 +532,7 @@
       "name": "Zoho Workdrive -Upload files1",
       "type": "n8n-nodes-base.httpRequest",
       "position": [
-        1696,
+        1472,
         1008
       ],
       "retryOnFail": true,
@@ -546,23 +546,120 @@
       "name": "Merge1",
       "type": "n8n-nodes-base.merge",
       "position": [
-        1472,
+        1248,
         1008
       ],
       "typeVersion": 3.1
     },
     {
       "parameters": {
-        "jsCode": "// n8n Code node — Mode: \"Run Once for All Items\"\n// Creates the project on the revision tool by sending SharePoint download URLs\n// (@microsoft.graph.downloadUrl) as JSON — the revision server downloads the\n// files itself, so no image bytes ever pass through n8n on this branch.\nconst API_URL = 'https://revision.exposeprofi.de/api/v1/projects';\nconst API_KEY = $env.REVISION_API_KEY; // requires N8N_BLOCK_ENV_ACCESS_IN_NODE=false\n\nif (!API_KEY) throw new Error('REVISION_API_KEY is not set in the n8n environment.');\n\n// Only types the revision API accepts — PDFs stay on the Zoho branch\nconst IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];\n\n// Project name + comment (one project for the whole batch)\nlet markupName = 'Untitled project';\nlet comment = '';\ntry {\n  const derived = $('Derive Markup name1').first().json;\n  markupName = derived.markupName || markupName;\n  comment = derived.projectId ?? '';\n} catch (e) { /* keep defaults */ }\n\nconst images = $input.all()\n  .map(item => item.json)\n  .filter(f => f['@microsoft.graph.downloadUrl'] && IMAGE_TYPES.includes(f.file?.mimeType))\n  .map(f => ({\n    url: f['@microsoft.graph.downloadUrl'],\n    name: f.name,\n  }));\n\nif (images.length === 0) throw new Error('No downloadable images found in the folder items (expected @microsoft.graph.downloadUrl on jpeg/png/webp/gif files).');\nif (images.length > 50) throw new Error(`Too many images (${images.length}) — the API accepts at most 50 per call.`);\n\nconst raw = await this.helpers.httpRequest({\n  method: 'POST',\n  url: API_URL,\n  headers: {\n    Authorization: `Bearer ${API_KEY}`,\n    'Content-Type': 'application/json',\n  },\n  body: {\n    name: markupName,\n    comment,\n    images,\n    share: { permissions: 'comment' },\n  },\n  json: true,\n  timeout: 120000,\n  returnFullResponse: true,\n  ignoreHttpStatusErrors: true,\n});\n\nconst status = raw.statusCode;\nlet response = raw.body;\nif (typeof response === 'string') {\n  try { response = JSON.parse(response); } catch { response = { raw: response }; }\n}\n\n// Surface the API's own error details (incl. per-image failures) instead of a\n// generic HTTP error, so failed runs are diagnosable from the n8n execution log.\nif (status < 200 || status >= 300) {\n  throw new Error(`Revision API returned HTTP ${status} for ${images.length} image(s): ${JSON.stringify(response)}`);\n}\nif (response.failedImages?.length) {\n  const summary = response.failedImages.map(f => `${f.input}: ${f.error}`).join(' | ');\n  if (!response.images?.length) {\n    throw new Error(`All ${response.failedImages.length} images failed to ingest — ${summary}`);\n  }\n  console.warn(`${response.failedImages.length} image(s) failed to ingest: ${summary}`);\n}\n\n// Downstream: {{ $('Create render on revision tool').first().json.project.url }}\nreturn [{ json: response }];"
+        "jsCode": "// Mode: \"Run Once for All Items\"\n// Input: Graph driveItems from \"Get download file meta data\"\n// Output: one item containing the project name + a list of pre-authenticated\n// download URLs. No file bytes touch n8n.\n\nconst IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];\n\nlet markupName = 'Untitled project';\nlet comment = '';\ntry {\n  const d = $('Derive Markup name1').first().json;\n  markupName = d.markupName || markupName;\n  comment = d.projectId ?? '';\n} catch (e) { /* keep defaults */ }\n\nconst images = $('Get download file meta data').all()\n  .map(item => item.json)\n  .filter(f => f['@microsoft.graph.downloadUrl'] && IMAGE_TYPES.includes(f.file?.mimeType))\n  .map(f => ({\n    url: f['@microsoft.graph.downloadUrl'],\n    name: f.name,\n  }));\n\nif (images.length === 0) {\n  throw new Error('No downloadable images found in the folder items.');\n}\nif (images.length > 50) {\n  throw new Error(`Too many images (${images.length}) — the API accepts at most 50 per project.`);\n}\n\nreturn [{ json: { name: markupName, comment, images, imageCount: images.length } }];"
       },
-      "id": "043437b4-2daf-4b00-b7a9-3becefcd0364",
-      "name": "Create render on revision tool",
       "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
       "position": [
-        128,
+        144,
+        1008
+      ],
+      "id": "e66ca3bd-7ef1-46d7-b3bd-9c423941feaf",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://revision.exposeprofi.de/api/v1/projects",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  name: $json.name,\n  comment: $json.comment,\n  share: { permissions: 'comment' }\n}) }}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        368,
+        1008
+      ],
+      "id": "d91d6027-a591-45a2-a664-3626ba901c42",
+      "name": "Create revision project",
+      "notesInFlow": true,
+      "notes": "Creates the project WITHOUT images (fast). Images are uploaded in batches by the next two nodes to stay under the serverless timeout.",
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "mqKQjpi68L1e3Joy",
+          "name": "REVISION_API_KEY"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Mode: \"Run Once for All Items\"\n// Emits one item per DOWNLOADED file, carrying its binary bytes (property\n// 'data', straight from the SharePoint \"Download file\" node) plus the id of\n// the project we just created. The Loop Over Images node then uploads each\n// binary one at a time via multipart/form-data. No URLs, nothing to expire.\nconst project = $('Create revision project').first().json.project;\nif (!project?.id) {\n  throw new Error('No project id in the create-project response: ' + JSON.stringify($('Create revision project').first().json));\n}\n\nconst files = $('Download file').all();\nif (files.length === 0) {\n  throw new Error('No downloaded files found to upload.');\n}\n\nreturn files.map((item, i) => ({\n  json: {\n    projectId: project.id,\n    index: i + 1,\n    total: files.length,\n    name: item.binary?.data?.fileName || item.json.name || `image-${i + 1}`,\n  },\n  binary: item.binary,\n}));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        560,
         1200
       ],
-      "typeVersion": 2
+      "id": "b7a1c2d3-0001-4a5b-8c6d-splitbatches0",
+      "name": "Prepare image items"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://revision.exposeprofi.de/api/v1/projects/{{ $json.projectId }}/images",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "images",
+              "inputDataFieldName": "data"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        944,
+        1200
+      ],
+      "id": "c8b2d3e4-0002-4b6c-9d7e-uploadbatch00",
+      "name": "Upload one image",
+      "notesInFlow": true,
+      "notes": "Uploads exactly ONE image as multipart/form-data binary (field 'images', from binary property 'data'), then returns to Loop Over Images for the next. Keep sequential — never enable parallel/concurrency.",
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "mqKQjpi68L1e3Joy",
+          "name": "REVISION_API_KEY"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        752,
+        1104
+      ],
+      "id": "e0d4f5a6-0004-4d8e-9fa0-loopimages000",
+      "name": "Loop Over Images",
+      "notesInFlow": true,
+      "notes": "Loops one image at a time. Output 'loop' -> Upload image batch -> back here. Output 'done' -> Zoho branch."
     }
   ],
   "connections": {
@@ -686,6 +783,11 @@
       "main": [
         [
           {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          },
+          {
             "node": "Merge1",
             "type": "main",
             "index": 0
@@ -698,11 +800,6 @@
         [
           {
             "node": "Download file",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "Create render on revision tool",
             "type": "main",
             "index": 0
           }
@@ -797,11 +894,62 @@
         ]
       ]
     },
-    "Create render on revision tool": {
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Create revision project",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create revision project": {
+      "main": [
+        [
+          {
+            "node": "Prepare image items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Images": {
       "main": [
         [
           {
             "node": "Generate Access Token1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Upload one image",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare image items": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Images",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload one image": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Images",
             "type": "main",
             "index": 0
           }
