@@ -7,12 +7,12 @@
         "nodeCredentialType": "microsoftOneDriveOAuth2Api",
         "options": {}
       },
-      "id": "1274e193-e781-4e00-8272-24d01164063f",
+      "id": "a58a1271-9c8e-4f9a-9d5d-5b411d03c4f8",
       "name": "Get Items in folder",
       "type": "n8n-nodes-base.httpRequest",
       "position": [
-        -544,
-        1008
+        -6656,
+        592
       ],
       "typeVersion": 4.2,
       "credentials": {
@@ -48,12 +48,12 @@
         "looseTypeValidation": true,
         "options": {}
       },
-      "id": "724fc545-b514-41a8-a881-a601552f435b",
+      "id": "8a46338e-cd75-4a16-9797-ebdc5aa2bb12",
       "name": "Filter only files1",
       "type": "n8n-nodes-base.filter",
       "position": [
-        -320,
-        1008
+        -6432,
+        592
       ],
       "typeVersion": 2.2
     },
@@ -61,12 +61,12 @@
       "parameters": {
         "jsCode": "const item = items[0].json;\n\nlet name = item.name;\nconst path = item.parentReference.path;\n\n// Replace \"version\" or \"v\" followed by optional space and number (e.g. V2, version 3) with \"Revision {number}\"\nname = name.replace(/\\b(version|v)\\s*(\\d+)?\\b/gi, (_, _match, number) => {\n  return number ? `Revision ${number}` : 'Revision';\n});\n\n// Extract the first number in the path after Projekte/\nconst mainNumberMatch = path.match(/\\/EPCS Projekte\\/(\\d+)/);\nconst mainNumber = mainNumberMatch ? mainNumberMatch[1] : '00000';\n\n// Extract the number directly after the word \"Projekt\" in the path\nconst projektNumberMatch = path.match(/Projekt\\s*(\\d+)/i);\nlet subProjectNumber = projektNumberMatch ? projektNumberMatch[1] : null;\n\n// Prepend 0 if less than 10\nif (subProjectNumber && parseInt(subProjectNumber) < 10) {\n  subProjectNumber = '0' + parseInt(subProjectNumber);\n}\n\n// Default to \"00\" if no subproject number found\nif (!subProjectNumber) {\n  subProjectNumber = '00';\n}\n\n// Clean \"-ready\" from the name and trim\nconst cleanedName = name.replace(/-ready/i, '').trim();\n\n// Combine into final markup name\nconst finalName = `${mainNumber}-${subProjectNumber} ${cleanedName}`;\n\nreturn [\n  {\n    json: {\n      originalName: item.name,\n      markupName: finalName,\n      projectId: mainNumber,\n      subProjectId: subProjectNumber,\n      originalPath: path\n    }\n  }\n];\n"
       },
-      "id": "39c1663c-3b26-4ee7-9856-07e661ce6754",
+      "id": "d95d61fc-4bf3-4d94-be54-725e2df0dadf",
       "name": "Derive Markup name1",
       "type": "n8n-nodes-base.code",
       "position": [
-        -768,
-        1008
+        -6880,
+        592
       ],
       "typeVersion": 2
     },
@@ -106,12 +106,12 @@
           "ignoreCase": true
         }
       },
-      "id": "a3169b38-738a-4b37-9e46-f1bbb58cbda2",
+      "id": "b5e69879-2c2a-4e2b-b743-208442d3fd08",
       "name": "If1",
       "type": "n8n-nodes-base.if",
       "position": [
-        -1440,
-        1008
+        -7552,
+        592
       ],
       "typeVersion": 2.2
     },
@@ -119,12 +119,12 @@
       "parameters": {
         "jsCode": "const item = items[0];\n\n// Extract required fields\nconst { event, folder_name, path: rawPath } = item.json.body;\n\n// Find the segment starting from \"Projekte\"\nconst match = rawPath.match(/EPCS Projekte.*$/i);\nif (!match) {\n  throw new Error(\"Could not extract the relevant path starting from 'Projekte'\");\n}\n\n// Slice from \"Projekte\" onward\nconst relevantPath = match[0];\n\n// Convert the extracted Windows-style path to Unix-style\nconst unixPath = relevantPath.replace(/\\\\/g, \"/\");\nconst fullRelativePath = `${unixPath}`;\n\n// Encode each segment of the full path for the Graph API\nconst encodedPath = fullRelativePath\n  .split(\"/\")\n  .map(encodeURIComponent)\n  .join(\"/\");\n\n// Build the final Graph API-compatible path\nconst graphApiPath = `/sites/06bf948f-b86d-4e3a-861f-5d09c3c18034,79725fd7-bd81-426a-b070-2b1172d4b30f/drives/b!j5S_Bm24Ok6GH10Jw8GANNdfcnmBvWpCsHArEXLUsw-G4JEVDbY7SYGJqMTAGYGQ/root:/${encodedPath}`;\n\nreturn [\n  {\n    json: {\n      event,\n      folder_name,\n      graphApiPath\n    }\n  }\n];"
       },
-      "id": "2ea0853e-746a-4044-ac26-09af93acf174",
+      "id": "3fbbddd6-52d1-4c5c-b2f8-f4014df6ba3c",
       "name": "Path to URL format1",
       "type": "n8n-nodes-base.code",
       "position": [
-        -1216,
-        1008
+        -7328,
+        592
       ],
       "typeVersion": 2
     },
@@ -135,13 +135,13 @@
         "nodeCredentialType": "microsoftOneDriveOAuth2Api",
         "options": {}
       },
-      "id": "79518282-d02a-410d-9d30-9e187b4ebead",
+      "id": "b7ed6046-2c48-4cf6-87ee-2c5662c2ebbe",
       "name": "HTTP Request1",
       "type": "n8n-nodes-base.httpRequest",
       "maxTries": 5,
       "position": [
-        -992,
-        1008
+        -7104,
+        592
       ],
       "notesInFlow": true,
       "retryOnFail": true,
@@ -154,168 +154,6 @@
         }
       },
       "notes": "Get folder id by path"
-    },
-    {
-      "parameters": {
-        "rules": {
-          "values": [
-            {
-              "conditions": {
-                "options": {
-                  "caseSensitive": false,
-                  "leftValue": "",
-                  "typeValidation": "loose",
-                  "version": 2
-                },
-                "combinator": "and",
-                "conditions": [
-                  {
-                    "id": "13a5bc05-a192-43b5-8764-5e3e99154328",
-                    "operator": {
-                      "type": "number",
-                      "operation": "lte"
-                    },
-                    "leftValue": "={{ Number($('markup_delivery').item.json.body.folder_name.match(/\\d+/)?.[0]) }}",
-                    "rightValue": 1
-                  }
-                ]
-              }
-            },
-            {
-              "conditions": {
-                "options": {
-                  "caseSensitive": false,
-                  "leftValue": "",
-                  "typeValidation": "loose",
-                  "version": 2
-                },
-                "combinator": "and",
-                "conditions": [
-                  {
-                    "id": "208b4680-f162-4c79-a1ca-227f19d7d4c9",
-                    "operator": {
-                      "type": "number",
-                      "operation": "gte"
-                    },
-                    "leftValue": "={{ Number($('markup_delivery').item.json.body.folder_name.match(/\\d+/)?.[0]) }}",
-                    "rightValue": "=2"
-                  }
-                ]
-              }
-            }
-          ]
-        },
-        "looseTypeValidation": true,
-        "options": {
-          "ignoreCase": true
-        }
-      },
-      "id": "6b13e6c4-1deb-4e1a-a4c7-12b16c393062",
-      "name": "Switch1",
-      "type": "n8n-nodes-base.switch",
-      "position": [
-        2592,
-        1008
-      ],
-      "typeVersion": 3.2
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "=https://graph.microsoft.com/v1.0/users/{{ $('HTTP Request1').item.json.lastModifiedBy.user.email }}/messages",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "microsoftOutlookOAuth2Api",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            }
-          ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={\n  \"subject\": \"Ihre Visualisierungen sind fertig – erste Version zur Ansicht (Pr. Nr. {{ $('Derive Markup name1').item.json.projectId }}-{{ $('Derive Markup name1').item.json.subProjectId }})\",\n  \"importance\": \"normal\",\n  \"body\": {\n    \"contentType\": \"HTML\",\n    \"content\": \"<div style=\\\"font-family: Aptos, Aptos_EmbeddedFont, Aptos_MSFontService, Calibri, Helvetica, sans-serif, serif, EmojiFont; font-size: 12pt; color: rgb(0, 0, 0);\\\">Hallo XXX,<br><br>nun ist es soweit – die erste Version Ihrer Visualisierungen ist fertig! Sie können sich die Dateien hier downloaden:<br><br><a href=\\\"{{ $node[\"Extract link field1\"].json.link }}\\\" target=\\\"_blank\\\">ZUM DOWNLOAD</a><br><br>Unser Ziel war es, nicht nur die Architektur zu zeigen, sondern die Atmosphäre spürbar zu machen. Ich hoffe, das Projekt gefällt Ihnen!<br><br>Falls etwas nicht zu 100% Ihren Vorstellungen entsprechen sollte, ändern wir dies in einer Gratis Revisionsrunde sehr gerne für Sie. Tragen Sie dazu einfach innerhalb von 7 Tagen Ihre Änderungswünsche in unser Tool ein und informieren Sie uns per E-Mail, sobald Sie damit fertig sind:<br><br><a href=\\\"{{ $node[\"Create revision project\"].json[\"shareLink\"][\"url\"] }}\\\" target=\\\"_blank\\\">ZUM REVISIONSTOOL</a><br><br>Wir freuen uns auf Ihre Rückmeldung!<br><br>Nochmals vielen Dank und herzliche Grüße<br><br>{{ $node[\"Get email signature1\"].json[\"htmlSignature\"] }}<br><br><strong>Noch ein paar kurze Hinweise zur Revision, Tool-Nutzung & Rechnungsstellung:</strong><br><br><strong>Revisions-Tool – so funktioniert’s:</strong><br><br>· Keine Registrierung nötig: Einfach als „Gast“ mit Namen anmelden (E-Mail-Adresse ist nicht erforderlich)<br>· Zum Kommentieren klicken Sie direkt auf die entsprechende Stelle im Bild<br>· Alle Ansichten lassen sich über die Pfeile oben im Bild aufrufen<br>· Ihre Kommentare werden automatisch gespeichert – Sie müssen nichts hochladen oder senden, <strong>ABER:</strong> Nach Abschluss benötigen wir eine kurze E-Mail von Ihnen an uns, dass Sie fertig sind – wir beginnen dann mit der Umsetzung<br><br><strong>Revisionen:</strong><br><br>Eine kostenlose Überarbeitungsrunde ist im Angebot enthalten. Sollten Sie darüber hinaus weitere Änderungen wünschen, die nicht durch uns verschuldet sind, bieten wir Ihnen gern eine zweite Revision zum halben Preis der Visualisierung an.<br><br>Bitte beachten Sie: Änderungswünsche berücksichtigen wir ausschließlich dann im Rahmen der kostenlosen Revision, wenn sie direkt im Revisions-Tool eingetragen wurden. Wünsche, die uns auf anderem Weg (z. B. per E-Mail oder Telefon) mitgeteilt werden, setzen wir auf Wunsch gern um – allerdings außerhalb des offiziellen Revisionsprozesses und ohne Gewähr für die vollständige Umsetzung.<br><br>Sollten wir innerhalb von 7 Tagen keine Änderungswünsche über das Revisions-Tool erhalten und auch keine Information über eine spätere Rückmeldung von Ihnen vorliegen, gehen wir davon aus, dass Sie keine Revision wünschen.<br><br><strong>Rechnungsadresse:</strong><br><br>Sollte sich Ihre Rechnungsadresse geändert haben, geben Sie uns diese bitte vor Rechnungsstellung bekannt. Bei einer nachträglichen Änderung nach Versand der Rechnung berechnen wir eine Bearbeitungsgebühr in Höhe von 20 €.<br><br>Die Rechnung wird nach vollständiger Lieferung aller bestellten Produkte gestellt.<br><br>Die im Angebot enthaltene kostenlose Revision kann selbstverständlich auch nach Rechnungsstellung noch in Anspruch genommen werden.<br><br></div>\"\n  },\n  \"toRecipients\": [\n    {\n      \"emailAddress\": {\n        \"address\": \"someone@example.com\"\n      }\n    }\n  ]\n}",
-        "options": {}
-      },
-      "id": "69e8153e-47dd-4943-b2d7-f33b38e6a2f5",
-      "name": "Create email draft I1",
-      "type": "n8n-nodes-base.httpRequest",
-      "position": [
-        2816,
-        912
-      ],
-      "retryOnFail": true,
-      "typeVersion": 4.2,
-      "credentials": {
-        "microsoftOutlookOAuth2Api": {
-          "id": "F7Vm7X6ecXksR5ER",
-          "name": "Microsoft Outlook account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "=https://graph.microsoft.com/v1.0/users/{{ $('HTTP Request1').item.json.lastModifiedBy.user.email }}/messages",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "microsoftOutlookOAuth2Api",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            }
-          ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={\n  \"subject\": \"Überarbeitete Visualisierungen – Ihre Änderungswünsche sind umgesetzt (Pr. Nr. {{ $('Derive Markup name1').item.json.projectId }}-{{ $('Derive Markup name1').item.json.subProjectId }})\",\n  \"importance\": \"normal\",\n  \"body\": {\n    \"contentType\": \"HTML\",\n    \"content\": \"<div style=\\\"font-family: Aptos, Aptos_EmbeddedFont, Aptos_MSFontService, Calibri, Helvetica, sans-serif, serif, EmojiFont; font-size: 12pt; color: rgb(0, 0, 0);\\\">Hallo Frau/Herr ,<br><br>ich hoffe, es geht Ihnen gut.<br><br>Anbei sende ich Ihnen die revidierten Visualisierungen, die wir nach Ihren Wünschen angepasst haben. Sie können sich die Dateien hier downloaden:<br><br><a href=\\\"{{ $node[\"Extract link field1\"].json.link }}\\\" target=\\\"_blank\\\">ZUM DOWNLOAD</a><br><br>Bei Bedarf einer weiteren Revision, die nicht durch uns verschuldet ist, bieten wir diese für 50% des Preises pro Visualisierung an. Falls dies gewünscht ist, fügen Sie Ihre Änderungswünsche einfach im Tool ein und geben Sie uns per E-Mail Bescheid, sobald Sie fertig sind:<br><br><a href=\\\"{{ $node['Create revision project'].json['shareLink']['url'] }}\\\" target=\\\"_blank\\\">ZUM REVISIONSTOOL</a><br><br>Wir freuen uns auf Ihre Rückmeldung und hoffen, Sie sind nun zu 100% zufrieden!<br><br>Nochmals vielen Dank und herzliche Grüße<br><br></div>{{ $node[\"Get email signature1\"].json[\"htmlSignature\"] }}\"\n  },\n  \"toRecipients\": [\n    {\n      \"emailAddress\": {\n        \"address\": \"someone@example.com\"\n      }\n    }\n  ]\n}",
-        "options": {}
-      },
-      "id": "9106f649-77d1-40ce-b31a-ebc6af9b8e0c",
-      "name": "Create email draft II1",
-      "type": "n8n-nodes-base.httpRequest",
-      "position": [
-        2816,
-        1104
-      ],
-      "retryOnFail": true,
-      "typeVersion": 4.2,
-      "credentials": {
-        "microsoftOutlookOAuth2Api": {
-          "id": "F7Vm7X6ecXksR5ER",
-          "name": "Microsoft Outlook account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "html": "<div class=\"viktoria\" style=\"font-family: Aptos, Aptos_EmbeddedFont, Aptos_MSFontService, Calibri, Helvetica, sans-serif, serif, EmojiFont; font-size: 12pt; color: rgb(0, 0, 0);\">\n  <span>Viktoria Andonova</span><br>\n  <em>Projektmanagement</em><br>\n  <span>Exposé Profi</span><br><br>\n\n  Website: <a href=\"https://www.exposeprofi.de\" target=\"_blank\" style=\"color: rgb(12,100,192); text-decoration: underline;\">www.exposeprofi.de</a><br>\n  Email: <span>viktoria.andonova@exposeprofi.de</span><br>\n  <span>Telefon: 07531-1227494</span><br><br>\n\n  <img src=\"https://drive.google.com/thumbnail?id=1Wj5pnGg0mbM8mkl90EEJqkx0Q72YsloI&sz=s4000\" alt=\"Viktoria Andonova\" width=\"100\" style=\"border-radius: 50%;\"><br><br>\n\n  <img src=\"https://drive.google.com/thumbnail?id=1fEyChbkYPWyCMueSl_abl8-gTkmtpNpP&sz=s4000\" alt=\"Exposeprofi Logo\" style=\"width: 249px; height: 57px; min-height: auto; min-width: auto;\">\n</div>\n\n<div class=\"vivien\" style=\"font-family: Aptos, Aptos_EmbeddedFont, Aptos_MSFontService, Calibri, Helvetica, sans-serif, serif, EmojiFont; font-size: 12pt; color: rgb(0, 0, 0);\">\n  <span>Vivien Sariewa</span><br>\n  <em>Projektmanagement</em><br>\n  <span>Exposé Profi</span><br><br>\n\n  Website: <a href=\"https://www.exposeprofi.de\" target=\"_blank\" style=\"color: rgb(12,100,192); text-decoration: underline;\">www.exposeprofi.de</a><br>\n  Email: <span>vivien.sariewa@exposeprofi.de</span><br>\n  <span>Telefon: 07531-1227498</span><br><br>\n\n  <img src=\"https://drive.google.com/thumbnail?id=1fEyChbkYPWyCMueSl_abl8-gTkmtpNpP&sz=s4000\" alt=\"Exposeprofi Logo\" style=\"width: 249px; height: 57px; min-height: auto; min-width: auto;\">\n</div>\n\n<div class=\"sonia\" style=\"font-family: Aptos, Aptos_EmbeddedFont, Aptos_MSFontService, Calibri, Helvetica, sans-serif, serif, EmojiFont; font-size: 12pt; color: rgb(0, 0, 0);\">\n  <span>Sonia Kaniss</span><br>\n  <span>(Dipl.-Ing. für Architektur)</span><br>\n  <em>Projektmanagement</em><br>\n  <span>Exposé Profi</span><br><br>\n\n  Website: <a href=\"https://www.exposeprofi.de\" target=\"_blank\" style=\"color: rgb(12,100,192); text-decoration: underline;\">www.exposeprofi.de</a><br>\n  Email: <span>sonia.kaniss@exposeprofi.de</span><br>\n  <span>Telefon: 07531-1227496</span><br><br>\n\n  <img src=\"https://drive.google.com/thumbnail?id=1fEyChbkYPWyCMueSl_abl8-gTkmtpNpP&sz=s4000\" alt=\"Exposeprofi Logo\" style=\"width: 249px; height: 57px; min-height: auto; min-width: auto;\">\n</div>\n\n<div class=\"projektmanagement team\" style=\"font-family: Aptos, Aptos_EmbeddedFont, Aptos_MSFontService, Calibri, Helvetica, sans-serif, serif, EmojiFont; font-size: 12pt; color: rgb(0, 0, 0);\">\n  <span>Projektmanagement Team</span><br>\n  <span>(Dipl.-Ing. für Architektur)</span><br>\n  <em>Projektmanagement</em><br>\n  <span>Exposé Profi</span><br><br>\n\n  Website: <a href=\"https://www.exposeprofi.de\" target=\"_blank\" style=\"color: rgb(12,100,192); text-decoration: underline;\">www.exposeprofi.de</a><br>\n  Email: <span>projektmanagement@exposeprofi.de</span><br>\n  \n\n  <img src=\"https://drive.google.com/thumbnail?id=1fEyChbkYPWyCMueSl_abl8-gTkmtpNpP&sz=s4000\" alt=\"Exposeprofi Logo\" style=\"width: 249px; height: 57px; min-height: auto; min-width: auto;\">\n</div>"
-      },
-      "id": "45a1aad6-ed45-4692-8932-bb3d04eb854a",
-      "name": "HTML1",
-      "type": "n8n-nodes-base.html",
-      "position": [
-        2144,
-        1008
-      ],
-      "typeVersion": 1.2
-    },
-    {
-      "parameters": {
-        "jsCode": "const html = $input.first().json.html || \"\";\nconst email = $node[\"HTTP Request1\"].json[\"lastModifiedBy\"]?.user?.email?.toLowerCase() || \"\";\n\nconst emailClassMap = {\n  \"viktoria.andonova@exposeprofi.de\": \"viktoria\",\n  \"vivien.sariewa@exposeprofi.de\": \"vivien\",\n  \"sonia.kaniss@exposeprofi.de\": \"sonia\",\n  \"projektmanagement@exposeprofi.de\": \"projektmanagement team\",\n  \"a.maiger@exposeprofi.de\":\"projektmanagement team\",\n};\n\nconst className = emailClassMap[email];\n\nlet signatureDiv = \"<div></div>\";\n\nif (className) {\n  const regex = new RegExp(`<div class=['\"]${className}['\"][\\\\s\\\\S]*?<\\\\/div>`);\n  \n  const match = html.match(regex);\n  if (match) {\n    signatureDiv = match[0];\n  }\n}\n\n// Properly escape json\nconst escapedSignature = JSON.stringify(signatureDiv).slice(1, -1);\n\nreturn [{ json: { htmlSignature: escapedSignature } }];"
-      },
-      "id": "e7f9001d-79b4-418d-8447-f74c5e6e032a",
-      "name": "Get email signature1",
-      "type": "n8n-nodes-base.code",
-      "position": [
-        2368,
-        1008
-      ],
-      "typeVersion": 2
     },
     {
       "parameters": {
@@ -336,12 +174,12 @@
         },
         "requestOptions": {}
       },
-      "id": "72b40aee-2015-4732-b721-863e67b5b5d9",
+      "id": "305ac6df-7d1e-4c9a-84b9-6daaf99842f1",
       "name": "Download file",
       "type": "n8n-nodes-base.microsoftSharePoint",
       "position": [
-        560,
-        768
+        -6112,
+        592
       ],
       "typeVersion": 1,
       "credentials": {
@@ -355,12 +193,12 @@
       "parameters": {
         "jsCode": "// Parse input JSON\nconst input = items[0].json;\n\n// Extract values array\nconst values = input.value || [];\n\n// Allowed MIME types\nconst allowedMimeTypes = [\n  \"image/jpeg\",\n  \"image/png\",\n  \"application/pdf\"\n];\n\n// Filter files by allowed MIME types\nconst filtered = values.filter(v =>\n  v.file && allowedMimeTypes.includes(v.file.mimeType)\n);\n\n// Return results as individual items (Loop Over Items compatible)\nreturn filtered.map(v => ({ json: v }));\n\n"
       },
-      "id": "0763f41b-916e-4321-8d58-a4d9a90856e6",
+      "id": "6e0d8d1b-ff77-43f2-ad08-6a735427b1ee",
       "name": "Get download file meta data",
       "type": "n8n-nodes-base.code",
       "position": [
-        -96,
-        1008
+        -6256,
+        592
       ],
       "typeVersion": 2
     },
@@ -370,199 +208,28 @@
         "path": "revision_tool_delivery",
         "options": {}
       },
-      "id": "e57a8757-354c-45ac-830e-a7e13f155053",
+      "id": "c8c8c1ad-d6af-4e5b-a563-65560560b961",
       "name": "markup_delivery",
       "type": "n8n-nodes-base.webhook",
       "position": [
-        -1664,
-        1008
+        -7776,
+        592
       ],
       "webhookId": "e94322d1-5fc0-4a9c-b2f0-f471bf3be592",
       "typeVersion": 2
     },
     {
       "parameters": {
-        "method": "POST",
-        "url": "https://workdrive.zoho.eu/api/v1/files",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Accept",
-              "value": "application/vnd.api+json"
-            },
-            {
-              "name": "Authorization",
-              "value": "=Bearer {{ $json.access_token }}"
-            }
-          ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={\n  \"data\": {\n    \"type\": \"files\", \n    \"attributes\": {\n      \"name\": \"{{ $('Create revision project').item.json.project.name }}\",\n      \"parent_id\": \"8rx9x7c03a216a95b495cbd04830597cee3a5\" \n    }\n  }\n}",
-        "options": {}
+        "jsCode": "// Runs ONCE. Builds the project name/comment for the single create-project\n// call. Reads the Graph metadata by reference (its direct input is now the\n// binary items from \"Download file\"). Images themselves are uploaded later\n// straight from the downloaded binary.\nconst IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];\n\nlet markupName = 'Untitled project';\nlet comment = '';\ntry {\n  const d = $('Derive Markup name1').first().json;\n  markupName = d.markupName || markupName;\n  comment = d.projectId ?? '';\n} catch (e) { /* keep defaults */ }\n\nconst images = $('Get download file meta data').all()\n  .map(i => i.json)\n  .filter(f => IMAGE_TYPES.includes(f.file?.mimeType));\n\nif (images.length === 0) {\n  throw new Error('No image files found in the folder (jpeg/png/webp/gif).');\n}\nif (images.length > 50) {\n  throw new Error(`Too many images (${images.length}) \\u2014 the API accepts at most 50 per project.`);\n}\n\nreturn [{ json: { name: markupName, comment, imageCount: images.length } }];"
       },
-      "id": "34277e28-1f09-4fb6-97f6-4df7d9bc177a",
-      "name": "Zoho Workdrive -Create folder1",
-      "type": "n8n-nodes-base.httpRequest",
-      "position": [
-        816,
-        1008
-      ],
-      "retryOnFail": true,
-      "typeVersion": 4.2
-    },
-    {
-      "parameters": {
-        "jsCode": "const responseString = $input.first().json.data;\n\nif (responseString === undefined) {\n\n  console.error(\"Error: Input responseString is undefined. Check the output of the previous node.\");\n\n  return [{ json: { error: \"Input responseString is undefined\" } }];\n}\n\nconst parsedResponse = JSON.parse(responseString);\n\n\nconst folderData = parsedResponse.data;\n\nif (folderData === undefined) {\n  console.error(\"Error: parsedResponse.data is undefined. Check the structure of the API response.\");\n\n  return [{ json: { error: \"parsedResponse.data is undefined\" } }];\n}\n\nconst folderId = folderData.id;\n\nif (folderId === undefined) {\n  console.error(\"Error: folderData.id is undefined. Check the structure of the API response's inner data object.\");\n\n  return [{ json: { error: \"folderData.id is undefined\" } }];\n}\n\nreturn [{\n  json: {\n    newFolderId: folderId\n  }\n}];"
-      },
-      "id": "5d33c4ae-cc37-46d6-8fa1-f71695a4d044",
-      "name": "Extract folder id1",
-      "type": "n8n-nodes-base.code",
-      "position": [
-        1040,
-        1008
-      ],
-      "typeVersion": 2
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "https://www.zohoapis.eu/workdrive/api/v1/links",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Accept",
-              "value": "application/vnd.api+json"
-            },
-            {
-              "name": "Authorization",
-              "value": "=Bearer {{ $item(0).$node[\"Generate Access Token1\"].json[\"access_token\"] }}"
-            }
-          ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={\n   \"data\": {\n      \"type\": \"links\",\n      \"attributes\": {\n         \"resource_id\": \"{{ $('Extract folder id1').first().json.newFolderId }}\",\n         \"link_name\": \"ZohoMarkup\",\n         \"request_user_data\": \"false\",\n         \"allow_download\": \"true\",\n         \"role_id\": \"6\"\n      }\n   }\n}",
-        "options": {}
-      },
-      "id": "c95a6e3b-0bea-44c0-9a8a-4049984e5f62",
-      "name": "Create external share link1",
-      "type": "n8n-nodes-base.httpRequest",
-      "position": [
-        1696,
-        1008
-      ],
-      "executeOnce": true,
-      "typeVersion": 4.2
-    },
-    {
-      "parameters": {
-        "jsCode": "const responseString = $input.first().json.data;\n\nif (!responseString) {\n  console.error(\"Error: Input responseString is undefined. Check the output of the previous node.\");\n  return [{ json: { error: \"Input responseString is undefined\" } }];\n}\n\nlet parsedResponse;\ntry {\n  parsedResponse = JSON.parse(responseString);\n} catch (e) {\n  console.error(\"Error parsing JSON:\", e);\n  return [{ json: { error: \"Invalid JSON format in responseString\" } }];\n}\n\nconst link = parsedResponse?.data?.attributes?.link;\n\nif (!link) {\n  console.error(\"Error: 'link' field is missing in the response.\");\n  return [{ json: { error: \"'link' field is missing\" } }];\n}\n\nreturn [{\n  json: {\n    link\n  }\n}];"
-      },
-      "id": "62d51a02-b561-41d8-b257-774bb278010d",
-      "name": "Extract link field1",
-      "type": "n8n-nodes-base.code",
-      "position": [
-        1920,
-        1008
-      ],
-      "typeVersion": 2
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "https://accounts.zoho.eu/oauth/v2/token",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpCustomAuth",
-        "options": {}
-      },
-      "id": "f36c8237-e08a-434b-83d4-03a086a6ed7d",
-      "name": "Generate Access Token1",
-      "type": "n8n-nodes-base.httpRequest",
-      "position": [
-        592,
-        1008
-      ],
-      "typeVersion": 4.2,
-      "executeOnce": true,
-      "credentials": {
-        "httpCustomAuth": {
-          "id": "M82C186MekPCjHp3",
-          "name": "Zoho WorkDrive"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "https://www.zohoapis.eu/workdrive/api/v1/upload",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Content-Type",
-              "value": "multipart/form-data"
-            },
-            {
-              "name": "Authorization",
-              "value": "=Bearer {{ $item(0).$node[\"Generate Access Token1\"].json[\"access_token\"] }}"
-            }
-          ]
-        },
-        "sendBody": true,
-        "contentType": "multipart-form-data",
-        "bodyParameters": {
-          "parameters": [
-            {
-              "name": "parent_id",
-              "value": "={{ $('Extract folder id1').first().json.newFolderId }}"
-            },
-            {
-              "parameterType": "formBinaryData",
-              "name": "content",
-              "inputDataFieldName": "data"
-            }
-          ]
-        },
-        "options": {}
-      },
-      "id": "5a55e2ac-e35a-48ac-b0b1-71f29971bf16",
-      "name": "Zoho Workdrive -Upload files1",
-      "type": "n8n-nodes-base.httpRequest",
-      "position": [
-        1472,
-        1008
-      ],
-      "retryOnFail": true,
-      "typeVersion": 4.2
-    },
-    {
-      "parameters": {
-        "mode": "chooseBranch"
-      },
-      "id": "f74114e7-bae3-4db2-9a8f-fb6f71972cad",
-      "name": "Merge1",
-      "type": "n8n-nodes-base.merge",
-      "position": [
-        1248,
-        1008
-      ],
-      "typeVersion": 3.1
-    },
-    {
-      "parameters": {
-        "jsCode": "// Mode: \"Run Once for All Items\"\n// Input: Graph driveItems from \"Get download file meta data\"\n// Output: one item containing the project name + a list of pre-authenticated\n// download URLs. No file bytes touch n8n.\n\nconst IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];\n\nlet markupName = 'Untitled project';\nlet comment = '';\ntry {\n  const d = $('Derive Markup name1').first().json;\n  markupName = d.markupName || markupName;\n  comment = d.projectId ?? '';\n} catch (e) { /* keep defaults */ }\n\nconst images = $('Get download file meta data').all()\n  .map(item => item.json)\n  .filter(f => f['@microsoft.graph.downloadUrl'] && IMAGE_TYPES.includes(f.file?.mimeType))\n  .map(f => ({\n    url: f['@microsoft.graph.downloadUrl'],\n    name: f.name,\n  }));\n\nif (images.length === 0) {\n  throw new Error('No downloadable images found in the folder items.');\n}\nif (images.length > 50) {\n  throw new Error(`Too many images (${images.length}) — the API accepts at most 50 per project.`);\n}\n\nreturn [{ json: { name: markupName, comment, images, imageCount: images.length } }];"
-      },
+      "id": "f1a2b3c4-1001-4a2b-8c3d-createname001",
+      "name": "Code in JavaScript",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        144,
-        1008
-      ],
-      "id": "e66ca3bd-7ef1-46d7-b3bd-9c423941feaf",
-      "name": "Code in JavaScript"
+        -5888,
+        592
+      ]
     },
     {
       "parameters": {
@@ -577,16 +244,16 @@
           "timeout": 60000
         }
       },
+      "id": "f1a2b3c4-1002-4a2b-8c3d-createproj002",
+      "name": "Create revision project",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        368,
-        1008
+        -5664,
+        592
       ],
-      "id": "d91d6027-a591-45a2-a664-3626ba901c42",
-      "name": "Create revision project",
       "notesInFlow": true,
-      "notes": "Creates the project WITHOUT images (fast). Images are uploaded in batches by the next two nodes to stay under the serverless timeout.",
+      "notes": "Creates the project WITHOUT images (fast, runs once). Images are added one at a time by the upload node.",
       "credentials": {
         "httpBearerAuth": {
           "id": "mqKQjpi68L1e3Joy",
@@ -596,16 +263,16 @@
     },
     {
       "parameters": {
-        "jsCode": "// Mode: \"Run Once for All Items\"\n// Emits one item per DOWNLOADED file, carrying its binary bytes (property\n// 'data', straight from the SharePoint \"Download file\" node) plus the id of\n// the project we just created. The Loop Over Images node then uploads each\n// binary one at a time via multipart/form-data. No URLs, nothing to expire.\nconst project = $('Create revision project').first().json.project;\nif (!project?.id) {\n  throw new Error('No project id in the create-project response: ' + JSON.stringify($('Create revision project').first().json));\n}\n\nconst files = $('Download file').all();\nif (files.length === 0) {\n  throw new Error('No downloaded files found to upload.');\n}\n\nreturn files.map((item, i) => ({\n  json: {\n    projectId: project.id,\n    index: i + 1,\n    total: files.length,\n    name: item.binary?.data?.fileName || item.json.name || `image-${i + 1}`,\n  },\n  binary: item.binary,\n}));"
+        "jsCode": "// Re-emits ONE item per downloaded image, each carrying its binary bytes\n// (property 'data', straight from the SharePoint \"Download file\" node) plus\n// the id of the project we just created. Because \"Download file\" is a direct\n// ancestor of this node, n8n keeps its binary data available here.\n//\n// The next HTTP node auto-iterates over these items \\u2014 one request per image,\n// sequentially. That per-item iteration IS the loop; no splitInBatches needed.\nconst project = $('Create revision project').first().json.project;\nif (!project?.id) {\n  throw new Error('No project id in create-project response: ' + JSON.stringify($('Create revision project').first().json));\n}\n\nconst IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];\nconst meta = $('Get download file meta data').all();\nconst files = $('Download file').all();\n\nconst out = [];\nfiles.forEach((item, i) => {\n  const mime = meta[i]?.json?.file?.mimeType;\n  // Skip non-images (e.g. PDFs the meta node let through).\n  if (mime && !IMAGE_TYPES.includes(mime)) return;\n  out.push({\n    json: {\n      projectId: project.id,\n      index: out.length + 1,\n      name: item.binary?.data?.fileName || meta[i]?.json?.name || `image-${i + 1}`,\n    },\n    binary: item.binary,\n  });\n});\n\nif (out.length === 0) {\n  throw new Error('No image binaries to upload.');\n}\nreturn out;"
       },
+      "id": "f1a2b3c4-1003-4a2b-8c3d-prepitems003",
+      "name": "Prepare image items",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        560,
-        1200
-      ],
-      "id": "b7a1c2d3-0001-4a5b-8c6d-splitbatches0",
-      "name": "Prepare image items"
+        -5440,
+        592
+      ]
     },
     {
       "parameters": {
@@ -628,38 +295,22 @@
           "timeout": 60000
         }
       },
+      "id": "f1a2b3c4-1004-4a2b-8c3d-uploadone004",
+      "name": "Upload one image",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        944,
-        1200
+        -5216,
+        592
       ],
-      "id": "c8b2d3e4-0002-4b6c-9d7e-uploadbatch00",
-      "name": "Upload one image",
       "notesInFlow": true,
-      "notes": "Uploads exactly ONE image as multipart/form-data binary (field 'images', from binary property 'data'), then returns to Loop Over Images for the next. Keep sequential — never enable parallel/concurrency.",
+      "notes": "Runs once per input item (n8n's native per-item loop): uploads exactly ONE image as multipart/form-data binary (field 'images', from binary property 'data'). Sequential \\u2014 do not enable parallel batching.",
       "credentials": {
         "httpBearerAuth": {
           "id": "mqKQjpi68L1e3Joy",
           "name": "REVISION_API_KEY"
         }
       }
-    },
-    {
-      "parameters": {
-        "batchSize": 1,
-        "options": {}
-      },
-      "type": "n8n-nodes-base.splitInBatches",
-      "typeVersion": 3,
-      "position": [
-        752,
-        1104
-      ],
-      "id": "e0d4f5a6-0004-4d8e-9fa0-loopimages000",
-      "name": "Loop Over Images",
-      "notesInFlow": true,
-      "notes": "Loops one image at a time. Output 'loop' -> Upload image batch -> back here. Output 'done' -> Zoho branch."
     }
   ],
   "connections": {
@@ -729,66 +380,11 @@
         ]
       ]
     },
-    "Switch1": {
-      "main": [
-        [
-          {
-            "node": "Create email draft I1",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Create email draft II1",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Create email draft I1": {
-      "main": [
-        []
-      ]
-    },
-    "Create email draft II1": {
-      "main": [
-        []
-      ]
-    },
-    "HTML1": {
-      "main": [
-        [
-          {
-            "node": "Get email signature1",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Get email signature1": {
-      "main": [
-        [
-          {
-            "node": "Switch1",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "Download file": {
       "main": [
         [
           {
             "node": "Code in JavaScript",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "Merge1",
             "type": "main",
             "index": 0
           }
@@ -817,83 +413,6 @@
         ]
       ]
     },
-    "Zoho Workdrive -Create folder1": {
-      "main": [
-        [
-          {
-            "node": "Extract folder id1",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Extract folder id1": {
-      "main": [
-        [
-          {
-            "node": "Merge1",
-            "type": "main",
-            "index": 1
-          }
-        ]
-      ]
-    },
-    "Create external share link1": {
-      "main": [
-        [
-          {
-            "node": "Extract link field1",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Extract link field1": {
-      "main": [
-        [
-          {
-            "node": "HTML1",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Generate Access Token1": {
-      "main": [
-        [
-          {
-            "node": "Zoho Workdrive -Create folder1",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Zoho Workdrive -Upload files1": {
-      "main": [
-        [
-          {
-            "node": "Create external share link1",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Merge1": {
-      "main": [
-        [
-          {
-            "node": "Zoho Workdrive -Upload files1",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "Code in JavaScript": {
       "main": [
         [
@@ -916,15 +435,8 @@
         ]
       ]
     },
-    "Loop Over Images": {
+    "Prepare image items": {
       "main": [
-        [
-          {
-            "node": "Generate Access Token1",
-            "type": "main",
-            "index": 0
-          }
-        ],
         [
           {
             "node": "Upload one image",
@@ -933,33 +445,36 @@
           }
         ]
       ]
-    },
-    "Prepare image items": {
-      "main": [
-        [
-          {
-            "node": "Loop Over Images",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Upload one image": {
-      "main": [
-        [
-          {
-            "node": "Loop Over Images",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
     }
   },
-  "pinData": {},
+  "pinData": {
+    "markup_delivery": [
+      {
+        "headers": {
+          "host": "n8n.exposeprofi.de",
+          "user-agent": "curl/8.5.0",
+          "content-length": "285",
+          "accept": "*/*",
+          "content-type": "application/json",
+          "x-forwarded-for": "102.89.44.155",
+          "x-forwarded-host": "n8n.exposeprofi.de",
+          "x-forwarded-proto": "https",
+          "accept-encoding": "gzip"
+        },
+        "params": {},
+        "query": {},
+        "body": {
+          "email": "nadia.klaus@sparkasse-gm.de",
+          "event": "moved",
+          "folder_name": "V2 -ready",
+          "path": "https://exposeprofi.sharepoint.com/sites/EP/Shared Documents/EPCS Projekte/15330_Sparkasse Gummersbach (Frau Klaus)/Projekt 2 (15330-02) - Anpassung Projekt 1 - Jul 25/Fertiges Projekt/V2 -ready"
+        },
+        "webhookUrl": "https://n8n.exposeprofi.de/webhook/revision_tool_delivery",
+        "executionMode": "production"
+      }
+    ]
+  },
   "meta": {
-    "templateCredsSetupCompleted": true,
     "instanceId": "f6f3efcb2394b456105829877cc7d77526d26fb46273064b38233e0c937d9f43"
   }
 }

@@ -9,7 +9,12 @@ const ALLOWED_IMAGE_TYPES = new Set([
   'image/webp',
   'image/gif',
 ]);
-const MAX_IMAGE_BYTES = 20 * 1024 * 1024; // 20 MB — same limit as the in-app uploader
+// Ceiling on the *source* file we accept before compression. Full-resolution
+// architectural renders routinely run 20–40 MB; sharp downscales them to
+// ~2 MB in uploadAndCreateThread, so gating on the raw size would wrongly
+// reject images that compress down fine. Keep a memory-safe upper bound so a
+// pathological file can't OOM the serverless function.
+const MAX_IMAGE_BYTES = 60 * 1024 * 1024; // 60 MB source ceiling
 
 const EXTENSION_BY_TYPE: Record<string, string> = {
   'image/jpeg': 'jpg',
@@ -85,7 +90,7 @@ async function fetchRemoteImage(
   const buffer = Buffer.from(await res.arrayBuffer());
   if (buffer.length === 0) throw new Error('Downloaded file is empty');
   if (buffer.length > MAX_IMAGE_BYTES) {
-    throw new Error('Image exceeds the 20 MB limit');
+    throw new Error('Image exceeds the 60 MB limit');
   }
 
   const urlName = decodeURIComponent(parsed.pathname.split('/').pop() || '');
@@ -120,7 +125,7 @@ function decodeBase64Image(input: ImageInput): {
   const buffer = Buffer.from(data, 'base64');
   if (buffer.length === 0) throw new Error('base64 data is empty or invalid');
   if (buffer.length > MAX_IMAGE_BYTES) {
-    throw new Error('Image exceeds the 20 MB limit');
+    throw new Error('Image exceeds the 60 MB limit');
   }
 
   const fileName = input.name
@@ -145,12 +150,29 @@ async function uploadAndCreateThread(
   contentType = compressed.contentType;
   fileName = compressed.fileName;
 
-  const path = storagePath(projectId, fileName);
-
-  const { error: uploadError } = await supabaseAdmin.storage
-    .from(BUCKET)
-    .upload(path, buffer, { contentType, cacheControl: '31536000', upsert: true });
-  if (uploadError) throw new Error(`Storage upload failed: ${uploadError.message}`);
+  // Upload to Storage, retrying once with a fresh path. Supabase occasionally
+  // returns a bare "Bad Request" (e.g. a transient 400 or a key collision);
+  // a second attempt with a new timestamped key clears those.
+  let path = storagePath(projectId, fileName);
+  let uploadError = (
+    await supabaseAdmin.storage
+      .from(BUCKET)
+      .upload(path, buffer, { contentType, cacheControl: '31536000', upsert: true })
+  ).error;
+  if (uploadError) {
+    path = storagePath(projectId, fileName);
+    uploadError = (
+      await supabaseAdmin.storage
+        .from(BUCKET)
+        .upload(path, buffer, { contentType, cacheControl: '31536000', upsert: true })
+    ).error;
+  }
+  if (uploadError) {
+    // Surface the full error, not just the generic ".message" ("Bad Request").
+    throw new Error(
+      `Storage upload failed for "${fileName}" (${contentType}, ${buffer.length} bytes): ${JSON.stringify(uploadError)}`
+    );
+  }
 
   const publicUrl = supabaseAdmin.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
 
@@ -226,7 +248,7 @@ export async function ingestImages(
           `Unsupported content type "${contentType}" — allowed: ${[...ALLOWED_IMAGE_TYPES].join(', ')}`
         );
       }
-      if (file.size > MAX_IMAGE_BYTES) throw new Error('Image exceeds the 20 MB limit');
+      if (file.size > MAX_IMAGE_BYTES) throw new Error('Image exceeds the 60 MB limit');
       const buffer = Buffer.from(await file.arrayBuffer());
       const fileName = sanitizeFileName(file.name || `image.${EXTENSION_BY_TYPE[contentType]}`);
       images.push(
