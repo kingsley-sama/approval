@@ -88,6 +88,26 @@ function sanitizeFileName(name: string): string {
   return name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 200) || 'image';
 }
 
+/**
+ * Wraps image bytes for Supabase Storage.
+ *
+ * storage-js hands anything that isn't a Blob/FormData straight to `fetch` as
+ * the request body (StorageFileApi.uploadOrUpdate → `body = fileBody`). On
+ * Vercel the Buffer sharp returns from its native binding is not recognised as
+ * a BodyInit by the runtime's fetch, which then falls back to stringifying it:
+ * every byte above 0x7F becomes U+FFFD and the stored file is a corrupt image
+ * with a valid content-type. Locally the same code is fine, which is why this
+ * only ever showed up in production.
+ *
+ * Copying into a realm-local Uint8Array and wrapping it in a Blob routes the
+ * upload through storage-js's FormData branch, which never stringifies.
+ */
+function toUploadBody(buffer: Buffer, contentType: string): Blob {
+  const bytes = new Uint8Array(buffer.byteLength);
+  bytes.set(buffer);
+  return new Blob([bytes], { type: contentType });
+}
+
 function storagePath(projectId: string, fileName: string): string {
   // Mirrors renderStoragePath in app/actions/storage.ts so API uploads live
   // alongside in-app uploads.
@@ -202,18 +222,19 @@ async function uploadAndCreateThread(
   // Upload to Storage, retrying once with a fresh path. Supabase occasionally
   // returns a bare "Bad Request" (e.g. a transient 400 or a key collision);
   // a second attempt with a new timestamped key clears those.
+  const body = toUploadBody(buffer, contentType);
   let path = storagePath(projectId, fileName);
   let uploadError = (
     await supabaseAdmin.storage
       .from(BUCKET)
-      .upload(path, buffer, { contentType, cacheControl: '31536000', upsert: true })
+      .upload(path, body, { contentType, cacheControl: '31536000', upsert: true })
   ).error;
   if (uploadError) {
     path = storagePath(projectId, fileName);
     uploadError = (
       await supabaseAdmin.storage
         .from(BUCKET)
-        .upload(path, buffer, { contentType, cacheControl: '31536000', upsert: true })
+        .upload(path, body, { contentType, cacheControl: '31536000', upsert: true })
     ).error;
   }
   if (uploadError) {

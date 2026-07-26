@@ -107,9 +107,17 @@ export class StorageService {
   ): Promise<UploadResult> {
     const filePath = `${projectName}/${fileName}`;
 
+    // Wrapped in a Blob rather than passed as a raw Buffer: storage-js hands a
+    // Buffer straight to fetch, and on Vercel a Buffer that crossed a realm
+    // boundary (e.g. from sharp's native binding) gets stringified into
+    // U+FFFD-filled garbage instead of sent as bytes. See toUploadBody in
+    // lib/api/ingest-images.ts.
+    const bytes = new Uint8Array(buffer.byteLength);
+    bytes.set(buffer);
+
     const { data, error } = await this.client.storage
       .from(this.bucketName)
-      .upload(filePath, buffer, {
+      .upload(filePath, new Blob([bytes], { type: contentType }), {
         contentType,
         cacheControl: '31536000',
         upsert: options?.upsert ?? true,
