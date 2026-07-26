@@ -63,7 +63,11 @@ export async function POST(
       if (value instanceof File && value.size > 0) files.push(value);
     }
     if (files.length === 0) {
-      return apiError(422, 'validation_error', 'Attach at least one image file to the form data.');
+      return apiError(
+        422,
+        'validation_error',
+        'Attach at least one non-empty image file to the form data. Note that Vercel rejects request bodies over 4.5 MB before they reach this handler — send large images as { "images": [{ "url": ... }] } instead.'
+      );
     }
   } else {
     let json: unknown;

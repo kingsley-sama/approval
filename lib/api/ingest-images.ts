@@ -23,6 +23,38 @@ const EXTENSION_BY_TYPE: Record<string, string> = {
   'image/gif': 'gif',
 };
 
+const TYPE_BY_EXTENSION: Record<string, string> = {
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+  webp: 'image/webp',
+  gif: 'image/gif',
+};
+
+/**
+ * Identifies an image from its magic bytes. Needed because pre-authenticated
+ * download URLs (SharePoint/Graph `@microsoft.graph.downloadUrl`, S3 presigned
+ * links, …) frequently serve real images as `application/octet-stream`, and
+ * some CDNs send `binary/octet-stream` or a bare `image/jpg`. The bytes are
+ * authoritative; the header is only a hint.
+ */
+function sniffImageType(buffer: Buffer): string | null {
+  if (buffer.length < 12) return null;
+  if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return 'image/jpeg';
+  if (buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])))
+    return 'image/png';
+  const ascii = buffer.subarray(0, 12).toString('latin1');
+  if (ascii.startsWith('GIF87a') || ascii.startsWith('GIF89a')) return 'image/gif';
+  if (ascii.startsWith('RIFF') && ascii.slice(8, 12) === 'WEBP') return 'image/webp';
+  return null;
+}
+
+/** Last-resort type guess from a filename's extension. */
+function typeFromExtension(fileName: string): string | null {
+  const ext = fileName.split('.').pop()?.toLowerCase();
+  return (ext && TYPE_BY_EXTENSION[ext]) || null;
+}
+
 /** One image supplied in a JSON request body. */
 export interface ImageInput {
   /** Publicly reachable URL the server should download the image from. */
@@ -63,7 +95,8 @@ function storagePath(projectId: string, fileName: string): string {
 }
 
 async function fetchRemoteImage(
-  url: string
+  url: string,
+  hintName?: string
 ): Promise<{ buffer: Buffer; contentType: string; fileName: string }> {
   let parsed: URL;
   try {
@@ -80,11 +113,12 @@ async function fetchRemoteImage(
     throw new Error(`Download failed with status ${res.status}`);
   }
 
-  const contentType = (res.headers.get('content-type') || '').split(';')[0].trim();
-  if (!ALLOWED_IMAGE_TYPES.has(contentType)) {
-    throw new Error(
-      `Unsupported content type "${contentType || 'unknown'}" — allowed: ${[...ALLOWED_IMAGE_TYPES].join(', ')}`
-    );
+  const headerType = (res.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+
+  // Bail out before buffering when the server already tells us it's oversized.
+  const declaredLength = Number(res.headers.get('content-length'));
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_IMAGE_BYTES) {
+    throw new Error('Image exceeds the 60 MB limit');
   }
 
   const buffer = Buffer.from(await res.arrayBuffer());
@@ -93,10 +127,25 @@ async function fetchRemoteImage(
     throw new Error('Image exceeds the 60 MB limit');
   }
 
+  // Trust the header only when it names an allowed type; otherwise fall back to
+  // the file's own magic bytes, then to the supplied name's extension.
+  const contentType = ALLOWED_IMAGE_TYPES.has(headerType)
+    ? headerType
+    : sniffImageType(buffer) || typeFromExtension(hintName || parsed.pathname) || '';
+
+  if (!ALLOWED_IMAGE_TYPES.has(contentType)) {
+    throw new Error(
+      `Unsupported content type "${headerType || 'unknown'}" and the downloaded bytes are not a recognised image — allowed: ${[...ALLOWED_IMAGE_TYPES].join(', ')}`
+    );
+  }
+
   const urlName = decodeURIComponent(parsed.pathname.split('/').pop() || '');
-  const fileName = urlName.includes('.')
-    ? urlName
-    : `${urlName || 'image'}.${EXTENSION_BY_TYPE[contentType]}`;
+  // Pre-authenticated URLs (Graph, presigned S3) carry no usable filename, so
+  // prefer the caller-supplied name when the path doesn't provide one.
+  const baseName = urlName.includes('.') ? urlName : hintName?.trim() || '';
+  const fileName = baseName.includes('.')
+    ? baseName
+    : `${baseName || urlName || 'image'}.${EXTENSION_BY_TYPE[contentType]}`;
 
   return { buffer, contentType, fileName };
 }
@@ -224,7 +273,7 @@ export async function ingestImages(
     try {
       let buffer: Buffer, contentType: string, fileName: string;
       if (input.url) {
-        ({ buffer, contentType, fileName } = await fetchRemoteImage(input.url));
+        ({ buffer, contentType, fileName } = await fetchRemoteImage(input.url, input.name));
       } else if (input.base64) {
         ({ buffer, contentType, fileName } = decodeBase64Image(input));
       } else {

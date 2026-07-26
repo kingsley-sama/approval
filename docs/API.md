@@ -143,7 +143,11 @@ curl -X POST https://revision.exposeprofi.de/api/v1/projects \
 | `images[].name` | string | — | Display name shown in the workspace |
 | `share` | object | — | If present, a share link is created immediately. `permissions`: `view` \| `comment` \| `draw_and_comment` |
 
-Allowed image types: `image/jpeg`, `image/png`, `image/webp`, `image/gif`. Max 20 MB each.
+Allowed image types: `image/jpeg`, `image/png`, `image/webp`, `image/gif`. Max 60 MB per source file.
+
+The type is taken from the response's `Content-Type` when that names an allowed image type; otherwise it falls back to the file's magic bytes and then to the extension of `images[].name`. Pre-authenticated links (SharePoint/Graph `@microsoft.graph.downloadUrl`, presigned S3 URLs) often serve real images as `application/octet-stream`, and those are accepted.
+
+> **Files over 4.5 MB must be sent as URLs, not as multipart uploads.** The production deployment runs on Vercel, whose serverless functions reject any request body larger than 4.5 MB with `413 FUNCTION_PAYLOAD_TOO_LARGE` — the platform rejects it at the edge, before this API sees it, so nothing appears in `failedImages`. Sending `{ "images": [{ "url": ... }] }` keeps the request tiny and lets the server do the download, where the 60 MB ceiling above is the only limit. Multipart uploads remain fine for small files and for local development, which has no such cap.
 
 Ingested jpeg/png/webp images are compressed server-side before storage (downscaled to max 2560px and re-encoded as JPEG), matching the in-app uploader. GIFs are stored as-is to preserve animation.
 

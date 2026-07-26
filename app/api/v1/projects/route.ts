@@ -50,8 +50,22 @@ async function parseBody(request: NextRequest): Promise<ParsedBody | NextRespons
     // Accept files under any field name — n8n and other tools name binary
     // fields differently ("images", "files", "data", "file0"…).
     const files: File[] = [];
+    let fileParts = 0;
     for (const [, value] of form.entries()) {
-      if (value instanceof File && value.size > 0) files.push(value);
+      if (value instanceof File) {
+        fileParts++;
+        if (value.size > 0) files.push(value);
+      }
+    }
+    // A form that carried file parts but no bytes means the upload was
+    // truncated or the binary field was empty. Failing loudly beats returning
+    // 201 for a project that silently ends up with no images.
+    if (fileParts > 0 && files.length === 0) {
+      return apiError(
+        422,
+        'empty_files',
+        `Received ${fileParts} file field(s) but every one was empty (0 bytes). Note that Vercel rejects request bodies over 4.5 MB before they reach this handler — send large images as { "images": [{ "url": ... }] } instead.`
+      );
     }
     const sharePermissions = form.get('share_permissions')
       ? String(form.get('share_permissions'))
