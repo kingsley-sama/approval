@@ -236,7 +236,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"subject\": \"Ihre Visualisierungen sind fertig – erste Version zur Ansicht (Pr. Nr. {{ $('Derive Markup name1').item.json.projectId }}-{{ $('Derive Markup name1').item.json.subProjectId }})\",\n  \"importance\": \"normal\",\n  \"body\": {\n    \"contentType\": \"HTML\",\n    \"content\": \"<div style=\\\"font-family: Aptos, Aptos_EmbeddedFont, Aptos_MSFontService, Calibri, Helvetica, sans-serif, serif, EmojiFont; font-size: 12pt; color: rgb(0, 0, 0);\\\">Hallo XXX,<br><br>nun ist es soweit – die erste Version Ihrer Visualisierungen ist fertig! Sie können sich die Dateien hier downloaden:<br><br><a href=\\\"{{ $node[\"Extract link field1\"].json.link }}\\\" target=\\\"_blank\\\">ZUM DOWNLOAD</a><br><br>Unser Ziel war es, nicht nur die Architektur zu zeigen, sondern die Atmosphäre spürbar zu machen. Ich hoffe, das Projekt gefällt Ihnen!<br><br>Falls etwas nicht zu 100% Ihren Vorstellungen entsprechen sollte, ändern wir dies in einer Gratis Revisionsrunde sehr gerne für Sie. Tragen Sie dazu einfach innerhalb von 7 Tagen Ihre Änderungswünsche in unser Tool ein und informieren Sie uns per E-Mail, sobald Sie damit fertig sind:<br><br><a href=\\\"{{ $node[\"Create revision project\"].json[\"shareLink\"][\"url\"] }}\\\" target=\\\"_blank\\\">ZUM REVISIONSTOOL</a><br><br>Wir freuen uns auf Ihre Rückmeldung!<br><br>Nochmals vielen Dank und herzliche Grüße<br><br>{{ $node[\"Get email signature1\"].json[\"htmlSignature\"] }}<br><br><strong>Noch ein paar kurze Hinweise zur Revision, Tool-Nutzung & Rechnungsstellung:</strong><br><br><strong>Revisions-Tool – so funktioniert’s:</strong><br><br>· Keine Registrierung nötig: Einfach als „Gast“ mit Namen anmelden (E-Mail-Adresse ist nicht erforderlich)<br>· Zum Kommentieren klicken Sie direkt auf die entsprechende Stelle im Bild<br>· Alle Ansichten lassen sich über die Pfeile oben im Bild aufrufen<br>· Ihre Kommentare werden automatisch gespeichert – Sie müssen nichts hochladen oder senden, <strong>ABER:</strong> Nach Abschluss benötigen wir eine kurze E-Mail von Ihnen an uns, dass Sie fertig sind – wir beginnen dann mit der Umsetzung<br><br><strong>Revisionen:</strong><br><br>Eine kostenlose Überarbeitungsrunde ist im Angebot enthalten. Sollten Sie darüber hinaus weitere Änderungen wünschen, die nicht durch uns verschuldet sind, bieten wir Ihnen gern eine zweite Revision zum halben Preis der Visualisierung an.<br><br>Bitte beachten Sie: Änderungswünsche berücksichtigen wir ausschließlich dann im Rahmen der kostenlosen Revision, wenn sie direkt im Revisions-Tool eingetragen wurden. Wünsche, die uns auf anderem Weg (z. B. per E-Mail oder Telefon) mitgeteilt werden, setzen wir auf Wunsch gern um – allerdings außerhalb des offiziellen Revisionsprozesses und ohne Gewähr für die vollständige Umsetzung.<br><br>Sollten wir innerhalb von 7 Tagen keine Änderungswünsche über das Revisions-Tool erhalten und auch keine Information über eine spätere Rückmeldung von Ihnen vorliegen, gehen wir davon aus, dass Sie keine Revision wünschen.<br><br><strong>Rechnungsadresse:</strong><br><br>Sollte sich Ihre Rechnungsadresse geändert haben, geben Sie uns diese bitte vor Rechnungsstellung bekannt. Bei einer nachträglichen Änderung nach Versand der Rechnung berechnen wir eine Bearbeitungsgebühr in Höhe von 20 €.<br><br>Die Rechnung wird nach vollständiger Lieferung aller bestellten Produkte gestellt.<br><br>Die im Angebot enthaltene kostenlose Revision kann selbstverständlich auch nach Rechnungsstellung noch in Anspruch genommen werden.<br><br></div>\"\n  },\n  \"toRecipients\": [\n    {\n      \"emailAddress\": {\n        \"address\": \"someone@example.com\"\n      }\n    }\n  ]\n}",
+        "jsonBody": "={\n  \"subject\": \"Ihre Visualisierungen sind fertig \u2013 erste Version zur Ansicht (Pr. Nr. {{ $('Derive Markup name1').item.json.projectId }}-{{ $('Derive Markup name1').item.json.subProjectId }})\",\n  \"importance\": \"normal\",\n  \"body\": {\n    \"contentType\": \"HTML\",\n    \"content\": \"<div style=\\\"font-family: Aptos, Aptos_EmbeddedFont, Aptos_MSFontService, Calibri, Helvetica, sans-serif, serif, EmojiFont; font-size: 12pt; color: rgb(0, 0, 0);\\\">Hallo XXX,<br><br>nun ist es soweit \u2013 die erste Version Ihrer Visualisierungen ist fertig! Sie k\u00f6nnen sich die Dateien hier downloaden:<br><br><a href=\\\"{{ $node[\"Extract link field1\"].json.link }}\\\" target=\\\"_blank\\\">ZUM DOWNLOAD</a><br><br>Unser Ziel war es, nicht nur die Architektur zu zeigen, sondern die Atmosph\u00e4re sp\u00fcrbar zu machen. Ich hoffe, das Projekt gef\u00e4llt Ihnen!<br><br>Falls etwas nicht zu 100% Ihren Vorstellungen entsprechen sollte, \u00e4ndern wir dies in einer Gratis Revisionsrunde sehr gerne f\u00fcr Sie. Tragen Sie dazu einfach innerhalb von 7 Tagen Ihre \u00c4nderungsw\u00fcnsche in unser Tool ein und informieren Sie uns per E-Mail, sobald Sie damit fertig sind:<br><br><a href=\\\"{{ $node[\"Create revision project\"].json[\"shareLink\"][\"url\"] }}\\\" target=\\\"_blank\\\">ZUM REVISIONSTOOL</a><br><br>Wir freuen uns auf Ihre R\u00fcckmeldung!<br><br>Nochmals vielen Dank und herzliche Gr\u00fc\u00dfe<br><br>{{ $node[\"Get email signature1\"].json[\"htmlSignature\"] }}<br><br><strong>Noch ein paar kurze Hinweise zur Revision, Tool-Nutzung & Rechnungsstellung:</strong><br><br><strong>Revisions-Tool \u2013 so funktioniert\u2019s:</strong><br><br>\u00b7 Keine Registrierung n\u00f6tig: Einfach als \u201eGast\u201c mit Namen anmelden (E-Mail-Adresse ist nicht erforderlich)<br>\u00b7 Zum Kommentieren klicken Sie direkt auf die entsprechende Stelle im Bild<br>\u00b7 Alle Ansichten lassen sich \u00fcber die Pfeile oben im Bild aufrufen<br>\u00b7 Ihre Kommentare werden automatisch gespeichert \u2013 Sie m\u00fcssen nichts hochladen oder senden, <strong>ABER:</strong> Nach Abschluss ben\u00f6tigen wir eine kurze E-Mail von Ihnen an uns, dass Sie fertig sind \u2013 wir beginnen dann mit der Umsetzung<br><br><strong>Revisionen:</strong><br><br>Eine kostenlose \u00dcberarbeitungsrunde ist im Angebot enthalten. Sollten Sie dar\u00fcber hinaus weitere \u00c4nderungen w\u00fcnschen, die nicht durch uns verschuldet sind, bieten wir Ihnen gern eine zweite Revision zum halben Preis der Visualisierung an.<br><br>Bitte beachten Sie: \u00c4nderungsw\u00fcnsche ber\u00fccksichtigen wir ausschlie\u00dflich dann im Rahmen der kostenlosen Revision, wenn sie direkt im Revisions-Tool eingetragen wurden. W\u00fcnsche, die uns auf anderem Weg (z. B. per E-Mail oder Telefon) mitgeteilt werden, setzen wir auf Wunsch gern um \u2013 allerdings au\u00dferhalb des offiziellen Revisionsprozesses und ohne Gew\u00e4hr f\u00fcr die vollst\u00e4ndige Umsetzung.<br><br>Sollten wir innerhalb von 7 Tagen keine \u00c4nderungsw\u00fcnsche \u00fcber das Revisions-Tool erhalten und auch keine Information \u00fcber eine sp\u00e4tere R\u00fcckmeldung von Ihnen vorliegen, gehen wir davon aus, dass Sie keine Revision w\u00fcnschen.<br><br><strong>Rechnungsadresse:</strong><br><br>Sollte sich Ihre Rechnungsadresse ge\u00e4ndert haben, geben Sie uns diese bitte vor Rechnungsstellung bekannt. Bei einer nachtr\u00e4glichen \u00c4nderung nach Versand der Rechnung berechnen wir eine Bearbeitungsgeb\u00fchr in H\u00f6he von 20 \u20ac.<br><br>Die Rechnung wird nach vollst\u00e4ndiger Lieferung aller bestellten Produkte gestellt.<br><br>Die im Angebot enthaltene kostenlose Revision kann selbstverst\u00e4ndlich auch nach Rechnungsstellung noch in Anspruch genommen werden.<br><br></div>\"\n  },\n  \"toRecipients\": [\n    {\n      \"emailAddress\": {\n        \"address\": \"someone@example.com\"\n      }\n    }\n  ]\n}",
         "options": {}
       },
       "id": "69e8153e-47dd-4943-b2d7-f33b38e6a2f5",
@@ -272,7 +272,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"subject\": \"Überarbeitete Visualisierungen – Ihre Änderungswünsche sind umgesetzt (Pr. Nr. {{ $('Derive Markup name1').item.json.projectId }}-{{ $('Derive Markup name1').item.json.subProjectId }})\",\n  \"importance\": \"normal\",\n  \"body\": {\n    \"contentType\": \"HTML\",\n    \"content\": \"<div style=\\\"font-family: Aptos, Aptos_EmbeddedFont, Aptos_MSFontService, Calibri, Helvetica, sans-serif, serif, EmojiFont; font-size: 12pt; color: rgb(0, 0, 0);\\\">Hallo Frau/Herr ,<br><br>ich hoffe, es geht Ihnen gut.<br><br>Anbei sende ich Ihnen die revidierten Visualisierungen, die wir nach Ihren Wünschen angepasst haben. Sie können sich die Dateien hier downloaden:<br><br><a href=\\\"{{ $node[\"Extract link field1\"].json.link }}\\\" target=\\\"_blank\\\">ZUM DOWNLOAD</a><br><br>Bei Bedarf einer weiteren Revision, die nicht durch uns verschuldet ist, bieten wir diese für 50% des Preises pro Visualisierung an. Falls dies gewünscht ist, fügen Sie Ihre Änderungswünsche einfach im Tool ein und geben Sie uns per E-Mail Bescheid, sobald Sie fertig sind:<br><br><a href=\\\"{{ $node['Create revision project'].json['shareLink']['url'] }}\\\" target=\\\"_blank\\\">ZUM REVISIONSTOOL</a><br><br>Wir freuen uns auf Ihre Rückmeldung und hoffen, Sie sind nun zu 100% zufrieden!<br><br>Nochmals vielen Dank und herzliche Grüße<br><br></div>{{ $node[\"Get email signature1\"].json[\"htmlSignature\"] }}\"\n  },\n  \"toRecipients\": [\n    {\n      \"emailAddress\": {\n        \"address\": \"someone@example.com\"\n      }\n    }\n  ]\n}",
+        "jsonBody": "={\n  \"subject\": \"\u00dcberarbeitete Visualisierungen \u2013 Ihre \u00c4nderungsw\u00fcnsche sind umgesetzt (Pr. Nr. {{ $('Derive Markup name1').item.json.projectId }}-{{ $('Derive Markup name1').item.json.subProjectId }})\",\n  \"importance\": \"normal\",\n  \"body\": {\n    \"contentType\": \"HTML\",\n    \"content\": \"<div style=\\\"font-family: Aptos, Aptos_EmbeddedFont, Aptos_MSFontService, Calibri, Helvetica, sans-serif, serif, EmojiFont; font-size: 12pt; color: rgb(0, 0, 0);\\\">Hallo Frau/Herr ,<br><br>ich hoffe, es geht Ihnen gut.<br><br>Anbei sende ich Ihnen die revidierten Visualisierungen, die wir nach Ihren W\u00fcnschen angepasst haben. Sie k\u00f6nnen sich die Dateien hier downloaden:<br><br><a href=\\\"{{ $node[\"Extract link field1\"].json.link }}\\\" target=\\\"_blank\\\">ZUM DOWNLOAD</a><br><br>Bei Bedarf einer weiteren Revision, die nicht durch uns verschuldet ist, bieten wir diese f\u00fcr 50% des Preises pro Visualisierung an. Falls dies gew\u00fcnscht ist, f\u00fcgen Sie Ihre \u00c4nderungsw\u00fcnsche einfach im Tool ein und geben Sie uns per E-Mail Bescheid, sobald Sie fertig sind:<br><br><a href=\\\"{{ $node['Create revision project'].json['shareLink']['url'] }}\\\" target=\\\"_blank\\\">ZUM REVISIONSTOOL</a><br><br>Wir freuen uns auf Ihre R\u00fcckmeldung und hoffen, Sie sind nun zu 100% zufrieden!<br><br>Nochmals vielen Dank und herzliche Gr\u00fc\u00dfe<br><br></div>{{ $node[\"Get email signature1\"].json[\"htmlSignature\"] }}\"\n  },\n  \"toRecipients\": [\n    {\n      \"emailAddress\": {\n        \"address\": \"someone@example.com\"\n      }\n    }\n  ]\n}",
         "options": {}
       },
       "id": "9106f649-77d1-40ce-b31a-ebc6af9b8e0c",
@@ -293,7 +293,7 @@
     },
     {
       "parameters": {
-        "html": "<div class=\"viktoria\" style=\"font-family: Aptos, Aptos_EmbeddedFont, Aptos_MSFontService, Calibri, Helvetica, sans-serif, serif, EmojiFont; font-size: 12pt; color: rgb(0, 0, 0);\">\n  <span>Viktoria Andonova</span><br>\n  <em>Projektmanagement</em><br>\n  <span>Exposé Profi</span><br><br>\n\n  Website: <a href=\"https://www.exposeprofi.de\" target=\"_blank\" style=\"color: rgb(12,100,192); text-decoration: underline;\">www.exposeprofi.de</a><br>\n  Email: <span>viktoria.andonova@exposeprofi.de</span><br>\n  <span>Telefon: 07531-1227494</span><br><br>\n\n  <img src=\"https://drive.google.com/thumbnail?id=1Wj5pnGg0mbM8mkl90EEJqkx0Q72YsloI&sz=s4000\" alt=\"Viktoria Andonova\" width=\"100\" style=\"border-radius: 50%;\"><br><br>\n\n  <img src=\"https://drive.google.com/thumbnail?id=1fEyChbkYPWyCMueSl_abl8-gTkmtpNpP&sz=s4000\" alt=\"Exposeprofi Logo\" style=\"width: 249px; height: 57px; min-height: auto; min-width: auto;\">\n</div>\n\n<div class=\"vivien\" style=\"font-family: Aptos, Aptos_EmbeddedFont, Aptos_MSFontService, Calibri, Helvetica, sans-serif, serif, EmojiFont; font-size: 12pt; color: rgb(0, 0, 0);\">\n  <span>Vivien Sariewa</span><br>\n  <em>Projektmanagement</em><br>\n  <span>Exposé Profi</span><br><br>\n\n  Website: <a href=\"https://www.exposeprofi.de\" target=\"_blank\" style=\"color: rgb(12,100,192); text-decoration: underline;\">www.exposeprofi.de</a><br>\n  Email: <span>vivien.sariewa@exposeprofi.de</span><br>\n  <span>Telefon: 07531-1227498</span><br><br>\n\n  <img src=\"https://drive.google.com/thumbnail?id=1fEyChbkYPWyCMueSl_abl8-gTkmtpNpP&sz=s4000\" alt=\"Exposeprofi Logo\" style=\"width: 249px; height: 57px; min-height: auto; min-width: auto;\">\n</div>\n\n<div class=\"sonia\" style=\"font-family: Aptos, Aptos_EmbeddedFont, Aptos_MSFontService, Calibri, Helvetica, sans-serif, serif, EmojiFont; font-size: 12pt; color: rgb(0, 0, 0);\">\n  <span>Sonia Kaniss</span><br>\n  <span>(Dipl.-Ing. für Architektur)</span><br>\n  <em>Projektmanagement</em><br>\n  <span>Exposé Profi</span><br><br>\n\n  Website: <a href=\"https://www.exposeprofi.de\" target=\"_blank\" style=\"color: rgb(12,100,192); text-decoration: underline;\">www.exposeprofi.de</a><br>\n  Email: <span>sonia.kaniss@exposeprofi.de</span><br>\n  <span>Telefon: 07531-1227496</span><br><br>\n\n  <img src=\"https://drive.google.com/thumbnail?id=1fEyChbkYPWyCMueSl_abl8-gTkmtpNpP&sz=s4000\" alt=\"Exposeprofi Logo\" style=\"width: 249px; height: 57px; min-height: auto; min-width: auto;\">\n</div>\n\n<div class=\"projektmanagement team\" style=\"font-family: Aptos, Aptos_EmbeddedFont, Aptos_MSFontService, Calibri, Helvetica, sans-serif, serif, EmojiFont; font-size: 12pt; color: rgb(0, 0, 0);\">\n  <span>Projektmanagement Team</span><br>\n  <span>(Dipl.-Ing. für Architektur)</span><br>\n  <em>Projektmanagement</em><br>\n  <span>Exposé Profi</span><br><br>\n\n  Website: <a href=\"https://www.exposeprofi.de\" target=\"_blank\" style=\"color: rgb(12,100,192); text-decoration: underline;\">www.exposeprofi.de</a><br>\n  Email: <span>projektmanagement@exposeprofi.de</span><br>\n  \n\n  <img src=\"https://drive.google.com/thumbnail?id=1fEyChbkYPWyCMueSl_abl8-gTkmtpNpP&sz=s4000\" alt=\"Exposeprofi Logo\" style=\"width: 249px; height: 57px; min-height: auto; min-width: auto;\">\n</div>"
+        "html": "<div class=\"viktoria\" style=\"font-family: Aptos, Aptos_EmbeddedFont, Aptos_MSFontService, Calibri, Helvetica, sans-serif, serif, EmojiFont; font-size: 12pt; color: rgb(0, 0, 0);\">\n  <span>Viktoria Andonova</span><br>\n  <em>Projektmanagement</em><br>\n  <span>Expos\u00e9 Profi</span><br><br>\n\n  Website: <a href=\"https://www.exposeprofi.de\" target=\"_blank\" style=\"color: rgb(12,100,192); text-decoration: underline;\">www.exposeprofi.de</a><br>\n  Email: <span>viktoria.andonova@exposeprofi.de</span><br>\n  <span>Telefon: 07531-1227494</span><br><br>\n\n  <img src=\"https://drive.google.com/thumbnail?id=1Wj5pnGg0mbM8mkl90EEJqkx0Q72YsloI&sz=s4000\" alt=\"Viktoria Andonova\" width=\"100\" style=\"border-radius: 50%;\"><br><br>\n\n  <img src=\"https://drive.google.com/thumbnail?id=1fEyChbkYPWyCMueSl_abl8-gTkmtpNpP&sz=s4000\" alt=\"Exposeprofi Logo\" style=\"width: 249px; height: 57px; min-height: auto; min-width: auto;\">\n</div>\n\n<div class=\"vivien\" style=\"font-family: Aptos, Aptos_EmbeddedFont, Aptos_MSFontService, Calibri, Helvetica, sans-serif, serif, EmojiFont; font-size: 12pt; color: rgb(0, 0, 0);\">\n  <span>Vivien Sariewa</span><br>\n  <em>Projektmanagement</em><br>\n  <span>Expos\u00e9 Profi</span><br><br>\n\n  Website: <a href=\"https://www.exposeprofi.de\" target=\"_blank\" style=\"color: rgb(12,100,192); text-decoration: underline;\">www.exposeprofi.de</a><br>\n  Email: <span>vivien.sariewa@exposeprofi.de</span><br>\n  <span>Telefon: 07531-1227498</span><br><br>\n\n  <img src=\"https://drive.google.com/thumbnail?id=1fEyChbkYPWyCMueSl_abl8-gTkmtpNpP&sz=s4000\" alt=\"Exposeprofi Logo\" style=\"width: 249px; height: 57px; min-height: auto; min-width: auto;\">\n</div>\n\n<div class=\"sonia\" style=\"font-family: Aptos, Aptos_EmbeddedFont, Aptos_MSFontService, Calibri, Helvetica, sans-serif, serif, EmojiFont; font-size: 12pt; color: rgb(0, 0, 0);\">\n  <span>Sonia Kaniss</span><br>\n  <span>(Dipl.-Ing. f\u00fcr Architektur)</span><br>\n  <em>Projektmanagement</em><br>\n  <span>Expos\u00e9 Profi</span><br><br>\n\n  Website: <a href=\"https://www.exposeprofi.de\" target=\"_blank\" style=\"color: rgb(12,100,192); text-decoration: underline;\">www.exposeprofi.de</a><br>\n  Email: <span>sonia.kaniss@exposeprofi.de</span><br>\n  <span>Telefon: 07531-1227496</span><br><br>\n\n  <img src=\"https://drive.google.com/thumbnail?id=1fEyChbkYPWyCMueSl_abl8-gTkmtpNpP&sz=s4000\" alt=\"Exposeprofi Logo\" style=\"width: 249px; height: 57px; min-height: auto; min-width: auto;\">\n</div>\n\n<div class=\"projektmanagement team\" style=\"font-family: Aptos, Aptos_EmbeddedFont, Aptos_MSFontService, Calibri, Helvetica, sans-serif, serif, EmojiFont; font-size: 12pt; color: rgb(0, 0, 0);\">\n  <span>Projektmanagement Team</span><br>\n  <span>(Dipl.-Ing. f\u00fcr Architektur)</span><br>\n  <em>Projektmanagement</em><br>\n  <span>Expos\u00e9 Profi</span><br><br>\n\n  Website: <a href=\"https://www.exposeprofi.de\" target=\"_blank\" style=\"color: rgb(12,100,192); text-decoration: underline;\">www.exposeprofi.de</a><br>\n  Email: <span>projektmanagement@exposeprofi.de</span><br>\n  \n\n  <img src=\"https://drive.google.com/thumbnail?id=1fEyChbkYPWyCMueSl_abl8-gTkmtpNpP&sz=s4000\" alt=\"Exposeprofi Logo\" style=\"width: 249px; height: 57px; min-height: auto; min-width: auto;\">\n</div>"
       },
       "id": "45a1aad6-ed45-4692-8932-bb3d04eb854a",
       "name": "HTML1",
@@ -553,7 +553,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Mode: \"Run Once for All Items\"\n// Input: Graph driveItems from \"Get download file meta data\"\n// Output: one item containing the project name + a list of pre-authenticated\n// download URLs. No file bytes touch n8n.\n\nconst IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];\n\nlet markupName = 'Untitled project';\nlet comment = '';\ntry {\n  const d = $('Derive Markup name1').first().json;\n  markupName = d.markupName || markupName;\n  comment = d.projectId ?? '';\n} catch (e) { /* keep defaults */ }\n\nconst images = $('Get download file meta data').all()\n  .map(item => item.json)\n  .filter(f => f['@microsoft.graph.downloadUrl'] && IMAGE_TYPES.includes(f.file?.mimeType))\n  .map(f => ({\n    url: f['@microsoft.graph.downloadUrl'],\n    name: f.name,\n  }));\n\nif (images.length === 0) {\n  throw new Error('No downloadable images found in the folder items.');\n}\nif (images.length > 50) {\n  throw new Error(`Too many images (${images.length}) — the API accepts at most 50 per project.`);\n}\n\nreturn [{ json: { name: markupName, comment, images, imageCount: images.length } }];"
+        "jsCode": "// Mode: \"Run Once for All Items\"\n// Input: Graph driveItems from \"Get download file meta data\"\n// Output: ONE item holding the complete body for a single POST /api/v1/projects\n// call: project name, comment, and every image as a pre-authenticated download\n// URL. The API fetches each URL server-side, so no file bytes touch n8n.\n\nconst IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];\n\nlet markupName = 'Untitled project';\nlet comment = '';\ntry {\n  const d = $('Derive Markup name1').first().json;\n  markupName = d.markupName || markupName;\n  comment = d.projectId ?? '';\n} catch (e) { /* keep defaults */ }\n\nconst images = $('Get download file meta data').all()\n  .map(item => item.json)\n  .filter(f => f['@microsoft.graph.downloadUrl'] && IMAGE_TYPES.includes(f.file?.mimeType))\n  .map(f => ({\n    url: f['@microsoft.graph.downloadUrl'],\n    name: f.name,\n  }));\n\nif (images.length === 0) {\n  throw new Error('No downloadable images found in the folder items.');\n}\nif (images.length > 50) {\n  throw new Error(`Too many images (${images.length}) \u2014 the API accepts at most 50 per project.`);\n}\n\nreturn [{ json: { name: markupName, comment, images, imageCount: images.length } }];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -562,7 +562,7 @@
         1008
       ],
       "id": "e66ca3bd-7ef1-46d7-b3bd-9c423941feaf",
-      "name": "Code in JavaScript"
+      "name": "Build project payload"
     },
     {
       "parameters": {
@@ -572,9 +572,9 @@
         "genericAuthType": "httpBearerAuth",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({\n  name: $json.name,\n  comment: $json.comment,\n  share: { permissions: 'comment' }\n}) }}",
+        "jsonBody": "={{ JSON.stringify({\n  name: $json.name,\n  comment: $json.comment,\n  images: $json.images,\n  share: { permissions: 'comment' }\n}) }}",
         "options": {
-          "timeout": 60000
+          "timeout": 130000
         }
       },
       "type": "n8n-nodes-base.httpRequest",
@@ -586,46 +586,16 @@
       "id": "d91d6027-a591-45a2-a664-3626ba901c42",
       "name": "Create revision project",
       "notesInFlow": true,
-      "notes": "Creates the project WITHOUT images (fast) and returns the share link used in the email. All image URLs are then sent together in a single call by 'Upload all images'.",
+      "notes": "Single call: creates the project, ingests every image from its pre-authenticated SharePoint download URL, and returns the client share link used in the email. No file bytes pass through n8n. Limits: 50 images per call, 60 MB per source file, 120 s server-side. If ALL images fail the API returns 422 and rolls the project back, so a failed run never leaves an empty project behind.",
       "credentials": {
         "httpBearerAuth": {
           "id": "mqKQjpi68L1e3Joy",
           "name": "REVISION_API_KEY"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "=https://revision.exposeprofi.de/api/v1/projects/{{ $('Create revision project').first().json.project.id }}/images",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpBearerAuth",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ images: $('Code in JavaScript').first().json.images }) }}",
-        "options": {
-          "timeout": 300000
         }
       },
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.4,
-      "position": [
-        944,
-        1200
-      ],
-      "id": "c8b2d3e4-0002-4b6c-9d7e-uploadbatch00",
-      "name": "Upload all images",
-      "notesInFlow": true,
-      "notes": "Runs ONCE: posts every image as one JSON array of pre-authenticated download URLs ({ images: [{ url, name }, ...] }). No batching, no per-image loop — the API downloads each URL server-side (60 MB source ceiling, max 50 images per call).",
       "retryOnFail": true,
-      "maxTries": 3,
-      "waitBetweenTries": 5000,
-      "credentials": {
-        "httpBearerAuth": {
-          "id": "mqKQjpi68L1e3Joy",
-          "name": "REVISION_API_KEY"
-        }
-      }
+      "maxTries": 2,
+      "waitBetweenTries": 5000
     }
   ],
   "connections": {
@@ -749,7 +719,7 @@
       "main": [
         [
           {
-            "node": "Code in JavaScript",
+            "node": "Build project payload",
             "type": "main",
             "index": 0
           },
@@ -860,33 +830,22 @@
         ]
       ]
     },
-    "Code in JavaScript": {
-      "main": [
-        [
-          {
-            "node": "Create revision project",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "Create revision project": {
       "main": [
         [
           {
-            "node": "Upload all images",
+            "node": "Generate Access Token1",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Upload all images": {
+    "Build project payload": {
       "main": [
         [
           {
-            "node": "Generate Access Token1",
+            "node": "Create revision project",
             "type": "main",
             "index": 0
           }
