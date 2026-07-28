@@ -2,9 +2,7 @@
 
 import { useState } from 'react';
 import { ChevronUp, ChevronDown, GripVertical, FileText, Film } from 'lucide-react';
-import NextImage from 'next/image';
 import ImageUploader from '@/components/image-uploader';
-import { getOptimizedImageUrl, IMAGE_SIZES } from '@/lib/image-url';
 import { getMediaKind } from '@/lib/media-type';
 import { IconTooltip } from '@/components/ui/icon-tooltip';
 
@@ -29,23 +27,31 @@ interface ThumbnailsSidebarProps {
 }
 
 /**
- * Thumbnail image with a transient-failure retry. A just-uploaded image can take
- * a moment to propagate through Supabase's storage CDN; the Next.js optimizer
- * may briefly 404 it. Rather than leave a blank tile, retry a few times with a
+ * Thumbnail image, served straight from Supabase Storage.
+ *
+ * These deliberately bypass the Next.js image optimizer: at 128px the transform
+ * buys very little, and routing 20+ multi-MB renders through `/_next/image`
+ * made whole batches of tiles fail to render (the optimizer rejects or times out
+ * under that load, and a failed entry stays failed). A plain lazy <img> always
+ * paints, and the browser reuses these bytes for the full-size viewer.
+ *
+ * The retry covers a just-uploaded file that hasn't propagated through the
+ * storage CDN yet: rather than leave a blank tile, retry a few times with a
  * cache-busting suffix so the image fills in on its own.
  */
 function ThumbnailImage({ url, alt }: { url: string; alt: string }) {
   const [attempt, setAttempt] = useState(0);
-  const optimized = getOptimizedImageUrl(url, IMAGE_SIZES.SIDEBAR_THUMB) || '/placeholder.svg';
-  const src = attempt > 0 ? `${optimized}${optimized.includes('?') ? '&' : '?'}retry=${attempt}` : optimized;
+  const base = url || '/placeholder.svg';
+  const src = attempt > 0 ? `${base}${base.includes('?') ? '&' : '?'}retry=${attempt}` : base;
   return (
-    <NextImage
+    // eslint-disable-next-line @next/next/no-img-element -- optimizer bypassed on purpose, see above
+    <img
       src={src}
       alt={alt}
       width={128}
       height={128}
-      sizes="128px"
-      quality={60}
+      loading="lazy"
+      decoding="async"
       className="w-full h-full object-cover"
       onError={() => {
         if (attempt < 3) {

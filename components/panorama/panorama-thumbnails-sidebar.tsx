@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useRef, useState } from 'react';
-import Image from 'next/image';
 import { Upload, Loader2, Globe } from 'lucide-react';
 import { getPanoramaUploadUrl, registerPanoramaImage } from '@/app/actions/panorama-images';
 import { xhrUpload } from '@/lib/upload';
@@ -80,7 +79,16 @@ export default function PanoramaThumbnailsSidebar({
               img.id === currentImageId ? 'border-accent ring-2 ring-accent/40' : 'border-border hover:border-accent/50'
             }`}
           >
-            <Image src={img.url} alt={img.name} fill sizes="160px" className="object-cover" />
+            {/* Served straight from storage — see ThumbnailsSidebar: routing a
+                panorama batch through the Next optimizer leaves tiles blank. */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={img.url}
+              alt={img.name}
+              loading="lazy"
+              decoding="async"
+              className="absolute inset-0 h-full w-full object-cover"
+            />
             <div className="absolute inset-x-0 bottom-0 bg-black/50 px-1.5 py-0.5 flex items-center justify-between">
               <span className="text-[10px] text-white truncate">{img.name}</span>
               {img.pinCount > 0 && (
