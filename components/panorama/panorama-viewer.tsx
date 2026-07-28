@@ -8,7 +8,6 @@ import 'pannellum';
 
 import React, { useEffect, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, Maximize2, Minimize2, RotateCw, Plus, Minus, MousePointer2, AlertTriangle, Loader2 } from 'lucide-react';
-import { panoramaImageUrl } from '@/lib/panorama-image';
 
 declare global {
   interface Window {
@@ -55,14 +54,16 @@ const RESOLVED_COLOR = '#22c55e'; // green-500
  * which streamed every full-size image through a serverless function and burned
  * host bandwidth; serving direct is free.)
  *
- * We also run the image through Supabase's on-read transform (resize + re-encode)
- * so viewers download a fraction of the raw equirectangular file — see
- * `panoramaImageUrl`. If that transformed URL fails to load (source over
- * Supabase's 50MP/25MB transform limit), the effect below falls back to the
- * untransformed original.
+ * Panoramas are served untouched: no resize, no re-encode. Unlike a flat image,
+ * an equirectangular source is stretched across a full 360×180 sphere and the
+ * viewer only ever shows a ~100° slice of it, so a 2500px-wide texture leaves
+ * roughly 700 texels to cover a 1080p viewport — visibly soft — and a lossy
+ * re-encode bands the large flat areas (walls, ceilings, sky) that panoramas are
+ * mostly made of. Downscaling/compression belongs on the regular-image path
+ * (lib/image-url.ts, lib/api/compress-image.ts), not here.
  */
 function panoramaSrc(url: string): string {
-  return panoramaImageUrl(url);
+  return url;
 }
 
 /**
@@ -162,9 +163,6 @@ export default function PanoramaViewer({
   const [isLoaded, setIsLoaded] = useState(false);
   const [loadProgress, setLoadProgress] = useState(0);
   const [currentHfov, setCurrentHfov] = useState(100);
-  // When the Supabase transform fails (source over the 50MP/25MB limit), fall
-  // back to the untransformed original. Reset whenever the image changes.
-  const [useOriginalSrc, setUseOriginalSrc] = useState(false);
   // Keep latest values reachable from persistent DOM listeners without re-init.
   const addModeRef = useRef(addMode);
   const onAddRef = useRef(onAddHotspot);
@@ -196,10 +194,7 @@ export default function PanoramaViewer({
       setLoadProgress((prev) => (prev < 90 ? prev + Math.max(4, Math.floor(Math.random() * 8)) : prev));
     }, 120);
 
-    // Transformed (small) URL by default; the untransformed original only after
-    // a transform failure. `resolvedSrc !== imageUrl` tells us the transform is
-    // in play, which is what lets the error handler try the fallback exactly once.
-    const resolvedSrc = useOriginalSrc ? imageUrl : panoramaSrc(imageUrl);
+    const resolvedSrc = panoramaSrc(imageUrl);
 
     const viewer = window.pannellum.viewer(containerRef.current, {
       type: 'equirectangular',
@@ -224,14 +219,6 @@ export default function PanoramaViewer({
       });
       viewer.on('error', (msg: string) => {
         window.clearInterval(progressTimer);
-        // If the transformed URL failed (e.g. source exceeds Supabase's
-        // 50MP/25MB transform limit), retry once with the untransformed
-        // original before surfacing an error.
-        if (!useOriginalSrc && resolvedSrc !== imageUrl) {
-          console.warn('Panorama transform failed, falling back to original:', msg, 'for', imageUrl);
-          setUseOriginalSrc(true);
-          return;
-        }
         console.error('Pannellum load error:', msg, 'for', imageUrl);
         setLoadError(msg || 'This panorama could not be loaded.');
       });
@@ -263,11 +250,7 @@ export default function PanoramaViewer({
       },
       onError: () => {
         window.clearInterval(progressTimer);
-        // Let the Pannellum 'error' handler above drive the transform→original
-        // fallback; only show the overlay once we're already on the original.
-        if (useOriginalSrc || resolvedSrc === imageUrl) {
-          setLoadError('The panorama image could not be loaded.');
-        }
+        setLoadError('The panorama image could not be loaded.');
       },
     });
 
@@ -279,12 +262,7 @@ export default function PanoramaViewer({
       try { viewer.destroy(); } catch { /* noop */ }
       viewerRef.current = null;
     };
-  }, [imageUrl, readOnly, useOriginalSrc]);
-
-  // A new image starts optimistic again: try its transformed URL first.
-  useEffect(() => {
-    setUseOriginalSrc(false);
-  }, [imageUrl]);
+  }, [imageUrl, readOnly]);
 
   // Sync hotspots whenever the comments or selection change, or when the image finishes loading.
   useEffect(() => {
