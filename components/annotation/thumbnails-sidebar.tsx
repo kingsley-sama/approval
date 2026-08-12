@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { ChevronUp, ChevronDown, GripVertical, FileText, Film } from 'lucide-react';
+import { ChevronUp, ChevronDown, GripVertical, FileText, Film, Trash2 } from 'lucide-react';
 import ImageUploader from '@/components/image-uploader';
 import { getMediaKind } from '@/lib/media-type';
 import { IconTooltip } from '@/components/ui/icon-tooltip';
@@ -20,6 +20,9 @@ interface ThumbnailsSidebarProps {
   /** Persist a new image order (full list of ids, in display order). Drag-to-
    *  reorder is disabled when omitted or in read-only mode. */
   onReorderImages?: (orderedIds: string[]) => void;
+  /** Delete a single image from the revision. The control is hidden when
+   *  omitted or in read-only mode. Confirmation is the caller's concern. */
+  onDeleteImage?: (imageId: string) => void;
   projectId: string;
   onUploadComplete?: () => void | Promise<void>;
   /** When true the upload button is hidden */
@@ -79,12 +82,14 @@ export default function ThumbnailsSidebar({
   currentImageId,
   onSelectImage,
   onReorderImages,
+  onDeleteImage,
   projectId,
   onUploadComplete,
   readOnly = false,
 }: ThumbnailsSidebarProps) {
   const currentIndex = images.findIndex(img => img.id === currentImageId);
   const reorderable = !readOnly && !!onReorderImages;
+  const deletable = !readOnly && !!onDeleteImage;
 
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
@@ -174,6 +179,21 @@ export default function ThumbnailsSidebar({
                 >
                   {openCount}
                 </span>
+              )}
+              {deletable && (
+                <button
+                  type="button"
+                  aria-label={`Delete ${img.name}`}
+                  title="Delete image"
+                  className="absolute bottom-1 right-1 p-1 rounded bg-black/40 text-white opacity-0 group-hover:opacity-100 hover:bg-red-600 focus-visible:opacity-100 transition-all"
+                  // Deleting must not also select the tile underneath.
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDeleteImage?.(img.id);
+                  }}
+                >
+                  <Trash2 size={12} />
+                </button>
               )}
             </div>
             <div

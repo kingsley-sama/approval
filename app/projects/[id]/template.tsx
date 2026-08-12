@@ -80,6 +80,8 @@ interface ProjectShellProps {
 	projectId: string;
 	onSelectImage: (imageId: string) => void;
 	onReorderImages?: (orderedIds: string[]) => void;
+	/** Delete a single image from the revision (confirmation handled upstream). */
+	onDeleteImage?: (imageId: string) => void;
 	onUploadComplete: () => Promise<void>;
 	onCommentTabChange?: (tab: 'active' | 'resolved') => void;
 	onEditComment?: (commentId: string, newText: string) => Promise<{ success: boolean; error?: string }>;
@@ -194,6 +196,7 @@ export function ProjectShell({
 	projectId,
 	onSelectImage,
 	onReorderImages,
+	onDeleteImage,
 	onUploadComplete,
 	onCommentTabChange,
 	onEditComment,
@@ -232,6 +235,7 @@ export function ProjectShell({
 					currentImageId={currentImageId}
 					onSelectImage={onSelectImage}
 					onReorderImages={onReorderImages}
+					onDeleteImage={onDeleteImage}
 					projectId={projectId}
 					onUploadComplete={onUploadComplete}
 				/>

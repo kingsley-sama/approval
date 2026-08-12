@@ -72,31 +72,53 @@ export interface ReviewCompleteEmailOptions {
 
 export async function sendReviewCompleteEmail(
   opts: ReviewCompleteEmailOptions,
-): Promise<{ ok: boolean; error?: string }> {
-  if (!resend) return { ok: false, error: 'Resend not configured' };
+): Promise<{ ok: boolean; error?: string; notConfigured?: boolean }> {
+  // `resend` is null whenever RESEND_API_KEY is absent from the environment.
+  // Reported as a distinct `notConfigured` result so callers can tell a
+  // deployment/config problem apart from a genuine provider failure — the two
+  // need very different fixes, and conflating them is what made this look
+  // intermittent.
+  if (!resend) {
+    console.error('[email] RESEND_API_KEY is not set — cannot send review notification');
+    return { ok: false, notConfigured: true, error: 'Email service is not configured' };
+  }
 
   const recipients =
     opts.to && opts.to.length > 0 ? opts.to : getReviewRecipients();
 
-  const projectUrl = `${APP_URL}/projects/${opts.projectId}`;
-
-  const { error } = await resend.emails.send({
-    from: FROM_ADDRESS,
-    to: recipients,
-    replyTo: REPLY_TO,
-    subject: `${opts.reviewerName} finished reviewing "${opts.projectName}"`,
-    react: ReviewCompleteEmail({
-      reviewerName: opts.reviewerName,
-      projectName: opts.projectName,
-      projectUrl,
-      commentCount: opts.commentCount,
-    }),
-  });
-
-  if (error) {
-    console.error('[email] sendReviewCompleteEmail failed', error);
-    return { ok: false, error: error.message ?? 'Email send failed' };
+  if (recipients.length === 0) {
+    return { ok: false, notConfigured: true, error: 'No notification recipient configured' };
   }
 
-  return { ok: true };
+  const projectUrl = `${APP_URL}/projects/${opts.projectId}`;
+
+  try {
+    const { error } = await resend.emails.send({
+      from: FROM_ADDRESS,
+      to: recipients,
+      replyTo: REPLY_TO,
+      subject: `${opts.reviewerName} finished reviewing "${opts.projectName}"`,
+      react: ReviewCompleteEmail({
+        reviewerName: opts.reviewerName,
+        projectName: opts.projectName,
+        projectUrl,
+        commentCount: opts.commentCount,
+      }),
+    });
+
+    if (error) {
+      console.error('[email] sendReviewCompleteEmail failed', error);
+      return { ok: false, error: error.message ?? 'Email send failed' };
+    }
+
+    return { ok: true };
+  } catch (err) {
+    // A network error or a throw inside template rendering would otherwise
+    // escape as an unhandled rejection and surface as an opaque 500.
+    console.error('[email] sendReviewCompleteEmail threw', err);
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : 'Email send failed',
+    };
+  }
 }

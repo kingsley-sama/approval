@@ -5,7 +5,7 @@ import { getSignedUploadUrl, registerUploadedFile } from '@/app/actions/storage'
 import { Button } from '@/components/ui/button';
 import { IconTooltip } from '@/components/ui/icon-tooltip';
 import { Plus, CheckCircle2, XCircle, Loader2, X } from 'lucide-react';
-import { toast } from 'sonner';
+import { useToast } from '@/hooks/use-toast';
 import { xhrUpload, validateFiles, type FileUploadState } from '@/lib/upload';
 import { compressImageWithStats, formatFileSize } from '@/lib/image-compression';
 import { CompressionInfo } from '@/components/compression-info';
@@ -19,6 +19,7 @@ interface ImageUploaderProps {
 const CONCURRENCY = 3;
 
 export default function ImageUploader({ projectId, onUploadComplete, trigger }: ImageUploaderProps) {
+  const { toast } = useToast();
   const [fileStates, setFileStates] = useState<FileUploadState[]>([]);
   const [showPanel, setShowPanel] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -68,7 +69,18 @@ export default function ImageUploader({ projectId, onUploadComplete, trigger }: 
 
     const { accepted: files, rejected } = validateFiles(raw);
     if (rejected.length > 0) {
-      rejected.forEach(r => toast.error(`${r.file.name}: ${r.reason}`));
+      // One grouped toast rather than one per file: rejecting a large drop
+      // otherwise stacks a dozen toasts over the viewer.
+      toast({
+        title: rejected.length === 1 ? 'File not accepted' : `${rejected.length} files not accepted`,
+        // ToastDescription renders a single text run, so list a few names
+        // inline and summarise the rest rather than relying on line breaks.
+        description: [
+          ...rejected.slice(0, 3).map(r => `${r.file.name}: ${r.reason}`),
+          ...(rejected.length > 3 ? [`and ${rejected.length - 3} more`] : []),
+        ].join(' · '),
+        variant: 'destructive',
+      });
     }
     if (files.length === 0) return;
 
@@ -102,10 +114,18 @@ export default function ImageUploader({ projectId, onUploadComplete, trigger }: 
     const failed = results.filter(r => !r).length;
 
     if (succeeded > 0) {
-      toast.success(`${succeeded} file${succeeded > 1 ? 's' : ''} uploaded`);
+      toast({
+        title: `${succeeded} file${succeeded > 1 ? 's' : ''} uploaded`,
+      });
       onUploadComplete?.();
     }
-    if (failed > 0) toast.error(`${failed} upload${failed > 1 ? 's' : ''} failed`);
+    if (failed > 0) {
+      toast({
+        title: `${failed} upload${failed > 1 ? 's' : ''} failed`,
+        description: 'Check the upload panel for details, then try again.',
+        variant: 'destructive',
+      });
+    }
   };
 
   const clearDone = () => setFileStates(prev => prev.filter(f => f.status !== 'done'));

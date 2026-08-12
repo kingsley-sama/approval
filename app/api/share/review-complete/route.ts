@@ -5,7 +5,6 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { after } from 'next/server';
 import { z } from 'zod';
 import { validateShareToken } from '@/app/actions/share-links';
 import { supabaseAdmin as supabase } from '@/lib/supabase';
@@ -69,24 +68,34 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Fire-and-forget: defer the email send until after the response is flushed.
-    // The client gets an immediate 202 and shows the thank-you state without
-    // waiting on Resend.
-    const finalProjectName = projectName;
-    const finalProjectId = projectId;
-    after(async () => {
-      const result = await sendReviewCompleteEmail({
-        reviewerName: validated.reviewerName,
-        projectName: finalProjectName,
-        projectId: finalProjectId,
-        commentCount: validated.commentCount,
-      });
-      if (!result.ok) {
-        console.error('[review-complete] background email send failed:', result.error);
-      }
+    // The send is awaited rather than deferred with `after()`. Previously this
+    // route returned 202 before the send ran, so a misconfigured or failing
+    // Resend call could only ever reach a server log — the reviewer was always
+    // told the notification went out. Awaiting is a single fast API call and
+    // lets a real failure reach the client, which surfaces it as a toast.
+    const result = await sendReviewCompleteEmail({
+      reviewerName: validated.reviewerName,
+      projectName,
+      projectId,
+      commentCount: validated.commentCount,
     });
 
-    return NextResponse.json({ success: true }, { status: 202 });
+    if (!result.ok) {
+      console.error('[review-complete] email send failed:', result.error);
+      return NextResponse.json(
+        {
+          success: false,
+          error: result.notConfigured
+            ? 'Email notifications are not configured on the server.'
+            : result.error ?? 'The notification email could not be sent.',
+        },
+        // 502: the review itself was recorded fine; only the downstream email
+        // provider failed, so the client can distinguish this from a bad request.
+        { status: 502 },
+      );
+    }
+
+    return NextResponse.json({ success: true }, { status: 200 });
   } catch (err) {
     if (err instanceof z.ZodError) {
       return NextResponse.json(

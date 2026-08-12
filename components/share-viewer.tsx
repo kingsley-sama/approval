@@ -137,6 +137,8 @@ export default function ShareViewer({ shareLink, resourceData, token }: ShareVie
   const [thanksOpen, setThanksOpen] = useState(false);
   const pendingNavigationRef = useRef(false);
   const allowNavigationRef = useRef(false);
+  // Guards against sending the review-complete notification more than once.
+  const reviewSendRef = useRef(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -164,20 +166,11 @@ export default function ShareViewer({ shareLink, resourceData, token }: ShareVie
     localStorage.setItem('share_guest_name', n);
   };
 
-  // Pin numbers run continuously across every thread in the shared resource:
-  // thread 1's pins are 1..n, the next thread continues at n+1, and so on. This
-  // matches the authenticated project view (see numberedImages there). It's
-  // display-only — the stored per-thread numbers are left untouched. `threads`
-  // stays the source of truth for mutations; `numberedThreads` is for rendering.
-  const numberedThreads = useMemo<ThreadData[]>(() => {
-    let counter = 0;
-    return threads.map(t => ({
-      ...t,
-      pins: t.pins.map(pin => ({ ...pin, number: ++counter })),
-    }));
-  }, [threads]);
-
-  const currentThread = numberedThreads[currentIndex];
+  // Pin numbers come from the stored `display_number` allocated server-side per
+  // project (see mapping above). They are deliberately NOT re-derived from array
+  // position: the supplier and the project owner quote these numbers to each
+  // other, so both views must show the same immutable number for a comment.
+  const currentThread = threads[currentIndex];
   const pins = currentThread?.pins || [];
 
   // Warm the browser cache for full-size images so switching is instant. The
@@ -499,7 +492,12 @@ export default function ShareViewer({ shareLink, resourceData, token }: ShareVie
     const localId = `local_${Date.now()}`;
     const optimisticPin: Pin = {
       id: localId,
-      number: (currentThread.pins.length || 0) + 1,
+      // Provisional only — the server allocates the real project-wide number and
+      // it replaces this when the comment is confirmed below.
+      number: threads.reduce(
+        (max, t) => t.pins.reduce((m, pin) => Math.max(m, pin.number ?? 0), max),
+        0
+      ) + 1,
       x: pendingPinPos.x,
       y: pendingPinPos.y,
       content: text,
@@ -591,9 +589,15 @@ export default function ShareViewer({ shareLink, resourceData, token }: ShareVie
       ? resourceData.project?.project_name
       : resourceData.thread?.markup_projects?.project_name || 'Shared Project';
 
-  // Fire-and-forget: kick off the email request in the background. We don't
-  // await it from the click handler so the user gets immediate feedback.
+  // Kick off the notification in the background so the thank-you state appears
+  // immediately, but still report a failure when one comes back. `reviewSendRef`
+  // makes this idempotent: the confirm button, the leave guard, and the
+  // back-button guard can all reach it, and the reviewer must not trigger two
+  // emails for one review.
   const submitReviewCompleteBackground = useCallback(() => {
+    if (reviewSendRef.current) return;
+    reviewSendRef.current = true;
+
     fetch('/api/share/review-complete', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -612,9 +616,11 @@ export default function ShareViewer({ shareLink, resourceData, token }: ShareVie
       })
       .catch((e) => {
         console.error('[review-complete] notify failed', e);
+        // Allow a retry: the email demonstrably did not go out.
+        reviewSendRef.current = false;
         toast({
-          title: 'Notification may not have been sent',
-          description: e?.message || 'You can let the team know directly.',
+          title: 'Notification was not sent',
+          description: e?.message || 'Your comments are saved. Please let the team know directly.',
           variant: 'destructive',
         });
       });
@@ -813,7 +819,7 @@ export default function ShareViewer({ shareLink, resourceData, token }: ShareVie
         {/* Comments sidebar — read-only for guests */}
         {!isFullscreen && (
           <CommentsSidebar
-            allImages={numberedThreads.map(t => ({ id: t.id, name: t.name, pins: t.pins }))}
+            allImages={threads.map(t => ({ id: t.id, name: t.name, pins: t.pins }))}
             currentImageId={currentThread?.id || ''}
             selectedPinId={selectedPin}
             onSelectPin={(pinId) => {
@@ -891,7 +897,7 @@ export default function ShareViewer({ shareLink, resourceData, token }: ShareVie
         {/* Thumbnails sidebar — upload disabled for guests */}
         {!isFullscreen && (
           <ThumbnailsSidebar
-            images={numberedThreads.map(t => ({ id: t.id, name: t.name, url: t.url, pins: t.pins }))}
+            images={threads.map(t => ({ id: t.id, name: t.name, url: t.url, pins: t.pins }))}
             currentImageId={currentThread?.id || ''}
             onSelectImage={(id) => {
               const idx = threads.findIndex(t => t.id === id);

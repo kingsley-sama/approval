@@ -12,6 +12,7 @@ import {
 } from '@/lib/validation/schemas';
 import { revalidatePath } from 'next/cache';
 import { nanoid } from 'nanoid';
+import { allocateCommentNumberForThread } from '@/lib/comment-numbering';
 import type { AttachmentRecord } from './storage';
 
 export interface DbComment {
@@ -104,26 +105,15 @@ async function hydrateDrawingDataForComments(
   });
 }
 
+/**
+ * Allocate the next comment number for the project that owns `threadId`.
+ * See lib/comment-numbering.ts for the numbering contract.
+ */
 async function getNextPinNumber(
   supabase: Awaited<ReturnType<typeof createClient>>,
   threadId: string,
 ): Promise<number> {
-  const typedCount = await supabase
-    .from('markup_comments')
-    .select('*', { count: 'exact', head: true })
-    .eq('thread_id', threadId)
-    .neq('type' as any, 'reply');
-
-  if (!typedCount.error) {
-    return (typedCount.count ?? 0) + 1;
-  }
-
-  const legacyCount = await supabase
-    .from('markup_comments')
-    .select('*', { count: 'exact', head: true })
-    .eq('thread_id', threadId);
-
-  return (legacyCount.count ?? 0) + 1;
+  return allocateCommentNumberForThread(supabase as any, threadId);
 }
 
 /** Get the currently logged-in user from the JWT session */

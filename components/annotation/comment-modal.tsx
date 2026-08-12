@@ -734,12 +734,12 @@ export default function CommentModal({
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-baseline gap-1.5">
-                          <span className="text-[11px] font-semibold text-gray-800 truncate">{reply.user_name}</span>
-                          <span className="text-[9px] text-gray-400 shrink-0">
+                          <span className="text-xs font-semibold text-gray-800 truncate">{reply.user_name}</span>
+                          <span className="text-[10px] text-gray-400 shrink-0">
                             {new Date(reply.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                           </span>
                         </div>
-                        <p className={`text-[11px] text-gray-700 leading-snug wrap-break-word ${reply.id.startsWith('opt_') ? 'opacity-60' : ''}`}>
+                        <p className={`text-[13px] text-gray-700 leading-relaxed wrap-break-word ${reply.id.startsWith('opt_') ? 'opacity-60' : ''}`}>
                           {reply.content}
                         </p>
                       </div>

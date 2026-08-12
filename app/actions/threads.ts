@@ -1,6 +1,7 @@
 'use server';
 
 import { createClient } from '@/lib/supabase/server';
+import { supabaseAdmin } from '@/lib/supabase';
 import { requireUser } from '@/lib/auth/require-user';
 import { CreateThreadSchema } from '@/lib/validation/schemas';
 import { revalidatePath, unstable_noStore as noStore } from 'next/cache';
@@ -131,6 +132,143 @@ export async function createThread(projectId: string, fileData: { path: string; 
     return { success: true, thread: data };
   } catch (error) {
     console.error('Unexpected error creating thread:', error);
+    return { success: false, error: 'An unexpected error occurred' };
+  }
+}
+
+/**
+ * Convert a Supabase public storage URL back into a bucket-relative object path.
+ * `markup_threads.image_path` stores the full public URL, but the storage API
+ * deletes by path. Returns null for anything that isn't a public URL for the
+ * given bucket (external URLs, placeholders), so callers skip the file delete
+ * rather than guessing.
+ */
+function storagePathFromPublicUrl(url: string, bucket: string): string | null {
+  const marker = `/storage/v1/object/public/${bucket}/`;
+  const idx = url.indexOf(marker);
+  if (idx === -1) return null;
+  const raw = url.slice(idx + marker.length).split('?')[0].split('#')[0];
+  if (!raw) return null;
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return raw;
+  }
+}
+
+/**
+ * Delete a single image (thread) from a project, leaving the rest of the
+ * revision intact.
+ *
+ * Cleanup performed:
+ *   - the thread's comments and drawings go via FK `ON DELETE CASCADE`, and each
+ *     comment's attachment rows cascade from those
+ *   - attachment files in Storage are removed explicitly (their rows cascade
+ *     away, so their paths are collected BEFORE the delete or they'd be lost)
+ *   - the image file itself is removed only when no other thread still points at
+ *     the same URL. Duplicated projects copy the thread row verbatim, so the
+ *     same object can back several threads; deleting it unconditionally would
+ *     blank the image in the other project.
+ *
+ * Comment numbering is untouched: numbers are allocated from a per-project
+ * counter that only moves forward, so removing an image retires its comments'
+ * numbers rather than freeing them for reuse.
+ */
+export async function deleteThread(threadId: string, projectId: string) {
+  await requireUser();
+
+  if (!threadId || !projectId) {
+    return { success: false, error: 'Invalid delete request' };
+  }
+
+  const supabase = await createClient();
+
+  try {
+    // Confirm the thread belongs to the stated project before touching anything.
+    const { data: thread, error: threadErr } = await supabase
+      .from('markup_threads')
+      .select('id, project_id, image_path')
+      .eq('id', threadId)
+      .eq('project_id', projectId)
+      .maybeSingle();
+
+    if (threadErr || !thread) {
+      return { success: false, error: 'Image not found in this project' };
+    }
+
+    // Collect attachment paths now — the rows cascade away with the comments.
+    const { data: comments } = await supabase
+      .from('markup_comments')
+      .select('id')
+      .eq('thread_id', threadId);
+
+    const commentIds = (comments ?? []).map((c: { id: string }) => c.id);
+    let attachmentPaths: string[] = [];
+    if (commentIds.length > 0) {
+      const { data: attachments } = await supabase
+        .from('comment_attachments')
+        .select('storage_path')
+        .in('comment_id', commentIds);
+      attachmentPaths = (attachments ?? [])
+        .map((a: { storage_path: string }) => a.storage_path)
+        .filter(Boolean);
+    }
+
+    // Is this image still referenced by another thread (e.g. a duplicated project)?
+    const imagePath = (thread as { image_path: string | null }).image_path;
+    let imageIsShared = false;
+    if (imagePath) {
+      const { count } = await supabase
+        .from('markup_threads')
+        .select('*', { count: 'exact', head: true })
+        .eq('image_path', imagePath)
+        .neq('id', threadId);
+      imageIsShared = (count ?? 0) > 0;
+    }
+
+    const { error: deleteErr } = await supabase
+      .from('markup_threads')
+      .delete()
+      .eq('id', threadId)
+      .eq('project_id', projectId);
+
+    if (deleteErr) {
+      console.error('Error deleting thread:', deleteErr);
+      return { success: false, error: deleteErr.message };
+    }
+
+    // Storage cleanup is best-effort: the row is already gone, and a failed file
+    // delete leaves an unreferenced object rather than a broken revision.
+    const bucket = process.env.NEXT_PUBLIC_SUPABASE_BUCKET_NAME || 'screenshots';
+    const filesToRemove = [...attachmentPaths];
+    if (imagePath && !imageIsShared) {
+      const objectPath = storagePathFromPublicUrl(imagePath, bucket);
+      if (objectPath) filesToRemove.push(objectPath);
+    }
+    if (filesToRemove.length > 0) {
+      const { error: storageErr } = await supabaseAdmin.storage
+        .from(bucket)
+        .remove(filesToRemove);
+      if (storageErr) {
+        console.error('Thread deleted but storage cleanup failed:', storageErr);
+      }
+    }
+
+    // Keep the project's cached image count consistent with reality.
+    const { count: remaining } = await supabase
+      .from('markup_threads')
+      .select('*', { count: 'exact', head: true })
+      .eq('project_id', projectId);
+
+    await supabase
+      .from('markup_projects')
+      .update({ total_threads: remaining ?? 0 })
+      .eq('id', projectId);
+
+    revalidatePath(`/projects/${projectId}`);
+    return { success: true };
+  } catch (error) {
+    console.error('Unexpected error deleting thread:', error);
     return { success: false, error: 'An unexpected error occurred' };
   }
 }

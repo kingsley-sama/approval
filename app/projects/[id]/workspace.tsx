@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import ImageViewer from '@/components/annotation/image-viewer';
 import CommentModal from '@/components/annotation/comment-modal';
-import { getProjectWorkspaceData, reorderThreads, type WorkspaceData } from '@/app/actions/threads';
+import { getProjectWorkspaceData, reorderThreads, deleteThread, type WorkspaceData } from '@/app/actions/threads';
 import { resolveComment, DbComment, updateCommentPosition, updateComment, updateCommentDrawing, deleteComment } from '@/app/actions/comments';
 import { getAttachmentUploadUrl, registerAttachment, getAttachmentsForComments, deleteAttachment } from '@/app/actions/storage';
 import { useCommentQueue } from '@/hooks/use-comment-queue';
@@ -287,20 +287,13 @@ export default function ProjectWorkspace({ projectId, initialData, fallbackName 
     onDeleteComment: handleRealtimeDelete,
   });
 
-  // Pin numbers run continuously across every image in the project: the first
-  // image's pins are 1..n, the next image continues at n+1, and so on. Numbering
-  // follows the image order and each image's creation order, so it stays stable
-  // as pins are added. This is display-only — the stored per-thread numbers are
-  // left untouched.
-  const numberedImages = useMemo<ImageData[]>(() => {
-    let counter = 0;
-    return imagesState.map(img => ({
-      ...img,
-      pins: img.pins.map(pin => ({ ...pin, number: ++counter })),
-    }));
-  }, [imagesState]);
-
-  const currentImage = numberedImages.find(img => img.id === currentImageId);
+  // Pin numbers are allocated once, server-side, from a per-project counter and
+  // stored on the comment (`display_number`). They must NOT be re-derived from
+  // array position here: comment numbers are quoted in revision communication,
+  // so adding a comment to an earlier image, deleting one, or reordering images
+  // must all leave existing numbers untouched. `dbCommentToPin` already carries
+  // the persisted value through, so rendering uses it as-is.
+  const currentImage = imagesState.find(img => img.id === currentImageId);
   const pins = currentImage?.pins || [];
 
   // Warm the browser cache for full-size images so switching is instant. The
@@ -413,8 +406,17 @@ export default function ProjectWorkspace({ projectId, initialData, fallbackName 
 
   const handleAddComment = async (text: string, attachmentFiles: File[] = []) => {
     if (!currentImageId || !pendingPinPos) return;
-    const currentPins = imagesState.find(img => img.id === currentImageId)?.pins ?? [];
-    const pinNumber = currentPins.length + 1;
+    // Provisional number for the optimistic pin only, so it reads sensibly for
+    // the moment before the server responds. The authoritative number is
+    // allocated server-side from the project counter and replaces this when the
+    // comment syncs (see syncCallbacks.onSynced). Taking the max across every
+    // image — not the current image's pin count — keeps the placeholder
+    // consistent with project-wide numbering.
+    const highestNumber = imagesState.reduce(
+      (max, img) => img.pins.reduce((m, pin) => Math.max(m, pin.number ?? 0), max),
+      0
+    );
+    const pinNumber = highestNumber + 1;
 
     // 1. Enqueue locally — instant, no network wait
     const drawingPayload = pendingShapes.length > 0 ? pendingShapes : undefined;
@@ -584,6 +586,57 @@ export default function ProjectWorkspace({ projectId, initialData, fallbackName 
     });
   }, [imagesState, currentImageId, projectId, toast]);
 
+  /** Delete a single image and everything anchored to it, leaving the rest of
+   *  the revision untouched. If the deleted image was the one on screen, move to
+   *  its neighbour so the viewer never points at a missing image. */
+  const handleDeleteImage = useCallback(async (imageId: string) => {
+    const target = imagesState.find(img => img.id === imageId);
+    if (!target) return;
+
+    const commentCount = target.pins.length;
+    const confirmed = await confirm({
+      title: `Delete "${target.name}"?`,
+      description: commentCount > 0
+        ? `This image and its ${commentCount} ${commentCount === 1 ? 'comment' : 'comments'} (with their drawings and attachments) will be removed. Comments on other images keep their numbers. This cannot be undone.`
+        : 'This image will be removed from the revision. This cannot be undone.',
+      confirmText: 'Delete image',
+      cancelText: 'Cancel',
+      destructive: true,
+    });
+    if (!confirmed) return;
+
+    const snapshot = imagesState;
+    const snapshotIndex = currentImageIndex;
+    const remaining = imagesState.filter(img => img.id !== imageId);
+
+    setImagesState(remaining);
+    if (currentImageId === imageId) {
+      // Prefer the image that took this one's slot, else the new last image.
+      const removedIndex = imagesState.findIndex(img => img.id === imageId);
+      const nextIndex = Math.min(removedIndex, remaining.length - 1);
+      const next = remaining[nextIndex];
+      setCurrentImageId(next?.id ?? '');
+      setCurrentImageIndex(next ? nextIndex : 0);
+      setSelectedPin(null);
+      setShowModal(false);
+    } else {
+      const reindexed = remaining.findIndex(img => img.id === currentImageId);
+      if (reindexed !== -1) setCurrentImageIndex(reindexed);
+    }
+
+    const result = await deleteThread(imageId, projectId);
+    if (!result.success) {
+      setImagesState(snapshot);
+      setCurrentImageId(currentImageId);
+      setCurrentImageIndex(snapshotIndex);
+      toast({
+        title: 'Failed to delete image',
+        description: result.error ?? 'Please try again.',
+        variant: 'destructive',
+      });
+    }
+  }, [imagesState, currentImageId, currentImageIndex, projectId, confirm, toast]);
+
   const handleSwitchImage = useCallback((imageId: string) => {
     const index = imagesState.findIndex(img => img.id === imageId);
     if (index !== -1) {
@@ -734,7 +787,7 @@ export default function ProjectWorkspace({ projectId, initialData, fallbackName 
 
       <ProjectShell
         isFullscreen={isFullscreen}
-        images={numberedImages}
+        images={imagesState}
         currentImageId={currentImageId}
         selectedPinId={selectedPin}
         onSelectPin={(pinId) => {
@@ -748,6 +801,7 @@ export default function ProjectWorkspace({ projectId, initialData, fallbackName 
         projectId={projectId}
         onSelectImage={handleSwitchImage}
         onReorderImages={handleReorderImages}
+        onDeleteImage={handleDeleteImage}
         onUploadComplete={refreshWorkspace}
         onCommentTabChange={setCommentTab}
         onEditComment={handleEditComment}

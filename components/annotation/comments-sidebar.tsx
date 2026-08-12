@@ -4,7 +4,7 @@ import { MessageSquare, ChevronDown, ChevronRight, Check, FileText, ArrowLeft, M
 import { useState, useEffect, useMemo, useRef } from 'react';
 import type { AttachmentRecord } from '@/app/actions/storage';
 import CommentBody from './comment-body';
-import { createReply, getRepliesForComment, type CommentReply } from '@/app/actions/replies';
+import { createReply, getRepliesForComment, updateReply, deleteReply, type CommentReply } from '@/app/actions/replies';
 import { getCurrentUser } from '@/app/actions/comments';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { uploadCommentAttachments, validateAttachments } from '@/lib/comment-attachments';
@@ -126,6 +126,63 @@ function ThreadDetail({ pin, onBack, onResolve, readOnly, canResolve, onEditComm
   const canAttachToReply = interactive && (!!projectId || !!uploadAttachmentsFn);
   const canDeleteAttachment = interactive && !!onDeleteAttachment;
   const [deletingAttachmentId, setDeletingAttachmentId] = useState<string | null>(null);
+  // Reply editing / deletion. Guests (readOnly, reply-only access) don't get
+  // these controls: the server actions require a session, so showing them would
+  // only produce failures.
+  const canManageReplies = !readOnly;
+  const [editingReplyId, setEditingReplyId] = useState<string | null>(null);
+  const [editingReplyText, setEditingReplyText] = useState('');
+  const [isSavingReply, setIsSavingReply] = useState(false);
+  const [replyActionError, setReplyActionError] = useState<string | null>(null);
+
+  const beginEditReply = (item: CommentReply) => {
+    setEditingReplyId(item.id);
+    setEditingReplyText(item.content);
+    setReplyActionError(null);
+  };
+
+  const cancelEditReply = () => {
+    setEditingReplyId(null);
+    setEditingReplyText('');
+    setReplyActionError(null);
+  };
+
+  const saveEditReply = async () => {
+    const trimmed = editingReplyText.trim();
+    const id = editingReplyId;
+    if (!id || !trimmed || isSavingReply) return;
+
+    const snapshot = replies;
+    setIsSavingReply(true);
+    setReplyActionError(null);
+    // Optimistic: show the new text immediately, roll back if the save fails.
+    setReplies(prev => prev.map(r => (r.id === id ? { ...r, content: trimmed } : r)));
+
+    const result = await updateReply(id, trimmed);
+    setIsSavingReply(false);
+
+    if (result.success) {
+      cancelEditReply();
+    } else {
+      setReplies(snapshot);
+      setReplyActionError(result.error ?? 'Could not save the reply.');
+    }
+  };
+
+  const removeReply = async (id: string) => {
+    if (isSavingReply) return;
+    const snapshot = replies;
+    setReplyActionError(null);
+    // Only this reply goes — the parent comment and sibling replies are untouched.
+    setReplies(prev => prev.filter(r => r.id !== id));
+    if (editingReplyId === id) cancelEditReply();
+
+    const result = await deleteReply(id);
+    if (!result.success) {
+      setReplies(snapshot);
+      setReplyActionError(result.error ?? 'Could not delete the reply.');
+    }
+  };
 
   const handleAttachmentDelete = async (commentId: string, attachmentId: string) => {
     if (!onDeleteAttachment) return;
@@ -564,7 +621,7 @@ function ThreadDetail({ pin, onBack, onResolve, readOnly, canResolve, onEditComm
             const imageAttachments = item.attachments?.filter(a => a.mime_type.startsWith('image/')) ?? [];
             const pdfAttachments = item.attachments?.filter(a => a.mime_type === 'application/pdf') ?? [];
             return (
-              <div key={item.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
+              <div key={item.id} className={`group/reply flex ${mine ? 'justify-end' : 'justify-start'}`}>
                 <div
                   className={`max-w-[84%] rounded-2xl px-3 py-2 ${
                     mine
@@ -572,10 +629,82 @@ function ThreadDetail({ pin, onBack, onResolve, readOnly, canResolve, onEditComm
                       : 'rounded-tl-md bg-background border border-border/60 text-foreground'
                   } ${item.id.startsWith('opt_') ? 'opacity-70' : ''}`}
                 >
-                  <div className={`text-[10px] mb-1 ${mine ? 'text-primary-foreground/80' : 'text-muted-foreground'}`}>
-                    {mine ? 'You' : item.user_name}
+                  <div className={`flex items-center justify-between gap-2 mb-1`}>
+                    <span className={`text-[11px] ${mine ? 'text-primary-foreground/80' : 'text-muted-foreground'}`}>
+                      {mine ? 'You' : item.user_name}
+                    </span>
+                    {/* Optimistic replies have no server id yet, so they can't be
+                        edited or deleted until the create round-trip lands. */}
+                    {canManageReplies && mine && !item.id.startsWith('opt_') && editingReplyId !== item.id && (
+                      <span className="flex items-center gap-0.5 opacity-0 group-hover/reply:opacity-100 focus-within:opacity-100 transition-opacity">
+                        <button
+                          type="button"
+                          onClick={() => beginEditReply(item)}
+                          title="Edit reply"
+                          aria-label="Edit reply"
+                          className={`p-0.5 rounded transition-colors ${
+                            mine ? 'text-primary-foreground/70 hover:text-primary-foreground' : 'text-muted-foreground hover:text-foreground'
+                          }`}
+                        >
+                          <Pencil className="h-3 w-3" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => removeReply(item.id)}
+                          title="Delete reply"
+                          aria-label="Delete reply"
+                          className={`p-0.5 rounded transition-colors ${
+                            mine ? 'text-primary-foreground/70 hover:text-primary-foreground' : 'text-muted-foreground hover:text-red-600'
+                          }`}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </button>
+                      </span>
+                    )}
                   </div>
-                  <p className="text-[13px] leading-relaxed wrap-break-word">{item.content}</p>
+                  {editingReplyId === item.id ? (
+                    <div>
+                      <textarea
+                        value={editingReplyText}
+                        onChange={e => setEditingReplyText(e.target.value)}
+                        onKeyDown={e => {
+                          // Enter saves; Shift+Enter keeps multi-line replies possible.
+                          if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault();
+                            saveEditReply();
+                          }
+                          if (e.key === 'Escape') {
+                            e.preventDefault();
+                            cancelEditReply();
+                          }
+                        }}
+                        autoFocus
+                        disabled={isSavingReply}
+                        rows={3}
+                        className="w-full px-2 py-1.5 rounded text-sm leading-relaxed bg-white text-foreground border border-border focus:outline-none focus:ring-1 focus:ring-primary/40 resize-none"
+                      />
+                      <div className="flex items-center justify-end gap-1 mt-1.5">
+                        <button
+                          onClick={cancelEditReply}
+                          disabled={isSavingReply}
+                          className={`px-2 py-0.5 text-[11px] rounded transition-colors disabled:opacity-50 ${
+                            mine ? 'text-primary-foreground/80 hover:bg-white/10' : 'text-muted-foreground hover:bg-muted/60'
+                          }`}
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={saveEditReply}
+                          disabled={isSavingReply || !editingReplyText.trim()}
+                          className="px-2.5 py-0.5 bg-white text-primary rounded text-[11px] font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
+                        >
+                          {isSavingReply ? 'Saving…' : 'Save'}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-sm leading-relaxed wrap-break-word">{item.content}</p>
+                  )}
                   {(imageAttachments.length > 0 || pdfAttachments.length > 0) && (
                     <div className="mt-2 space-y-1.5">
                       {imageAttachments.length > 0 && (
@@ -642,13 +771,16 @@ function ThreadDetail({ pin, onBack, onResolve, readOnly, canResolve, onEditComm
                       ))}
                     </div>
                   )}
-                  <div className={`text-[10px] mt-1.5 ${mine ? 'text-primary-foreground/80' : 'text-muted-foreground'}`}>
+                  <div className={`text-[11px] mt-1.5 ${mine ? 'text-primary-foreground/80' : 'text-muted-foreground'}`}>
                     {new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </div>
                 </div>
               </div>
             );
           })
+        )}
+        {replyActionError && (
+          <p className="text-[11px] text-red-500 px-1">{replyActionError}</p>
         )}
         <div ref={bottomRef} />
       </div>

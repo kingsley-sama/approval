@@ -1,6 +1,7 @@
 'use server';
 
 import { createClient } from '@/lib/supabase/server';
+import { requireUser } from '@/lib/auth/require-user';
 import { nanoid } from 'nanoid';
 import { getAttachmentsForComments, type AttachmentRecord } from './storage';
 
@@ -67,6 +68,116 @@ export async function getRepliesForComment(commentId: string): Promise<CommentRe
 
   const attachmentsByReply = await getAttachmentsForComments(replies.map(r => r.id));
   return replies.map(r => ({ ...r, attachments: attachmentsByReply[r.id] ?? [] }));
+}
+
+/**
+ * Locate a reply in whichever table it lives in.
+ * Replies are stored in `markup_comments` with `type='reply'`; the legacy
+ * `comment_replies` table is still read for rows that predate that migration.
+ */
+async function findReply(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  replyId: string,
+): Promise<{ table: 'markup_comments' | 'comment_replies'; userName: string } | null> {
+  const typed = await supabase
+    .from('markup_comments')
+    .select('id, user_name, type, parent_comment_id')
+    .eq('id', replyId)
+    .maybeSingle();
+
+  if (!typed.error && typed.data) {
+    const row = typed.data as any;
+    // Guard against a comment id being passed where a reply id is expected —
+    // editing/deleting must never fall through to the parent comment.
+    if (row.type === 'reply' || row.parent_comment_id) {
+      return { table: 'markup_comments', userName: row.user_name ?? '' };
+    }
+    return null;
+  }
+
+  const legacy = await supabase
+    .from('comment_replies')
+    .select('id, user_name')
+    .eq('id', replyId)
+    .maybeSingle();
+
+  if (!legacy.error && legacy.data) {
+    return { table: 'comment_replies', userName: (legacy.data as any).user_name ?? '' };
+  }
+
+  return null;
+}
+
+/**
+ * Edit a reply's text. Author or admin only — the same rule `updateComment`
+ * applies to top-level comments.
+ */
+export async function updateReply(
+  replyId: string,
+  content: string,
+): Promise<{ success: boolean; error?: string }> {
+  const user = await requireUser();
+
+  const trimmed = content.trim();
+  if (!trimmed) return { success: false, error: 'Reply cannot be empty' };
+  if (trimmed.length > 5000) return { success: false, error: 'Reply is too long' };
+
+  const supabase = await createClient();
+  const existing = await findReply(supabase, replyId);
+  if (!existing) return { success: false, error: 'Reply not found' };
+
+  const authorName = existing.userName.trim().toLowerCase();
+  const currentName = (user.name || user.email || '').trim().toLowerCase();
+  if (user.role !== 'admin' && authorName !== currentName) {
+    return { success: false, error: 'You can only edit your own replies' };
+  }
+
+  const { error } = await supabase
+    .from(existing.table)
+    .update({ content: trimmed, updated_at: new Date().toISOString() } as any)
+    .eq('id', replyId);
+
+  if (error) {
+    console.error('Error updating reply:', error);
+    return { success: false, error: error.message };
+  }
+
+  return { success: true };
+}
+
+/**
+ * Delete a reply. Author, admin, or pm — matching `deleteComment`.
+ * Only the reply row is removed; the parent comment and its other replies,
+ * drawing, and attachments are untouched. The reply's own attachments cascade
+ * via `comment_attachments.comment_id`.
+ */
+export async function deleteReply(
+  replyId: string,
+): Promise<{ success: boolean; error?: string }> {
+  const user = await requireUser();
+
+  const supabase = await createClient();
+  const existing = await findReply(supabase, replyId);
+  if (!existing) return { success: false, error: 'Reply not found' };
+
+  const authorName = existing.userName.trim().toLowerCase();
+  const currentName = (user.name || user.email || '').trim().toLowerCase();
+  const elevated = user.role === 'admin' || user.role === 'pm';
+  if (!elevated && authorName !== currentName) {
+    return { success: false, error: 'You can only delete your own replies' };
+  }
+
+  const { error } = await supabase
+    .from(existing.table)
+    .delete()
+    .eq('id', replyId);
+
+  if (error) {
+    console.error('Error deleting reply:', error);
+    return { success: false, error: error.message };
+  }
+
+  return { success: true };
 }
 
 export async function createReply(

@@ -9,6 +9,7 @@ import { supabaseAdmin as supabase } from '@/lib/supabase';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { z } from 'zod';
 import { nanoid } from 'nanoid';
+import { allocateProjectCommentNumber } from '@/lib/comment-numbering';
 
 function clampPercent(value: number): number {
   if (!Number.isFinite(value)) return 50;
@@ -105,19 +106,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get next comment index (excluding replies in typed schema)
-    const typedCount = await supabase
-      .from('markup_comments')
-      .select('*', { count: 'exact', head: true })
-      .eq('thread_id', validated.threadId)
-      .neq('type' as any, 'reply');
-
-    const legacyCount = await supabase
-      .from('markup_comments')
-      .select('*', { count: 'exact', head: true })
-      .eq('thread_id', validated.threadId);
-
-    const nextIndex = ((typedCount.error ? legacyCount.count : typedCount.count) || 0) + 1;
+    // Allocate the next comment number from the project-wide counter, so guest
+    // comments continue the same sequence the project owner sees. Numbers are
+    // quoted between the two parties, so both sides must agree — never number
+    // per-thread or by array position here.
+    const nextIndex = await allocateProjectCommentNumber(supabase as any, thread.project_id);
 
     // Create drawing row first when this comment includes drawing data
     let drawingId: string | null = null;

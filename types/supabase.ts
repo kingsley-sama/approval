@@ -958,6 +958,15 @@ export type Database = {
         Args: { p_token: string }
         Returns: boolean
       }
+      // Atomic project-wide comment number allocators (migration 016).
+      next_comment_display_number: {
+        Args: { p_project_id: string }
+        Returns: number
+      }
+      next_comment_display_number_for_thread: {
+        Args: { p_thread_id: string }
+        Returns: number
+      }
       increment_share_link_access: {
         Args: { p_token: string }
         Returns: undefined
