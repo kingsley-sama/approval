@@ -46,7 +46,8 @@ export async function GET(
       'id, thread_id, user_name, content, pin_number, x_position, y_position, status, parent_comment_id, created_at, updated_at'
     )
     .in('thread_id', threads.map((t: any) => t.id))
-    .order('created_at', { ascending: true });
+    .order('created_at', { ascending: true })
+    .order('display_number', { ascending: true, nullsFirst: false });
 
   const status = request.nextUrl.searchParams.get('status');
   if (status === 'active' || status === 'resolved') {

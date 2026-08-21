@@ -2,6 +2,7 @@
 
 import { Copy, FolderOpen } from 'lucide-react'
 import { useState } from 'react'
+import { TruncatedName } from '@/components/ui/truncated-name'
 
 interface ProjectStats {
   likes: number
@@ -79,9 +80,11 @@ export default function ProjectGrid({ projects, onDuplicate, onOpen, onDelete }:
               <p className="text-xs text-muted-foreground font-medium mb-2">
                 {project.subtitle}
               </p>
-              <h3 className="font-semibold text-card-foreground text-base mb-2 line-clamp-2">
-                {project.title}
-              </h3>
+              <TruncatedName
+                as="h3"
+                name={project.title}
+                className="font-semibold text-card-foreground text-base mb-2 line-clamp-2"
+              />
             </div>
 
             {/* Stats */}

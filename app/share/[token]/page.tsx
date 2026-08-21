@@ -178,7 +178,8 @@ export default async function SharePage({ params }: SharePageProps) {
       .from('markup_comments')
       .select('*')
       .eq('thread_id', shareLink!.resourceId)
-      .order('created_at', { ascending: true });
+      .order('created_at', { ascending: true })
+      .order('display_number', { ascending: true, nullsFirst: false });
 
     const allComments = await hydrateDrawingData(comments || []);
     const attachmentsByComment = await getAttachmentsForComments(allComments.map((c: any) => c.id));
@@ -203,6 +204,7 @@ export default async function SharePage({ params }: SharePageProps) {
       .from('markup_threads')
       .select('*')
       .eq('project_id', shareLink!.resourceId)
+      .order('image_index', { ascending: true, nullsFirst: false })
       .order('created_at', { ascending: true });
 
     if (threadsError) notFound();
@@ -216,6 +218,7 @@ export default async function SharePage({ params }: SharePageProps) {
           .select('*')
           .eq('thread_id', t.id)
           .order('created_at', { ascending: true })
+          .order('display_number', { ascending: true, nullsFirst: false })
           .then(async ({ data }) => ({
             threadId: t.id,
             comments: await hydrateDrawingData(data || []),

@@ -138,7 +138,8 @@ export async function getCommentsForThreads(threadIds: string[]): Promise<Record
     .from('markup_comments')
     .select('*')
     .in('thread_id', threadIds)
-    .order('created_at', { ascending: true });
+    .order('created_at', { ascending: true })
+    .order('display_number', { ascending: true, nullsFirst: false });
 
   if (error) {
     console.error('Error loading comments for threads:', error);
@@ -173,7 +174,8 @@ export async function getThreadComments(threadId: string): Promise<DbComment[]> 
     .from('markup_comments')
     .select('*')
     .eq('thread_id', threadId)
-    .order('created_at', { ascending: true });
+    .order('created_at', { ascending: true })
+    .order('display_number', { ascending: true, nullsFirst: false });
 
   if (error) {
     console.error('Error loading comments:', error);

@@ -8,6 +8,7 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
+import { TruncatedName } from '@/components/ui/truncated-name';
 import { useRouter } from 'next/navigation';
 import ImageViewer from '@/components/annotation/image-viewer';
 import CommentModal from '@/components/annotation/comment-modal';
@@ -762,7 +763,7 @@ export default function ShareViewer({ shareLink, resourceData, token }: ShareVie
 
           {/* Center — project name */}
           <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-foreground truncate max-w-xs">{projectName}</span>
+            <TruncatedName name={projectName} className="text-sm font-medium text-foreground truncate max-w-xs" />
           </div>
 
           {/* Right — guest identity */}

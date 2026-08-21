@@ -3,6 +3,7 @@
 import React, { useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
 import Image from 'next/image';
+import { TruncatedName } from '@/components/ui/truncated-name';
 import { X } from 'lucide-react';
 import type { PanoramaHotspot } from '@/components/panorama/panorama-viewer';
 import PanoramaCommentModal from '@/components/panorama/panorama-comment-modal';
@@ -178,7 +179,7 @@ export default function PanoramaShareViewer({
     <div className="h-screen flex flex-col bg-gray-950">
       {showHeader && (
       <header className="h-12 flex items-center justify-between px-4 bg-black/60 text-white shrink-0 gap-3">
-        <span className="text-sm font-medium truncate">{projectName}</span>
+        <TruncatedName name={projectName} className="text-sm font-medium truncate" />
         <div className="flex items-center gap-2 shrink-0">
           {canComment && (
             <button

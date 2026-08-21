@@ -18,6 +18,7 @@ import {
 } from 'lucide-react'
 import React from 'react'
 import NextImage from 'next/image'
+import { TruncatedName } from '@/components/ui/truncated-name'
 import ShareLinkManager from '@/components/share-link-manager'
 import type { ShareResourceType } from '@/app/actions/share-links'
 
@@ -299,7 +300,7 @@ export default function ProjectCard({ project, onOpen, onDuplicate, onDelete, on
 
       {/* ── Card body ── */}
       <div className="px-3 py-2">
-        <h3 className="text-lg font-bold mb-2 truncate">{project.title}</h3>
+        <TruncatedName as="h3" name={project.title} className="text-lg font-bold mb-2 truncate" />
         <p className="text-sm text-muted-foreground mb-4" suppressHydrationWarning>Updated {project.updatedAt}</p>
 
         <div className="w-full flex items-center gap-3">

@@ -3,6 +3,7 @@
 import React from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
+import { TruncatedName } from '@/components/ui/truncated-name';
 import ShareLinkManager from '@/components/share-link-manager';
 import PanoramaCommentsSidebar, { type PanoramaSidebarImage } from '@/components/panorama/panorama-comments-sidebar';
 import PanoramaThumbnailsSidebar, { type PanoramaImageItem } from '@/components/panorama/panorama-thumbnails-sidebar';
@@ -96,7 +97,7 @@ export function PanoramaTopNav({
         </IconTooltip>
       </div>
 
-      <span className="text-sm font-medium text-foreground truncate max-w-xs">{projectName}</span>
+      <TruncatedName name={projectName} className="text-sm font-medium text-foreground truncate max-w-xs" />
 
       <div className="flex items-center gap-2">
         {currentImageUrl && onDownload && (

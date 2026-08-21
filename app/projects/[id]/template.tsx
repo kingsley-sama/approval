@@ -3,6 +3,7 @@
 import React from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
+import { TruncatedName } from '@/components/ui/truncated-name';
 import CommentsSidebar from '@/components/annotation/comments-sidebar';
 import ThumbnailsSidebar from '@/components/annotation/thumbnails-sidebar';
 import ShareLinkManager from '@/components/share-link-manager';
@@ -159,7 +160,7 @@ export function ProjectTopNav({
         </div>
 
         {/* Center: project name */}
-        <span className="text-sm font-medium text-foreground truncate max-w-xs">{projectName}</span>
+        <TruncatedName name={projectName} className="text-sm font-medium text-foreground truncate max-w-xs" />
 
         {/* Right actions */}
         <div className="flex items-center gap-2">

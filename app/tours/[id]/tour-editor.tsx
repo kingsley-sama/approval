@@ -4,6 +4,7 @@ import React, { useCallback, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
+import { TruncatedName } from '@/components/ui/truncated-name';
 import { ArrowLeft, Eye, Pencil, Upload } from 'lucide-react';
 import ShareLinkManager from '@/components/share-link-manager';
 import TourScenesSidebar, { type TourSidebarScene } from '@/components/tour/tour-scenes-sidebar';
@@ -340,7 +341,7 @@ export default function TourEditor({ projectId, initialData, fallbackName }: Tou
             <span className="w-1.5 h-1.5 rounded-full bg-accent shrink-0" />
             — ExposéProfi
           </div>
-          <span className="text-sm font-medium text-foreground truncate max-w-[16rem]">{projectName}</span>
+          <TruncatedName name={projectName} className="text-sm font-medium text-foreground truncate max-w-[16rem]" />
         </div>
 
         {/* Edit / Preview segmented toggle */}

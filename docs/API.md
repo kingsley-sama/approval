@@ -65,34 +65,37 @@ Authorization: Bearer <your-api-key>
    MARKUP_API_KEYS=key-for-n8n,key-for-zapier
    ```
 
-| Status | Meaning |
-|---|---|
-| `401` | Missing or invalid bearer token |
-| `503` | `MARKUP_API_KEYS` is not configured on the server |
+| Status | Meaning                                           |
+| ------ | ------------------------------------------------- |
+| `401`  | Missing or invalid bearer token                   |
+| `503`  | `MARKUP_API_KEYS` is not configured on the server |
 
 ### Error format
 
 All errors share one shape:
 
 ```json
-{ "success": false, "error": { "code": "not_found", "message": "No project with id ..." } }
+{
+  "success": false,
+  "error": { "code": "not_found", "message": "No project with id ..." }
+}
 ```
 
 ---
 
 ## Endpoints
 
-| Method | Path | Purpose |
-|---|---|---|
-| `POST` | `/api/v1/projects` | **Create a project** (name + optional comment + images + optional share link, in one call) |
-| `GET` | `/api/v1/projects` | List projects (paginated, searchable) |
-| `GET` | `/api/v1/projects/{id}` | Project details, images, share links |
-| `DELETE` | `/api/v1/projects/{id}` | Delete a project |
-| `POST` | `/api/v1/projects/{id}/images` | Add images to an existing project |
-| `GET` | `/api/v1/projects/{id}/comments` | Read all pins/comments (client feedback) |
-| `POST` | `/api/v1/share-links` | Create a shareable client link |
-| `GET` | `/api/v1/share-links` | List share links for a project/image |
-| `DELETE` | `/api/v1/share-links/{id}` | Revoke a share link |
+| Method   | Path                             | Purpose                                                                                    |
+| -------- | -------------------------------- | ------------------------------------------------------------------------------------------ |
+| `POST`   | `/api/v1/projects`               | **Create a project** (name + optional comment + images + optional share link, in one call) |
+| `GET`    | `/api/v1/projects`               | List projects (paginated, searchable)                                                      |
+| `GET`    | `/api/v1/projects/{id}`          | Project details, images, share links                                                       |
+| `DELETE` | `/api/v1/projects/{id}`          | Delete a project                                                                           |
+| `POST`   | `/api/v1/projects/{id}/images`   | Add images to an existing project                                                          |
+| `GET`    | `/api/v1/projects/{id}/comments` | Read all pins/comments (client feedback)                                                   |
+| `POST`   | `/api/v1/share-links`            | Create a shareable client link                                                             |
+| `GET`    | `/api/v1/share-links`            | List share links for a project/image                                                       |
+| `DELETE` | `/api/v1/share-links/{id}`       | Revoke a share link                                                                        |
 
 ---
 
@@ -126,30 +129,28 @@ curl -X POST https://revision.exposeprofi.de/api/v1/projects \
   "images": [
     { "url": "https://example.com/renders/homepage.png" },
     { "url": "https://example.com/renders/about.png", "name": "About page" },
-    { "base64": "iVBORw0KGgo...", "contentType": "image/png", "name": "Contact page" }
+    {
+      "base64": "iVBORw0KGgo...",
+      "contentType": "image/png",
+      "name": "Contact page"
+    }
   ],
   "share": { "permissions": "comment" }
 }
 ```
 
-| Field | Type | Required | Notes |
-|---|---|---|---|
-| `name` | string | ✅ | Project name (max 300 chars) |
-| `comment` | string | — | Description/note stored on the project (max 5000 chars) |
-| `images` | array | — | Up to 50 per request. Each item needs `url` **or** `base64` |
-| `images[].url` | string | — | Publicly reachable http(s) image URL; the server downloads it |
-| `images[].base64` | string | — | Raw base64 or a full `data:image/png;base64,...` URI |
-| `images[].contentType` | string | — | Required with raw `base64` (e.g. `image/png`) |
-| `images[].name` | string | — | Display name shown in the workspace |
-| `share` | object | — | If present, a share link is created immediately. `permissions`: `view` \| `comment` \| `draw_and_comment` |
+| Field                  | Type   | Required | Notes                                                                                                     |
+| ---------------------- | ------ | -------- | --------------------------------------------------------------------------------------------------------- |
+| `name`                 | string | ✅       | Project name (max 300 chars)                                                                              |
+| `comment`              | string | —        | Description/note stored on the project (max 5000 chars)                                                   |
+| `images`               | array  | —        | Up to 50 per request. Each item needs `url` **or** `base64`                                               |
+| `images[].url`         | string | —        | Publicly reachable http(s) image URL; the server downloads it                                             |
+| `images[].base64`      | string | —        | Raw base64 or a full `data:image/png;base64,...` URI                                                      |
+| `images[].contentType` | string | —        | Required with raw `base64` (e.g. `image/png`)                                                             |
+| `images[].name`        | string | —        | Display name shown in the workspace                                                                       |
+| `share`                | object | —        | If present, a share link is created immediately. `permissions`: `view` \| `comment` \| `draw_and_comment` |
 
-Allowed image types: `image/jpeg`, `image/png`, `image/webp`, `image/gif`. Max 60 MB per source file.
-
-The type is taken from the response's `Content-Type` when that names an allowed image type; otherwise it falls back to the file's magic bytes and then to the extension of `images[].name`. Pre-authenticated links (SharePoint/Graph `@microsoft.graph.downloadUrl`, presigned S3 URLs) often serve real images as `application/octet-stream`, and those are accepted.
-
-> **Files over 4.5 MB must be sent as URLs, not as multipart uploads.** The production deployment runs on Vercel, whose serverless functions reject any request body larger than 4.5 MB with `413 FUNCTION_PAYLOAD_TOO_LARGE` — the platform rejects it at the edge, before this API sees it, so nothing appears in `failedImages`. Sending `{ "images": [{ "url": ... }] }` keeps the request tiny and lets the server do the download, where the 60 MB ceiling above is the only limit. Multipart uploads remain fine for small files and for local development, which has no such cap.
-
-Ingested jpeg/png/webp images are compressed server-side before storage (downscaled to max 2560px and re-encoded as JPEG), matching the in-app uploader. GIFs are stored as-is to preserve animation.
+Allowed image types: `image/jpeg`, `image/png`, `image/webp`, `image/gif`. Max 20 MB each.
 
 ### Response — `201 Created`
 
@@ -165,7 +166,12 @@ Ingested jpeg/png/webp images are compressed server-side before storage (downsca
     "totalImages": 3
   },
   "images": [
-    { "threadId": "…", "name": "homepage.png", "imageUrl": "https://…supabase.co/…", "imageIndex": 0 }
+    {
+      "threadId": "…",
+      "name": "homepage.png",
+      "imageUrl": "https://…supabase.co/…",
+      "imageIndex": 0
+    }
   ],
   "failedImages": [],
   "shareLink": {
@@ -181,10 +187,6 @@ Ingested jpeg/png/webp images are compressed server-side before storage (downsca
 - `failedImages` — per-image failures (bad URL, wrong type, too big). The project is still created with whatever succeeded; **check this array in your automation**.
 - `shareLink` is `null` unless you passed `share`.
 
-If images were requested but **none** could be ingested, the response is `422 all_images_failed` (with `failedImages` details) and the just-created project is rolled back — a failed run never leaves an empty project behind. Creating a project with no `images` at all remains valid and returns `201`.
-
-Project names are unique (case-insensitive). If a project with the same name already exists, the response is `409 duplicate_name` and includes `existingProject: { id, url }` so automations can reuse or link to it instead of creating a duplicate.
-
 ---
 
 ## GET /api/v1/projects — list projects
@@ -198,10 +200,20 @@ curl -H "Authorization: Bearer $API_KEY" \
 
 ```json
 {
-  "success": true, "page": 1, "pageSize": 24, "total": 3,
+  "success": true,
+  "page": 1,
+  "pageSize": 24,
+  "total": 3,
   "projects": [
-    { "id": "…", "name": "Kitchen Render v3", "coverImage": "https://…", "totalImages": 2,
-      "url": "https://revision.exposeprofi.de/projects/…", "createdAt": "…", "updatedAt": "…" }
+    {
+      "id": "…",
+      "name": "Kitchen Render v3",
+      "coverImage": "https://…",
+      "totalImages": 2,
+      "url": "https://revision.exposeprofi.de/projects/…",
+      "createdAt": "…",
+      "updatedAt": "…"
+    }
   ]
 }
 ```
@@ -219,15 +231,34 @@ curl -H "Authorization: Bearer $API_KEY" https://revision.exposeprofi.de/api/v1/
 ```json
 {
   "success": true,
-  "project": { "id": "…", "name": "Kitchen Render v3", "comment": "Final materials pass",
-               "coverImage": "https://…", "url": "https://revision.exposeprofi.de/projects/…",
-               "totalImages": 2, "createdAt": "…", "updatedAt": "…" },
+  "project": {
+    "id": "…",
+    "name": "Kitchen Render v3",
+    "comment": "Final materials pass",
+    "coverImage": "https://…",
+    "url": "https://revision.exposeprofi.de/projects/…",
+    "totalImages": 2,
+    "createdAt": "…",
+    "updatedAt": "…"
+  },
   "images": [
-    { "threadId": "…", "name": "kitchen-v3.jpg", "imageUrl": "https://…", "imageIndex": 0, "createdAt": "…" }
+    {
+      "threadId": "…",
+      "name": "kitchen-v3.jpg",
+      "imageUrl": "https://…",
+      "imageIndex": 0,
+      "createdAt": "…"
+    }
   ],
   "shareLinks": [
-    { "id": "…", "url": "https://revision.exposeprofi.de/share/…", "permissions": "comment",
-      "isActive": true, "accessCount": 4, "createdAt": "…" }
+    {
+      "id": "…",
+      "url": "https://revision.exposeprofi.de/share/…",
+      "permissions": "comment",
+      "isActive": true,
+      "accessCount": 4,
+      "createdAt": "…"
+    }
   ]
 }
 ```
@@ -259,15 +290,24 @@ curl -H "Authorization: Bearer $API_KEY" \
 
 ```json
 {
-  "success": true, "total": 2,
+  "success": true,
+  "total": 2,
   "comments": [
     {
-      "id": "…", "threadId": "…",
-      "imageName": "homepage.png", "imageUrl": "https://…",
-      "author": "Jane (client)", "content": "Make this logo bigger",
-      "pinNumber": 1, "x": 42.5, "y": 17.8,
-      "status": "active", "isReply": false, "parentCommentId": null,
-      "createdAt": "…", "updatedAt": "…"
+      "id": "…",
+      "threadId": "…",
+      "imageName": "homepage.png",
+      "imageUrl": "https://…",
+      "author": "Jane (client)",
+      "content": "Make this logo bigger",
+      "pinNumber": 1,
+      "x": 42.5,
+      "y": 17.8,
+      "status": "active",
+      "isReply": false,
+      "parentCommentId": null,
+      "createdAt": "…",
+      "updatedAt": "…"
     }
   ]
 }
@@ -297,6 +337,7 @@ curl -X POST https://revision.exposeprofi.de/api/v1/share-links \
 ```
 
 ### GET /api/v1/share-links?projectId=… — list links
+
 ### DELETE /api/v1/share-links/{id} — revoke a link
 
 Revoked links immediately stop working for anyone holding the URL.
@@ -311,9 +352,9 @@ Works with any trigger that produces binary data (Gmail attachment, Google Drive
 
 - **Method:** POST
 - **URL:** `https://revision.exposeprofi.de/api/v1/projects`
-- **Authentication:** Generic Credential Type → *Header Auth*
+- **Authentication:** Generic Credential Type → _Header Auth_
   - Name: `Authorization`, Value: `Bearer YOUR_API_KEY`
-- **Body Content Type:** *Form-Data*
+- **Body Content Type:** _Form-Data_
 - **Body parameters:**
   | Type | Name | Value |
   |---|---|---|
@@ -322,7 +363,7 @@ Works with any trigger that produces binary data (Gmail attachment, Google Drive
   | **n8n Binary File** | `images` | your binary property (e.g. `data`; add one row per file — `data0`, `data1`, … also works, any field name is accepted) |
   | Form Data | `share_permissions` | `comment` |
 
-Downstream nodes can use `{{ $json.shareLink.url }}` (send to the client via Gmail/Slack node) and `{{ $json.project.url }}` (internal link for your team). Multiple binaries from one item: add one *n8n Binary File* row per binary property.
+Downstream nodes can use `{{ $json.shareLink.url }}` (send to the client via Gmail/Slack node) and `{{ $json.project.url }}` (internal link for your team). Multiple binaries from one item: add one _n8n Binary File_ row per binary property.
 
 ### 2. JSON alternative (image URLs)
 
