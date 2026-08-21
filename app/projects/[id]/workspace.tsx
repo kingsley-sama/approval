@@ -14,6 +14,7 @@ import { Upload } from 'lucide-react';
 import ImageUploader from '@/components/image-uploader';
 import { ProjectTopNav, ProjectShell, ProjectImageData, ProjectPin } from './template';
 import type { Shape } from '@/types/drawing';
+import { useDocumentTitle } from '@/hooks/use-document-title';
 import { compressImageFile } from '@/lib/image-compression';
 
 type Pin = ProjectPin;
@@ -79,6 +80,7 @@ interface ProjectWorkspaceProps {
 
 export default function ProjectWorkspace({ projectId, initialData, fallbackName }: ProjectWorkspaceProps) {
   const [projectName, setProjectName] = useState<string>(initialData.projectName ?? fallbackName ?? '');
+  useDocumentTitle(projectName);
   const currentUserName = initialData.currentUser.name || 'Anonymous';
   const currentUserRole = initialData.currentUser.role || 'member';
 

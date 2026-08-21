@@ -3,6 +3,7 @@
 import React from 'react';
 import dynamic from 'next/dynamic';
 import Image from 'next/image';
+import { useDocumentTitle } from '@/hooks/use-document-title';
 import { Orbit } from 'lucide-react';
 import type { TourPlayerScene } from './tour-player';
 
@@ -30,6 +31,8 @@ export default function TourShareViewer({
   startSceneId,
   showHeader = true,
 }: TourShareViewerProps) {
+  useDocumentTitle(tourName);
+
   return (
     <div className="h-screen flex flex-col bg-gray-950">
       {showHeader && (

@@ -5,6 +5,7 @@ import { ThemeProvider } from '@/components/theme-provider'
 import { Toaster } from '@/components/ui/toaster'
 import { ConfirmDialogProvider } from '@/components/confirm-dialog'
 import { TooltipProvider } from '@/components/ui/tooltip'
+import { APP_NAME, APP_TITLE } from '@/lib/app-title'
 import './globals.css'
 
 const inter = Inter({
@@ -20,7 +21,12 @@ const manrope = Manrope({
 })
 
 export const metadata: Metadata = {
-  title: 'Revision - Annotation & Approval Tool for feedback on renders',
+  // `default` for every page that doesn't name itself; `template` lets a
+  // project workspace return just the project name (see lib/app-title.ts).
+  title: {
+    default: APP_TITLE,
+    template: `%s · ${APP_NAME}`,
+  },
   description: 'Give feedback on renders with ease using Revision, the annotation and approval tool designed for artists, clients, and teams.',
   generator: 'Next.js',
   manifest: '/favicon_io/site.webmanifest',

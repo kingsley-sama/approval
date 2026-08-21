@@ -4,6 +4,7 @@ import React, { useCallback, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
+import { useDocumentTitle } from '@/hooks/use-document-title';
 import { TruncatedName } from '@/components/ui/truncated-name';
 import { ArrowLeft, Eye, Pencil, Upload } from 'lucide-react';
 import ShareLinkManager from '@/components/share-link-manager';
@@ -59,6 +60,7 @@ export default function TourEditor({ projectId, initialData, fallbackName }: Tou
   const confirm = useConfirm();
 
   const [projectName, setProjectName] = useState(initialData.projectName ?? fallbackName ?? 'Tour');
+  useDocumentTitle(projectName);
   const [scenes, setScenes] = useState(initialData.scenes);
   const [hotspotsByScene, setHotspotsByScene] = useState(initialData.hotspotsByScene);
   const [startSceneId, setStartSceneId] = useState(initialData.startSceneId);

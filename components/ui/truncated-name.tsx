@@ -29,11 +29,12 @@ export function TruncatedName({
   className,
   side = 'bottom',
 }: TruncatedNameProps) {
-  const ref = React.useRef<HTMLElement>(null)
+  const nodeRef = React.useRef<HTMLElement | null>(null)
+  const observerRef = React.useRef<ResizeObserver | null>(null)
   const [isOverflowing, setIsOverflowing] = React.useState(false)
 
   const measure = React.useCallback(() => {
-    const el = ref.current
+    const el = nodeRef.current
     if (!el) return
     // 1px slack: sub-pixel layout rounding otherwise reports a fitting
     // single-line label as overflowing.
@@ -42,21 +43,36 @@ export function TruncatedName({
     )
   }, [])
 
-  React.useEffect(() => {
-    measure()
-    const el = ref.current
-    if (!el || typeof ResizeObserver === 'undefined') return
-    const observer = new ResizeObserver(measure)
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, [measure, name])
+  // A callback ref rather than an effect: crossing the overflow threshold
+  // swaps the plain element for a tooltip-wrapped one, which remounts the DOM
+  // node. An effect keyed on [name] would not re-run for that swap and would
+  // leave the observer watching the discarded node.
+  const attach = React.useCallback(
+    (node: HTMLElement | null) => {
+      observerRef.current?.disconnect()
+      observerRef.current = null
+      nodeRef.current = node
+      if (!node) return
+
+      measure()
+      if (typeof ResizeObserver === 'undefined') return
+      const observer = new ResizeObserver(measure)
+      observer.observe(node)
+      observerRef.current = observer
+    },
+    [measure],
+  )
+
+  React.useEffect(() => () => observerRef.current?.disconnect(), [])
+  // Re-measure when the text itself changes under a stable node.
+  React.useEffect(() => measure(), [measure, name])
 
   const label = (
     <Tag
-      ref={ref as React.Ref<never>}
+      ref={attach as React.Ref<never>}
       className={className}
-      // Covers layout shifts a ResizeObserver on this element misses (a
-      // sibling growing, a font swapping in) right before the hover matters.
+      // Covers layout shifts the observer on this element misses (a sibling
+      // growing, a font swapping in) right before the hover matters.
       onPointerEnter={measure}
     >
       {name}

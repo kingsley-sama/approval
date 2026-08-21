@@ -8,6 +8,7 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
+import { useDocumentTitle } from '@/hooks/use-document-title';
 import { TruncatedName } from '@/components/ui/truncated-name';
 import { useRouter } from 'next/navigation';
 import ImageViewer from '@/components/annotation/image-viewer';
@@ -589,6 +590,8 @@ export default function ShareViewer({ shareLink, resourceData, token }: ShareVie
     resourceData.type === 'project'
       ? resourceData.project?.project_name
       : resourceData.thread?.markup_projects?.project_name || 'Shared Project';
+
+  useDocumentTitle(projectName);
 
   // Kick off the notification in the background so the thank-you state appears
   // immediately, but still report a failure when one comes back. `reviewSendRef`

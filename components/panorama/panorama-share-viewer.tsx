@@ -3,6 +3,7 @@
 import React, { useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
 import Image from 'next/image';
+import { useDocumentTitle } from '@/hooks/use-document-title';
 import { TruncatedName } from '@/components/ui/truncated-name';
 import { X } from 'lucide-react';
 import type { PanoramaHotspot } from '@/components/panorama/panorama-viewer';
@@ -66,6 +67,8 @@ export default function PanoramaShareViewer({
   showHeader = true,
   showImageStrip = true,
 }: PanoramaShareViewerProps) {
+  useDocumentTitle(projectName);
+
   const [imagesState, setImagesState] = useState<ShareImage[]>(images);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);

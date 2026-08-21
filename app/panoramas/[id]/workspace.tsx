@@ -21,6 +21,7 @@ import {
 } from '@/app/actions/panorama-comments';
 import { useToast } from '@/hooks/use-toast';
 import { useConfirm } from '@/components/confirm-dialog';
+import { useDocumentTitle } from '@/hooks/use-document-title';
 
 // Pannellum touches `window` at module scope — load it browser-side only.
 const PanoramaViewer = dynamic(() => import('@/components/panorama/panorama-viewer'), {
@@ -63,6 +64,7 @@ interface PanoramaWorkspaceProps {
 
 export default function PanoramaWorkspace({ projectId, initialData, fallbackName }: PanoramaWorkspaceProps) {
   const [projectName, setProjectName] = useState(initialData.projectName ?? fallbackName ?? '');
+  useDocumentTitle(projectName);
   const currentUserName = initialData.currentUser.name || 'Anonymous';
   const currentUserRole = initialData.currentUser.role || 'member';
 
