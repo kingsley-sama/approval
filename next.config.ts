@@ -6,6 +6,10 @@ const nextConfig: NextConfig = {
     root: path.resolve(__dirname),
   },
   outputFileTracingRoot: path.resolve(__dirname),
+  // sharp ships a platform-specific native binary. Keeping it external stops
+  // the server build from trying to bundle the .node file, so the traced
+  // output ships the real package (and its @img/* binary) instead.
+  serverExternalPackages: ['sharp'],
   experimental: {
     serverActions: {
       bodySizeLimit: '10mb',

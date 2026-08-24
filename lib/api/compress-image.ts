@@ -17,7 +17,25 @@
  *   NEXT_PUBLIC_IMAGE_COMPRESSION_QUALITY=0.85 → 0..1 JPEG quality
  */
 
-import sharp from 'sharp';
+// sharp is a native module, and a deployment where its platform binary is
+// missing throws on *import*. A top-level import therefore takes the whole
+// route module down (every request 500s before the handler ever runs) rather
+// than just disabling compression. Load it lazily inside the try/catch below
+// so an unloadable sharp degrades to "upload the original bytes", which is
+// exactly what the rest of this function already does on failure.
+type Sharp = (typeof import('sharp'))['default'];
+let sharpModule: Sharp | null | undefined;
+
+async function loadSharp(): Promise<Sharp | null> {
+  if (sharpModule !== undefined) return sharpModule;
+  try {
+    sharpModule = (await import('sharp')).default;
+  } catch (err) {
+    console.error('[compress] sharp unavailable, skipping compression:', err);
+    sharpModule = null;
+  }
+  return sharpModule;
+}
 
 const COMPRESSIBLE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 
@@ -70,6 +88,9 @@ export async function compressImageBuffer(
 
   try {
     const max = maxDimension();
+    const sharp = await loadSharp();
+    if (!sharp) return original;
+
     const compressed = await sharp(buffer)
       .rotate() // bake in EXIF orientation, like the client's from-image decode
       .flatten({ background: '#ffffff' })
