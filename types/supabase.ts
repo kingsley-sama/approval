@@ -432,6 +432,8 @@ export type Database = {
           mime_type: string
           file_size_bytes: number
           created_at: string
+          uploader_role: 'team' | 'customer'
+          uploader_name: string | null
         }
         Insert: {
           id?: string
@@ -442,6 +444,8 @@ export type Database = {
           mime_type: string
           file_size_bytes: number
           created_at?: string
+          uploader_role?: 'team' | 'customer'
+          uploader_name?: string | null
         }
         Update: {
           id?: string
@@ -452,6 +456,8 @@ export type Database = {
           mime_type?: string
           file_size_bytes?: number
           created_at?: string
+          uploader_role?: 'team' | 'customer'
+          uploader_name?: string | null
         }
         Relationships: [
           {

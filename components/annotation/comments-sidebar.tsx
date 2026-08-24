@@ -5,6 +5,8 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import type { AttachmentRecord } from '@/app/actions/storage';
 import CommentBody from './comment-body';
 import { createReply, getRepliesForComment, updateReply, deleteReply, type CommentReply } from '@/app/actions/replies';
+import { canDeleteAttachment as isAttachmentDeletable } from '@/lib/attachment-permissions';
+import { ATTACHMENT_ACCEPT, isVideoAttachment } from '@/lib/attachment-types';
 import { getCurrentUser } from '@/app/actions/comments';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { uploadCommentAttachments, validateAttachments } from '@/lib/comment-attachments';
@@ -557,7 +559,7 @@ function ThreadDetail({ pin, onBack, onResolve, readOnly, canResolve, onEditComm
                             }`}
                           />
                         </a>
-                        {canDeletePinAttachment && (
+                        {canDeletePinAttachment && isAttachmentDeletable(a) && (
                           <button
                             type="button"
                             onClick={(e) => {
@@ -578,6 +580,37 @@ function ThreadDetail({ pin, onBack, onResolve, readOnly, canResolve, onEditComm
                 </div>
 
                 {pin.attachments
+                  .filter(a => isVideoAttachment(a.mime_type))
+                  .map(a => (
+                    <div key={a.id} className="relative group">
+                      <video
+                        src={a.signedUrl}
+                        controls
+                        preload="metadata"
+                        className={`w-full max-h-48 rounded border border-border/40 bg-black ${
+                          deletingAttachmentId === a.id ? 'opacity-40' : ''
+                        }`}
+                      />
+                      {canDeletePinAttachment && isAttachmentDeletable(a) && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            handleAttachmentDelete(pin.id, a.id);
+                          }}
+                          disabled={deletingAttachmentId === a.id}
+                          title="Remove attachment"
+                          aria-label="Remove attachment"
+                          className="absolute -top-1 -right-1 bg-white rounded-full text-gray-500 hover:text-red-600 shadow-sm border border-gray-200 opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-100"
+                        >
+                          <XCircle className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+
+                {pin.attachments
                   .filter(a => a.mime_type === 'application/pdf')
                   .map(a => (
                     <div key={a.id} className="group flex items-center gap-1.5 text-xs">
@@ -592,7 +625,7 @@ function ThreadDetail({ pin, onBack, onResolve, readOnly, canResolve, onEditComm
                         <FileText className="h-3.5 w-3.5 shrink-0" />
                         <span className="truncate max-w-45">{a.original_filename}</span>
                       </a>
-                      {canDeletePinAttachment && (
+                      {canDeletePinAttachment && isAttachmentDeletable(a) && (
                         <button
                           type="button"
                           onClick={() => handleAttachmentDelete(pin.id, a.id)}
@@ -620,6 +653,7 @@ function ThreadDetail({ pin, onBack, onResolve, readOnly, canResolve, onEditComm
             const mine = isMine(item.user_name);
             const imageAttachments = item.attachments?.filter(a => a.mime_type.startsWith('image/')) ?? [];
             const pdfAttachments = item.attachments?.filter(a => a.mime_type === 'application/pdf') ?? [];
+            const videoAttachments = item.attachments?.filter(a => isVideoAttachment(a.mime_type)) ?? [];
             return (
               <div key={item.id} className={`group/reply flex ${mine ? 'justify-end' : 'justify-start'}`}>
                 <div
@@ -630,7 +664,7 @@ function ThreadDetail({ pin, onBack, onResolve, readOnly, canResolve, onEditComm
                   } ${item.id.startsWith('opt_') ? 'opacity-70' : ''}`}
                 >
                   <div className={`flex items-center justify-between gap-2 mb-1`}>
-                    <span className={`text-[11px] ${mine ? 'text-primary-foreground/80' : 'text-muted-foreground'}`}>
+                    <span className={`text-[12px] ${mine ? 'text-primary-foreground/80' : 'text-muted-foreground'}`}>
                       {mine ? 'You' : item.user_name}
                     </span>
                     {/* Optimistic replies have no server id yet, so they can't be
@@ -681,7 +715,7 @@ function ThreadDetail({ pin, onBack, onResolve, readOnly, canResolve, onEditComm
                         autoFocus
                         disabled={isSavingReply}
                         rows={3}
-                        className="w-full px-2 py-1.5 rounded text-sm leading-relaxed bg-white text-foreground border border-border focus:outline-none focus:ring-1 focus:ring-primary/40 resize-none"
+                        className="w-full px-2 py-1.5 rounded text-[15px] leading-relaxed bg-white text-foreground border border-border focus:outline-none focus:ring-1 focus:ring-primary/40 resize-none"
                       />
                       <div className="flex items-center justify-end gap-1 mt-1.5">
                         <button
@@ -703,9 +737,9 @@ function ThreadDetail({ pin, onBack, onResolve, readOnly, canResolve, onEditComm
                       </div>
                     </div>
                   ) : (
-                    <p className="text-sm leading-relaxed wrap-break-word">{item.content}</p>
+                    <p className="text-[15px] leading-relaxed wrap-break-word">{item.content}</p>
                   )}
-                  {(imageAttachments.length > 0 || pdfAttachments.length > 0) && (
+                  {(imageAttachments.length > 0 || pdfAttachments.length > 0 || videoAttachments.length > 0) && (
                     <div className="mt-2 space-y-1.5">
                       {imageAttachments.length > 0 && (
                         <div className="flex flex-wrap gap-1.5">
@@ -720,7 +754,7 @@ function ThreadDetail({ pin, onBack, onResolve, readOnly, canResolve, onEditComm
                                   }`}
                                 />
                               </a>
-                              {canDeleteAttachment && mine && (
+                              {canDeleteAttachment && mine && isAttachmentDeletable(a) && (
                                 <button
                                   type="button"
                                   onClick={(e) => {
@@ -740,6 +774,30 @@ function ThreadDetail({ pin, onBack, onResolve, readOnly, canResolve, onEditComm
                           ))}
                         </div>
                       )}
+                      {videoAttachments.map(a => (
+                        <div key={a.id} className="relative group">
+                          <video
+                            src={a.signedUrl}
+                            controls
+                            preload="metadata"
+                            className={`w-full max-h-40 rounded border border-border/40 bg-black ${
+                              deletingAttachmentId === a.id ? 'opacity-40' : ''
+                            }`}
+                          />
+                          {canDeleteAttachment && isMine(item.user_name) && isAttachmentDeletable(a) && (
+                            <button
+                              type="button"
+                              onClick={() => handleAttachmentDelete(item.id, a.id)}
+                              disabled={deletingAttachmentId === a.id}
+                              title="Remove attachment"
+                              aria-label="Remove attachment"
+                              className="absolute -top-1 -right-1 bg-white rounded-full text-gray-500 hover:text-red-600 shadow-sm border border-gray-200 opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-100"
+                            >
+                              <XCircle className="h-3 w-3" />
+                            </button>
+                          )}
+                        </div>
+                      ))}
                       {pdfAttachments.map(a => (
                         <div key={a.id} className="group flex items-center gap-1.5">
                           <a
@@ -753,7 +811,7 @@ function ThreadDetail({ pin, onBack, onResolve, readOnly, canResolve, onEditComm
                             <FileText className="h-3 w-3 shrink-0" />
                             <span className="truncate max-w-40">{a.original_filename}</span>
                           </a>
-                          {canDeleteAttachment && isMine(item.user_name) && (
+                          {canDeleteAttachment && isMine(item.user_name) && isAttachmentDeletable(a) && (
                             <button
                               type="button"
                               onClick={() => handleAttachmentDelete(item.id, a.id)}
@@ -771,7 +829,7 @@ function ThreadDetail({ pin, onBack, onResolve, readOnly, canResolve, onEditComm
                       ))}
                     </div>
                   )}
-                  <div className={`text-[11px] mt-1.5 ${mine ? 'text-primary-foreground/80' : 'text-muted-foreground'}`}>
+                  <div className={`text-[12px] mt-1.5 ${mine ? 'text-primary-foreground/80' : 'text-muted-foreground'}`}>
                     {new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </div>
                 </div>
@@ -860,7 +918,7 @@ function ThreadDetail({ pin, onBack, onResolve, readOnly, canResolve, onEditComm
             }}
             placeholder={!interactive ? 'Read-only thread' : 'Type a reply...'}
             disabled={!interactive || isSendingReply}
-            className="w-full bg-transparent text-[13px] text-foreground placeholder:text-muted-foreground/60 focus:outline-none"
+            className="w-full bg-transparent text-[15px] text-foreground placeholder:text-muted-foreground/60 focus:outline-none"
             style={{ fontFamily: 'var(--font-body)' }}
           />
 
@@ -868,7 +926,7 @@ function ThreadDetail({ pin, onBack, onResolve, readOnly, canResolve, onEditComm
             ref={replyFileInputRef}
             type="file"
             multiple
-            accept="image/jpeg,image/png,image/webp,image/gif,application/pdf"
+            accept={ATTACHMENT_ACCEPT}
             className="hidden"
             onChange={handleReplyFileSelect}
           />
@@ -1101,7 +1159,7 @@ export default function CommentsSidebar({
                             deletingAttachmentId === a.id ? 'opacity-40' : ''
                           }`} />
                       </a>
-                      {canDeleteAttachmentInline && (!restrictAttachmentsToOwn || isMineInline(pin.author)) && (
+                      {canDeleteAttachmentInline && (!restrictAttachmentsToOwn || isMineInline(pin.author)) && isAttachmentDeletable(a) && (
                         <button
                           type="button"
                           onClick={(e) => {
@@ -1132,7 +1190,7 @@ export default function CommentsSidebar({
                       <FileText className="h-3 w-3 shrink-0" />
                       <span className="truncate max-w-40">{a.original_filename}</span>
                     </a>
-                    {canDeleteAttachmentInline && (!restrictAttachmentsToOwn || isMineInline(pin.author)) && (
+                    {canDeleteAttachmentInline && (!restrictAttachmentsToOwn || isMineInline(pin.author)) && isAttachmentDeletable(a) && (
                       <button
                         type="button"
                         onClick={(e) => {

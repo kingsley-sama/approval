@@ -2,6 +2,12 @@
 
 import { supabaseAdmin } from '@/lib/supabase';
 import { requireUser } from '@/lib/auth/require-user';
+import { CUSTOMER_ATTACHMENT_DELETE_ERROR } from '@/lib/attachment-permissions';
+import {
+  ATTACHMENT_ALLOWED_TYPES,
+  maxBytesForAttachment,
+  formatMaxSize,
+} from '@/lib/attachment-types';
 import { SignedUploadUrlSchema, RegisterUploadSchema } from '@/lib/validation/schemas';
 import { createThread } from './threads';
 import { nanoid } from 'nanoid';
@@ -10,11 +16,7 @@ import { nanoid } from 'nanoid';
 
 const BUCKET = process.env.NEXT_PUBLIC_SUPABASE_BUCKET_NAME || 'screenshots';
 
-const ALLOWED_ATTACHMENT_TYPES = new Set([
-  'image/jpeg', 'image/png', 'image/webp', 'image/gif',
-  'application/pdf',
-]);
-const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024; // 20 MB
+
 
 // ─── path helpers ─────────────────────────────────────────────────────────────
 
@@ -77,6 +79,13 @@ export interface AttachmentRecord {
   mime_type: string;
   file_size_bytes: number;
   created_at: string;
+  /**
+   * Who uploaded this file. 'customer' means a guest acting through a share
+   * link; those attachments are protected from deletion (migration 018).
+   * Optional so the type still describes rows read before that migration.
+   */
+  uploader_role?: 'team' | 'customer';
+  uploader_name?: string | null;
 }
 
 // ─── render image upload (two-step presigned flow) ────────────────────────────
@@ -168,11 +177,11 @@ export async function getAttachmentUploadUrl(
     if (!projectId || !fileName) {
       return { success: false, error: 'Missing projectId or fileName' };
     }
-    if (!ALLOWED_ATTACHMENT_TYPES.has(mimeType)) {
+    if (!ATTACHMENT_ALLOWED_TYPES.has(mimeType)) {
       return { success: false, error: `File type not allowed: ${mimeType}` };
     }
-    if (fileSizeBytes > MAX_ATTACHMENT_BYTES) {
-      return { success: false, error: 'File exceeds the 20 MB limit' };
+    if (fileSizeBytes > maxBytesForAttachment(mimeType)) {
+      return { success: false, error: `File exceeds the ${formatMaxSize(mimeType)} limit` };
     }
 
     const storagePath = attachmentStoragePath(projectId, fileName);
@@ -203,7 +212,7 @@ export async function registerAttachment(
   fileSizeBytes: number,
 ): Promise<RegisterAttachmentResult> {
   try {
-    await requireUser();
+    const user = await requireUser();
 
     if (!commentId || !projectId || !storagePath) {
       return { success: false, error: 'Missing required fields' };
@@ -218,6 +227,11 @@ export async function registerAttachment(
         original_filename: originalFilename,
         mime_type: mimeType,
         file_size_bytes: fileSizeBytes,
+        // This path is behind requireUser(), so the uploader is always staff.
+        // Guests upload through app/api/share/attachment, which records
+        // 'customer' and makes the row undeletable.
+        uploader_role: 'team',
+        uploader_name: user.name ?? null,
       })
       .select('id')
       .single();
@@ -334,12 +348,22 @@ export async function deleteAttachment(
 
     const { data: existing, error: fetchErr } = await supabaseAdmin
       .from('comment_attachments')
-      .select('storage_path')
+      .select('storage_path, uploader_role, original_filename')
       .eq('id', attachmentId)
       .single();
 
     if (fetchErr || !existing) {
       return { success: false, error: 'Attachment not found' };
+    }
+
+    // Customer uploads are part of the revision record and must survive. The
+    // database trigger from migration 018 enforces this too; checking here
+    // turns what would be a raw Postgres exception into a usable message.
+    if ((existing as { uploader_role?: string }).uploader_role === 'customer') {
+      return {
+        success: false,
+        error: CUSTOMER_ATTACHMENT_DELETE_ERROR,
+      };
     }
 
     // Delete from storage

@@ -20,16 +20,17 @@ import { NextRequest, NextResponse } from 'next/server';
 import { validateShareToken, type ShareLink } from '@/app/actions/share-links';
 import { supabaseAdmin as supabase } from '@/lib/supabase';
 import { checkRateLimit } from '@/lib/rate-limit';
+import { CUSTOMER_ATTACHMENT_DELETE_ERROR } from '@/lib/attachment-permissions';
+import {
+  ATTACHMENT_ALLOWED_TYPES,
+  maxBytesForAttachment,
+  formatMaxSize,
+} from '@/lib/attachment-types';
 import { nanoid } from 'nanoid';
 import { z } from 'zod';
 
 const BUCKET = process.env.NEXT_PUBLIC_SUPABASE_BUCKET_NAME || 'screenshots';
 
-const ALLOWED_ATTACHMENT_TYPES = new Set([
-  'image/jpeg', 'image/png', 'image/webp', 'image/gif',
-  'application/pdf',
-]);
-const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024; // 20 MB
 
 function attachmentStoragePath(projectId: string, fileName: string): string {
   const uid = nanoid(10);
@@ -173,15 +174,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!ALLOWED_ATTACHMENT_TYPES.has(parsed.mimeType)) {
+    if (!ATTACHMENT_ALLOWED_TYPES.has(parsed.mimeType)) {
       return NextResponse.json(
         { success: false, error: `File type not allowed: ${parsed.mimeType}` },
         { status: 400 },
       );
     }
-    if (parsed.fileSizeBytes > MAX_ATTACHMENT_BYTES) {
+    if (parsed.fileSizeBytes > maxBytesForAttachment(parsed.mimeType)) {
       return NextResponse.json(
-        { success: false, error: 'File exceeds the 20 MB limit' },
+        { success: false, error: `File exceeds the ${formatMaxSize(parsed.mimeType)} limit` },
         { status: 400 },
       );
     }
@@ -228,6 +229,10 @@ export async function POST(request: NextRequest) {
         original_filename: parsed.originalFilename,
         mime_type: parsed.mimeType,
         file_size_bytes: parsed.fileSizeBytes,
+        // Everything uploaded through a share link comes from the customer.
+        // Recording it here is what makes the row undeletable (migration 018).
+        uploader_role: 'customer',
+        uploader_name: ctx.userName ?? parsed.userName ?? null,
       })
       .select('*')
       .single();
@@ -285,12 +290,23 @@ export async function DELETE(request: NextRequest) {
 
     const { data: attachment } = await supabase
       .from('comment_attachments')
-      .select('storage_path, comment_id')
+      .select('storage_path, comment_id, uploader_role')
       .eq('id', parsed.attachmentId)
       .single();
 
     if (!attachment) {
       return NextResponse.json({ success: false, error: 'Attachment not found' }, { status: 404 });
+    }
+
+    // Customer uploads are permanent — see migration 018. This deliberately
+    // also blocks the guest who uploaded the file: the requirement is that
+    // such an attachment cannot be removed at all, not merely that staff
+    // cannot remove it. The database trigger enforces the same rule.
+    if ((attachment as { uploader_role?: string }).uploader_role === 'customer') {
+      return NextResponse.json(
+        { success: false, error: CUSTOMER_ATTACHMENT_DELETE_ERROR },
+        { status: 403 },
+      );
     }
 
     const ctx = await resolveCommentContext((attachment as any).comment_id);

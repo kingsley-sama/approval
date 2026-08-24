@@ -3,15 +3,17 @@ import {
   registerAttachment,
 } from '@/app/actions/storage';
 import { compressImageFile } from '@/lib/image-compression';
+import {
+  ATTACHMENT_ALLOWED_TYPES,
+  maxBytesForAttachment,
+  formatMaxSize,
+} from '@/lib/attachment-types';
 
-export const ATTACHMENT_ALLOWED_TYPES = new Set([
-  'image/jpeg',
-  'image/png',
-  'image/webp',
-  'image/gif',
-  'application/pdf',
-]);
-export const ATTACHMENT_MAX_BYTES = 20 * 1024 * 1024;
+export {
+  ATTACHMENT_ALLOWED_TYPES,
+  ATTACHMENT_ACCEPT,
+  maxBytesForAttachment,
+} from '@/lib/attachment-types';
 
 export interface AttachmentValidationResult {
   valid: File[];
@@ -26,8 +28,8 @@ export function validateAttachments(files: File[]): AttachmentValidationResult {
       errors.push(`${file.name}: unsupported type`);
       continue;
     }
-    if (file.size > ATTACHMENT_MAX_BYTES) {
-      errors.push(`${file.name}: exceeds 20 MB`);
+    if (file.size > maxBytesForAttachment(file.type)) {
+      errors.push(`${file.name}: exceeds ${formatMaxSize(file.type)}`);
       continue;
     }
     valid.push(file);

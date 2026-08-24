@@ -10,6 +10,8 @@ import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover
 import { IconTooltip } from '@/components/ui/icon-tooltip';
 import { compressImageWithStats } from '@/lib/image-compression';
 import { CompressionInfo } from '@/components/compression-info';
+import { canDeleteAttachment as isAttachmentDeletable } from '@/lib/attachment-permissions';
+import { ATTACHMENT_ACCEPT, isVideoAttachment } from '@/lib/attachment-types';
 
 interface Pin {
   id: string;
@@ -643,7 +645,7 @@ export default function CommentModal({
                           />
                           <ExternalLink size={10} className="absolute bottom-1 right-1 text-white drop-shadow opacity-0 group-hover:opacity-100 transition-opacity" />
                         </a>
-                        {onDeleteAttachment && (
+                        {onDeleteAttachment && isAttachmentDeletable(a) && (
                           <IconTooltip label="Remove attachment">
                             <button
                               type="button"
@@ -664,6 +666,37 @@ export default function CommentModal({
                     ))}
                 </div>
                 {existingPin.attachments
+                  .filter(a => isVideoAttachment(a.mime_type))
+                  .map(a => (
+                    <div key={a.id} className="relative group">
+                      <video
+                        src={a.signedUrl}
+                        controls
+                        preload="metadata"
+                        className={`w-full max-h-44 rounded border border-border/40 bg-black ${
+                          deletingAttachmentId === a.id ? 'opacity-40' : ''
+                        }`}
+                      />
+                      {onDeleteAttachment && isAttachmentDeletable(a) && (
+                        <IconTooltip label="Remove attachment">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              handleDeleteAttachmentClick(a.id);
+                            }}
+                            disabled={deletingAttachmentId === a.id}
+                            aria-label="Remove attachment"
+                            className="absolute -top-1 -right-1 bg-white rounded-full text-gray-500 hover:text-red-600 shadow-sm border border-gray-200 opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-100"
+                          >
+                            <XCircle size={14} />
+                          </button>
+                        </IconTooltip>
+                      )}
+                    </div>
+                  ))}
+                {existingPin.attachments
                   .filter(a => a.mime_type === 'application/pdf')
                   .map(a => (
                     <div key={a.id} className="group flex items-center gap-1.5 px-2 py-1 bg-gray-50 border border-border rounded text-xs">
@@ -679,7 +712,7 @@ export default function CommentModal({
                         <span className="flex-1 truncate">{a.original_filename}</span>
                         <ExternalLink size={10} className="shrink-0 opacity-50" />
                       </a>
-                      {onDeleteAttachment && (
+                      {onDeleteAttachment && isAttachmentDeletable(a) && (
                         <IconTooltip label="Remove attachment">
                           <button
                             type="button"
@@ -702,7 +735,7 @@ export default function CommentModal({
                   ref={editFileInputRef}
                   type="file"
                   multiple
-                  accept="image/jpeg,image/png,image/webp,image/gif,application/pdf"
+                  accept={ATTACHMENT_ACCEPT}
                   className="hidden"
                   onChange={handleEditFileSelect}
                 />
@@ -950,7 +983,7 @@ export default function CommentModal({
                   ref={fileInputRef}
                   type="file"
                   multiple
-                  accept="image/jpeg,image/png,image/webp,image/gif,application/pdf"
+                  accept={ATTACHMENT_ACCEPT}
                   className="hidden"
                   onChange={handleFileSelect}
                 />
