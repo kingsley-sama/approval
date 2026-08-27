@@ -3,7 +3,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { createProject } from '@/app/actions/projects';
 import { updateProjectImage } from '@/app/actions/update-project';
-import { getSignedUploadUrl, registerUploadedFile } from '@/app/actions/storage';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -17,16 +16,14 @@ import {
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { FolderPlus, Upload, X, CheckCircle2, XCircle, Loader2, AlertCircle } from 'lucide-react';
-import { xhrUpload, validateFiles, type FileUploadState } from '@/lib/upload';
-import { compressImageWithStats } from '@/lib/image-compression';
+import { validateFiles, type FileUploadState } from '@/lib/upload';
+import { uploadProjectFile, uploadConcurrencyFor } from '@/lib/upload-thread';
 import { CompressionInfo } from '@/components/compression-info';
 
 interface CreateProjectModalProps {
   onProjectCreated: () => void;
   trigger?: React.ReactNode;
 }
-
-const CONCURRENCY = 3;
 
 export default function CreateProjectModal({ onProjectCreated, trigger }: CreateProjectModalProps) {
   const [isOpen, setIsOpen] = useState(false);
@@ -138,37 +135,23 @@ export default function CreateProjectModal({ onProjectCreated, trigger }: Create
         const patch = (id: string, update: Partial<FileUploadState>) =>
           setUploadStates(prev => prev.map(s => s.id === id ? { ...s, ...update } : s));
 
+        // Images become one thread; PDFs become one thread per page. Shared
+        // with the workspace uploader so both behave the same.
+        const pdfFallbacks: string[] = [];
+
         const uploadOne = async (rawFile: File, state: FileUploadState): Promise<string | null> => {
-          // Compress in the browser before uploading (best-effort; falls back
-          // to the original on failure or if compression doesn't help).
-          const { file, originalSize, compressedSize, didCompress } = await compressImageWithStats(rawFile);
-          patch(state.id, { status: 'uploading', progress: 0, originalSize, compressedSize, didCompress });
-
-          const urlResult = await getSignedUploadUrl(projectId, file.name);
-          if (!urlResult.success || !urlResult.signedUrl || !urlResult.storagePath) {
-            patch(state.id, { status: 'error', error: urlResult.error || 'Could not get upload URL' });
-            return null;
+          const outcome = await uploadProjectFile(projectId, rawFile, (update) =>
+            patch(state.id, update),
+          );
+          if (outcome.pdfFallbackReason) {
+            pdfFallbacks.push(`${rawFile.name}: ${outcome.pdfFallbackReason}`);
           }
-
-          try {
-            await xhrUpload(file, urlResult.signedUrl, (pct) => patch(state.id, { progress: pct }));
-          } catch (err: any) {
-            patch(state.id, { status: 'error', error: err.message });
-            return null;
-          }
-
-          patch(state.id, { status: 'registering', progress: 100 });
-          const regResult = await registerUploadedFile(projectId, file.name, urlResult.storagePath);
-          if (!regResult.success || !regResult.publicUrl) {
-            patch(state.id, { status: 'error', error: regResult.error || 'Failed to save image' });
-            return null;
-          }
-
-          patch(state.id, { status: 'done', progress: 100 });
-          return regResult.publicUrl;
+          return outcome.ok ? outcome.firstPublicUrl ?? null : null;
         };
 
-        // Concurrent upload (max 3 parallel)
+        // Plain images upload in parallel; a batch containing a PDF runs one
+        // file at a time so page order survives (threads sort by created_at).
+        const concurrency = uploadConcurrencyFor(selectedFiles);
         const queue = selectedFiles.map((file, i) => ({ file, state: initialStates[i] }));
         const running: Promise<string | null>[] = [];
         let firstPublicUrl: string | null = null;
@@ -180,13 +163,21 @@ export default function CreateProjectModal({ onProjectCreated, trigger }: Create
             return url;
           });
           running.push(p);
-          if (running.length >= CONCURRENCY) await Promise.race(running);
+          if (running.length >= concurrency) await Promise.race(running);
         }
         await Promise.allSettled(running);
 
         // 3. Set thumbnail to first successfully uploaded image
         if (firstPublicUrl) {
           await updateProjectImage(projectId, firstPublicUrl);
+        }
+
+        if (pdfFallbacks.length > 0) {
+          // The project was still created and the document stored — say what
+          // happened rather than closing as if pages had been produced.
+          setError(
+            `Added as a document rather than pages — ${pdfFallbacks.slice(0, 2).join(' · ')}`,
+          );
         }
 
         setIsUploading(false);

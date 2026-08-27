@@ -81,37 +81,46 @@ export type Database = {
       }
       markup_projects: {
         Row: {
+          capture_defaults: Json | null
           created_at: string | null
           extraction_timestamp: string | null
           id: string
+          kind: string
           markup_url: string | null
           project_name: string
           raw_payload: Json | null
           scraped_data_id: number | null
+          site_url: string | null
           total_screenshots: number | null
           total_threads: number | null
           updated_at: string | null
         }
         Insert: {
+          capture_defaults?: Json | null
           created_at?: string | null
           extraction_timestamp?: string | null
           id?: string
+          kind?: string
           markup_url?: string | null
           project_name: string
           raw_payload?: Json | null
           scraped_data_id?: number | null
+          site_url?: string | null
           total_screenshots?: number | null
           total_threads?: number | null
           updated_at?: string | null
         }
         Update: {
+          capture_defaults?: Json | null
           created_at?: string | null
           extraction_timestamp?: string | null
           id?: string
+          kind?: string
           markup_url?: string | null
           project_name?: string
           raw_payload?: Json | null
           scraped_data_id?: number | null
+          site_url?: string | null
           total_screenshots?: number | null
           total_threads?: number | null
           updated_at?: string | null
@@ -128,37 +137,61 @@ export type Database = {
       }
       markup_threads: {
         Row: {
+          capture_status: string | null
+          capture_version: number | null
+          captured_at: string | null
           created_at: string | null
           id: string
           image_filename: string | null
           image_index: number | null
           image_path: string | null
           local_image_path: string | null
+          page_title: string | null
           project_id: string
+          source_url: string | null
+          supersedes_thread_id: string | null
           thread_name: string
           updated_at: string | null
+          viewport_label: string | null
+          viewport_width: number | null
         }
         Insert: {
+          capture_status?: string | null
+          capture_version?: number | null
+          captured_at?: string | null
           created_at?: string | null
           id?: string
           image_filename?: string | null
           image_index?: number | null
           image_path?: string | null
           local_image_path?: string | null
+          page_title?: string | null
           project_id: string
+          source_url?: string | null
+          supersedes_thread_id?: string | null
           thread_name: string
           updated_at?: string | null
+          viewport_label?: string | null
+          viewport_width?: number | null
         }
         Update: {
+          capture_status?: string | null
+          capture_version?: number | null
+          captured_at?: string | null
           created_at?: string | null
           id?: string
           image_filename?: string | null
           image_index?: number | null
           image_path?: string | null
           local_image_path?: string | null
+          page_title?: string | null
           project_id?: string
+          source_url?: string | null
+          supersedes_thread_id?: string | null
           thread_name?: string
           updated_at?: string | null
+          viewport_label?: string | null
+          viewport_width?: number | null
         }
         Relationships: [
           {
@@ -940,6 +973,92 @@ export type Database = {
           },
         ]
       }
+      website_capture_jobs: {
+        Row: {
+          created_at: string | null
+          error: string | null
+          finished_at: string | null
+          id: string
+          project_id: string
+          requested_by: string | null
+          status: string
+          thread_id: string | null
+          url: string
+          viewport: string
+        }
+        Insert: {
+          created_at?: string | null
+          error?: string | null
+          finished_at?: string | null
+          id?: string
+          project_id: string
+          requested_by?: string | null
+          status?: string
+          thread_id?: string | null
+          url: string
+          viewport?: string
+        }
+        Update: {
+          created_at?: string | null
+          error?: string | null
+          finished_at?: string | null
+          id?: string
+          project_id?: string
+          requested_by?: string | null
+          status?: string
+          thread_id?: string | null
+          url?: string
+          viewport?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "website_capture_jobs_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "markup_projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "website_capture_jobs_thread_id_fkey"
+            columns: ["thread_id"]
+            isOneToOne: false
+            referencedRelation: "markup_threads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      website_project_access: {
+        Row: {
+          granted_at: string | null
+          granted_by: string | null
+          id: string
+          project_id: string
+          user_email: string
+        }
+        Insert: {
+          granted_at?: string | null
+          granted_by?: string | null
+          id?: string
+          project_id: string
+          user_email: string
+        }
+        Update: {
+          granted_at?: string | null
+          granted_by?: string | null
+          id?: string
+          project_id?: string
+          user_email?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "website_project_access_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "markup_projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
@@ -984,11 +1103,14 @@ export type Database = {
           p_sort?: string
           p_limit?: number
           p_offset?: number
+          p_kind?: string | null
         }
         Returns: {
           id: string
           project_name: string
           markup_url: string | null
+          kind: string
+          site_url: string | null
           created_at: string
           updated_at: string | null
           first_image: string | null
@@ -996,6 +1118,7 @@ export type Database = {
           total_comments: number
           total_resolved_comments: number
           total_commented_threads: number
+          total_pending_captures: number
           total_count: number
         }[]
       }
@@ -1045,7 +1168,12 @@ export type Database = {
     }
     Enums: {
       share_permission_type: "view" | "comment" | "draw_and_comment"
-      share_resource_type: "thread" | "project" | "panorama_project" | "tour_project"
+      share_resource_type:
+        | "thread"
+        | "project"
+        | "panorama_project"
+        | "tour_project"
+        | "website_project"
     }
     CompositeTypes: {
       [_ in never]: never

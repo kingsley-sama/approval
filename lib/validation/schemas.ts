@@ -124,6 +124,37 @@ export const UpdateTourHotspotSchema = z.object({
   label: z.string().trim().max(200).nullable().optional(),
 });
 
+// ─── websites ──────────────────────────────────────────────────────────────
+// A website project is a markup project with kind='website'; each capture is a
+// markup_thread. URLs are validated again server-side by lib/website/url.ts,
+// which also runs the SSRF guard — these schemas only check shape and size.
+
+export const VIEWPORT_ENUM = z.enum(['desktop', 'tablet', 'mobile']);
+
+export const CaptureSettingsSchema = z.object({
+  fullPage: z.boolean().optional(),
+  viewports: z.array(VIEWPORT_ENUM).min(1).max(3).optional(),
+  hideSelectors: z.array(z.string().max(200)).max(50).optional(),
+  waitMs: z.number().int().min(0).max(30000).optional(),
+});
+
+export const CreateWebsiteProjectSchema = z.object({
+  url: z.string().min(1).max(2000),
+  name: z.string().trim().max(300).optional(),
+  settings: CaptureSettingsSchema.optional(),
+});
+
+export const AddWebsitePagesSchema = z.object({
+  projectId: z.string().uuid(),
+  // One paste of a sitemap should not be able to queue thousands of captures.
+  urls: z.array(z.string().min(1).max(2000)).min(1).max(50),
+  viewports: z.array(VIEWPORT_ENUM).min(1).max(3).optional(),
+});
+
+export const RecaptureThreadSchema = z.object({
+  threadId: z.string().uuid(),
+});
+
 export const ALLOWED_UPLOAD_MIME_TYPES = [
   'image/jpeg',
   'image/png',

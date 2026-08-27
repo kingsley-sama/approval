@@ -10,9 +10,13 @@ import { useRealtimeComments } from '@/hooks/use-realtime-comments';
 import { useImagePreloader } from '@/hooks/use-image-preloader';
 import { useToast } from '@/hooks/use-toast';
 import { useConfirm } from '@/components/confirm-dialog';
-import { Upload } from 'lucide-react';
+import { Upload, Loader2, AlertTriangle, Globe } from 'lucide-react';
 import ImageUploader from '@/components/image-uploader';
-import { ProjectTopNav, ProjectShell, ProjectImageData, ProjectPin } from './template';
+import { ProjectTopNav, ProjectShell, ProjectImageData, ProjectPin, type WorkspaceVariant } from './template';
+import BrowserFrame from '@/components/website/browser-frame';
+import AddPagesModal from '@/components/website/add-pages-modal';
+import { recaptureThread } from '@/app/actions/website-captures';
+import type { ViewportLabel } from '@/lib/website/viewports';
 import type { Shape } from '@/types/drawing';
 import { useDocumentTitle } from '@/hooks/use-document-title';
 import { compressImageFile } from '@/lib/image-compression';
@@ -69,6 +73,10 @@ function workspaceToImages(data: WorkspaceData): ImageData[] {
     name: t.thread_name || t.image_filename || 'Untitled',
     url: t.image_path,
     pins: (data.commentsByThread[t.id] ?? []).map(dbCommentToPin),
+    sourceUrl: t.source_url ?? null,
+    viewport: t.viewport_label ?? null,
+    capturedAt: t.captured_at ?? null,
+    captureStatus: t.capture_status ?? null,
   }));
 }
 
@@ -76,9 +84,21 @@ interface ProjectWorkspaceProps {
   projectId: string;
   initialData: WorkspaceData;
   fallbackName?: string;
+  /** 'website' adds the address bar, re-capture and add-pages controls. */
+  variant?: WorkspaceVariant;
+  /** Website reviews: the viewports the project was created with. */
+  defaultViewports?: ViewportLabel[];
 }
 
-export default function ProjectWorkspace({ projectId, initialData, fallbackName }: ProjectWorkspaceProps) {
+export default function ProjectWorkspace({
+  projectId,
+  initialData,
+  fallbackName,
+  variant = 'image',
+  defaultViewports = ['desktop'],
+}: ProjectWorkspaceProps) {
+  const isWebsite = variant === 'website';
+  const [isRecapturing, setIsRecapturing] = useState(false);
   const [projectName, setProjectName] = useState<string>(initialData.projectName ?? fallbackName ?? '');
   useDocumentTitle(projectName);
   const currentUserName = initialData.currentUser.name || 'Anonymous';
@@ -297,6 +317,48 @@ export default function ProjectWorkspace({ projectId, initialData, fallbackName 
   // the persisted value through, so rendering uses it as-is.
   const currentImage = imagesState.find(img => img.id === currentImageId);
   const pins = currentImage?.pins || [];
+
+  // ── website reviews: capture state ──────────────────────────────────────
+  const captureStatus = currentImage?.captureStatus ?? 'ready';
+  const isCapturePending = isWebsite && captureStatus === 'pending';
+  const isCaptureFailed = isWebsite && captureStatus === 'failed';
+  const pendingCaptureCount = isWebsite
+    ? imagesState.filter(img => img.captureStatus === 'pending').length
+    : 0;
+
+  // refreshWorkspace is re-created every render, so anything that captures it
+  // in a memo or an interval would hold a stale copy. Read it through a ref,
+  // the same way the dashboards do with loadMore.
+  const refreshWorkspaceRef = useRef(refreshWorkspace);
+  refreshWorkspaceRef.current = refreshWorkspace;
+
+  const handleRecapture = async () => {
+    if (!currentImageId) return;
+    setIsRecapturing(true);
+    const result = await recaptureThread(currentImageId);
+    setIsRecapturing(false);
+    if (!result.success) {
+      toast({
+        title: 'Could not re-capture',
+        description: result.error ?? result.rejected[0]?.reason ?? 'The capture could not be queued.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    await refreshWorkspaceRef.current();
+    // The re-shot page is a new thread; move to it so the reviewer sees the
+    // fresh screenshot rather than staying on the superseded one.
+    const newThreadId = result.queued[0]?.threadId;
+    if (newThreadId) setCurrentImageId(newThreadId);
+  };
+
+  // Captures land asynchronously. Poll while any is still running so tiles
+  // fill in without the reviewer needing to reload.
+  useEffect(() => {
+    if (pendingCaptureCount === 0) return;
+    const timer = setInterval(() => { refreshWorkspaceRef.current(); }, 5000);
+    return () => clearInterval(timer);
+  }, [pendingCaptureCount]);
 
   // Warm the browser cache for full-size images so switching is instant. The
   // viewer renders originals unoptimized, so an unwarmed switch otherwise stalls
@@ -778,6 +840,16 @@ export default function ProjectWorkspace({ projectId, initialData, fallbackName 
         currentUser={currentUserName}
         sidebarsCollapsed={sidebarsCollapsed}
         onToggleSidebars={() => setSidebarsCollapsed(v => !v)}
+        variant={variant}
+        actions={
+          isWebsite ? (
+            <AddPagesModal
+              projectId={projectId}
+              defaultViewports={defaultViewports}
+              onAdded={refreshWorkspace}
+            />
+          ) : undefined
+        }
       />
 
       {connectionStatus === 'disconnected' && (
@@ -819,6 +891,27 @@ export default function ProjectWorkspace({ projectId, initialData, fallbackName 
             <div className="flex-1 flex items-center justify-center bg-gray-100">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
             </div>
+          ) : isWebsite ? (
+            <div className="flex-1 flex items-center justify-center bg-muted/30">
+              <div className="bg-card border border-border p-8 rounded-lg shadow-sm max-w-md w-full text-center">
+                <div className="mb-4 flex justify-center">
+                  <div className="p-4 bg-primary/10 rounded-full">
+                    <Globe className="h-8 w-8 text-primary" />
+                  </div>
+                </div>
+                <h2 className="text-xl font-semibold mb-2">No pages captured yet</h2>
+                <p className="text-muted-foreground mb-6 text-sm">
+                  Add the addresses you want feedback on and we'll screenshot them.
+                </p>
+                <div className="flex justify-center">
+                  <AddPagesModal
+                    projectId={projectId}
+                    defaultViewports={defaultViewports}
+                    onAdded={refreshWorkspace}
+                  />
+                </div>
+              </div>
+            </div>
           ) : (
             <div className="flex-1 flex items-center justify-center bg-gray-100">
               <div className="bg-white p-8 rounded-lg shadow-lg max-w-md w-full text-center">
@@ -845,6 +938,68 @@ export default function ProjectWorkspace({ projectId, initialData, fallbackName 
               </div>
             </div>
           )
+        ) : isWebsite ? (
+          <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+            {!isFullscreen && (
+              <BrowserFrame
+                url={currentImage?.sourceUrl ?? null}
+                viewport={currentImage?.viewport}
+                capturedAt={currentImage?.capturedAt}
+                onRecapture={currentImage?.sourceUrl ? handleRecapture : undefined}
+                isRecapturing={isRecapturing}
+              />
+            )}
+
+            {isCapturePending ? (
+              <div className="flex-1 flex items-center justify-center bg-muted/30">
+                <div className="text-center max-w-sm px-6">
+                  <Loader2 className="h-7 w-7 animate-spin text-primary mx-auto mb-3" />
+                  <p className="text-sm font-medium text-foreground">Capturing this page…</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    The screenshot appears here as soon as it's ready.
+                  </p>
+                </div>
+              </div>
+            ) : isCaptureFailed ? (
+              <div className="flex-1 flex items-center justify-center bg-muted/30">
+                <div className="text-center max-w-sm px-6">
+                  <AlertTriangle className="h-7 w-7 text-destructive mx-auto mb-3" />
+                  <p className="text-sm font-medium text-foreground">This page couldn't be captured</p>
+                  <p className="text-xs text-muted-foreground mt-1 mb-4">
+                    The site may have blocked the request, been too slow, or needed a login.
+                  </p>
+                  <button
+                    onClick={handleRecapture}
+                    disabled={isRecapturing}
+                    className="px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-60"
+                  >
+                    {isRecapturing ? 'Trying again…' : 'Try again'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <ImageViewer
+                pins={visiblePins}
+                selectedPin={selectedPin}
+                drawnShapes={drawnShapes}
+                pendingShapes={pendingShapes}
+                currentImageName={currentImage?.name}
+                onShapeComplete={handleShapeComplete}
+                onUndoShape={handleUndoShape}
+                canUndo={canUndo}
+                onPinClick={handlePinClick}
+                onPinReposition={handlePinReposition}
+                isFullscreen={isFullscreen}
+                onToggleFullscreen={() => setIsFullscreen(!isFullscreen)}
+                hoveredPin={hoveredPin}
+                onPinHover={setHoveredPin}
+                currentImageIndex={currentImageIndex}
+                totalImages={imagesState.length}
+                onNavigate={handleNavigateImages}
+                currentImageUrl={currentImage?.url || ''}
+              />
+            )}
+          </div>
         ) : (
           <ImageViewer
             pins={visiblePins}

@@ -1,4 +1,10 @@
-export type FileStatus = 'pending' | 'uploading' | 'registering' | 'done' | 'error';
+export type FileStatus =
+  | 'pending'
+  | 'converting'
+  | 'uploading'
+  | 'registering'
+  | 'done'
+  | 'error';
 
 export interface FileUploadState {
   id: string;
@@ -10,6 +16,11 @@ export interface FileUploadState {
   originalSize?: number;
   compressedSize?: number;
   didCompress?: boolean;
+  /**
+   * PDFs only. A PDF is split into one image per page, so a single selected
+   * file produces several threads; this tracks progress through them.
+   */
+  pageProgress?: { done: number; total: number };
 }
 
 // ─── validation ──────────────────────────────────────────────────────────────
@@ -22,7 +33,9 @@ const IMAGE_MIME_TYPES = new Set([
   'image/svg+xml',
 ]);
 
-// PDFs (exposés/brochures) and videos are uploaded as view-only project items.
+// PDFs (exposés/brochures) are split into one image per page on upload, so each
+// page can be pinned and drawn on like any other render — see lib/pdf-to-images.ts.
+// Videos remain view-only project items.
 const PDF_MIME_TYPE = 'application/pdf';
 const VIDEO_MIME_TYPES = new Set([
   'video/mp4',

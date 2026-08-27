@@ -69,6 +69,8 @@ export interface ProjectListItem {
   id: string;
   project_name: string;
   markup_url: string | null;
+  kind: string;
+  site_url: string | null;
   created_at: string;
   updated_at: string | null;
   first_image: string | null;
@@ -76,6 +78,7 @@ export interface ProjectListItem {
   total_comments: number;
   total_resolved_comments: number;
   total_commented_threads: number;
+  total_pending_captures: number;
 }
 
 export interface ProjectsPageResult {
@@ -118,6 +121,9 @@ export async function getProjectsPage(opts?: {
     p_sort: opts?.sort ?? 'newest',
     p_limit: PROJECTS_PAGE_SIZE,
     p_offset: (page - 1) * PROJECTS_PAGE_SIZE,
+    // Website reviews live in markup_projects too (migration 019). Without
+    // this they would all show up in the Projects tab.
+    p_kind: 'image',
   });
 
   if (error) {
@@ -218,6 +224,7 @@ export async function getProjectsForMention(): Promise<{ id: string; name: strin
     const { data, error } = await supabase
       .from('markup_projects')
       .select('id, project_name')
+      .eq('kind', 'image')
       .order('project_name', { ascending: true });
     if (error || !data) return [];
     return data.map((p: any) => ({ id: p.id, name: p.project_name }));
@@ -235,6 +242,7 @@ export async function getProjectsForMention(): Promise<{ id: string; name: strin
   const { data, error } = await supabaseAdmin
     .from('markup_projects')
     .select('id, project_name')
+    .eq('kind', 'image')
     .in('id', projectIds)
     .order('project_name', { ascending: true });
 

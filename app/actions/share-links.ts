@@ -27,7 +27,12 @@ async function getRequestOrigin(): Promise<string> {
 
 // Types
 export type SharePermission = 'view' | 'comment' | 'draw_and_comment';
-export type ShareResourceType = 'thread' | 'project' | 'panorama_project' | 'tour_project';
+export type ShareResourceType =
+  | 'thread'
+  | 'project'
+  | 'panorama_project'
+  | 'tour_project'
+  | 'website_project';
 
 export interface ShareLink {
   id: string;
@@ -44,7 +49,7 @@ export interface ShareLink {
 
 // Validation schemas
 const CreateShareLinkSchema = z.object({
-  resourceType: z.enum(['thread', 'project', 'panorama_project', 'tour_project']),
+  resourceType: z.enum(['thread', 'project', 'panorama_project', 'tour_project', 'website_project']),
   resourceId: z.string().uuid(),
   permissions: z.enum(['view', 'comment', 'draw_and_comment']),
   createdBy: z.string().min(1),
@@ -77,6 +82,8 @@ export async function createShareLink(
     const validated = CreateShareLinkSchema.parse(input);
 
     // Verify resource exists
+    // 'website_project' resolves to markup_projects: a website review is a
+    // markup project with kind='website' (migration 019), not a separate table.
     const tableName =
       validated.resourceType === 'thread'
         ? 'markup_threads'
@@ -304,7 +311,7 @@ export async function getSharedProjectSummaries(
             );
             thumbnailUrl = scenes[0]?.image_path || (project as any).preview_url || null;
           }
-        } else if (row.resource_type === 'project') {
+        } else if (row.resource_type === 'project' || row.resource_type === 'website_project') {
           const { data: project } = await supabase
             .from('markup_projects')
             .select('project_name, markup_url, markup_threads(image_path, created_at)')

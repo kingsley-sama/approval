@@ -2,7 +2,8 @@
  * Server-side image compression for API-ingested images, mirroring the
  * client-side pipeline in lib/image-compression.ts so files land in Storage
  * the same way regardless of how they arrived:
- *   - downscale to a max dimension (default 2560px),
+ *   - downscale to a max dimension (default 2560px) — see `fit` for how that
+ *     bound is applied,
  *   - re-encode as JPEG (default quality 85), flattening transparency onto
  *     white since JPEG has no alpha channel,
  *   - respect EXIF orientation.
@@ -67,6 +68,22 @@ export interface ServerCompressionResult {
   didCompress: boolean;
 }
 
+export interface ServerCompressionOptions {
+  /**
+   * How the max dimension is applied.
+   *
+   *   'inside' (default) — fit within a max x max box. Right for photographs
+   *     and uploaded renders, where neither side should run away.
+   *
+   *   'width' — constrain the width and let the height run free. Required for
+   *     full-page website captures: a 1440x12000 screenshot fitted 'inside' a
+   *     2560 box is scaled by its *height*, landing at roughly 307x2560, which
+   *     renders the page text unreadable. Those images are tall by nature, not
+   *     by accident.
+   */
+  fit?: 'inside' | 'width';
+}
+
 /**
  * Compress one image buffer to JPEG. Returns the compressed buffer with a
  * `.jpg` filename when compression helps, otherwise the input unchanged.
@@ -74,7 +91,8 @@ export interface ServerCompressionResult {
 export async function compressImageBuffer(
   buffer: Buffer,
   contentType: string,
-  fileName: string
+  fileName: string,
+  options?: ServerCompressionOptions
 ): Promise<ServerCompressionResult> {
   const original: ServerCompressionResult = {
     buffer,
@@ -91,12 +109,16 @@ export async function compressImageBuffer(
     const sharp = await loadSharp();
     if (!sharp) return original;
 
-    const compressed = await sharp(buffer)
+    const pipeline = sharp(buffer)
       .rotate() // bake in EXIF orientation, like the client's from-image decode
-      .flatten({ background: '#ffffff' })
-      .resize(max, max, { fit: 'inside', withoutEnlargement: true })
-      .jpeg({ quality: jpegQuality() })
-      .toBuffer();
+      .flatten({ background: '#ffffff' });
+
+    const resized =
+      options?.fit === 'width'
+        ? pipeline.resize({ width: max, withoutEnlargement: true })
+        : pipeline.resize(max, max, { fit: 'inside', withoutEnlargement: true });
+
+    const compressed = await resized.jpeg({ quality: jpegQuality() }).toBuffer();
 
     // Keep the original if re-encoding didn't actually save anything.
     if (compressed.length >= buffer.length) return original;

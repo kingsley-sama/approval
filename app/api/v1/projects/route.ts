@@ -229,14 +229,23 @@ export async function GET(request: NextRequest) {
   const search = params.get('search')?.trim();
   const pageSize = 24;
 
+  // Website reviews share markup_projects (migration 019). Default to image
+  // projects so existing integrations keep seeing exactly what they saw
+  // before; pass ?kind=website to list site reviews, or ?kind=all for both.
+  const kindParam = params.get('kind') || 'image';
+  if (!['image', 'website', 'all'].includes(kindParam)) {
+    return apiError(422, 'validation_error', '"kind" must be one of: image, website, all.');
+  }
+
   let query = supabaseAdmin
     .from('markup_projects')
-    .select('id, project_name, markup_url, total_threads, created_at, updated_at', {
+    .select('id, project_name, markup_url, kind, site_url, total_threads, created_at, updated_at', {
       count: 'exact',
     })
     .order('created_at', { ascending: false })
     .range((page - 1) * pageSize, page * pageSize - 1);
 
+  if (kindParam !== 'all') query = query.eq('kind', kindParam);
   if (search) query = query.ilike('project_name', `%${search}%`);
 
   const { data, error, count } = await query;
@@ -251,9 +260,11 @@ export async function GET(request: NextRequest) {
     projects: (data ?? []).map((p: any) => ({
       id: p.id,
       name: p.project_name,
+      kind: p.kind ?? 'image',
+      siteUrl: p.site_url ?? null,
       coverImage: p.markup_url,
       totalImages: p.total_threads ?? 0,
-      url: `${origin}/projects/${p.id}`,
+      url: `${origin}/${p.kind === 'website' ? 'websites' : 'projects'}/${p.id}`,
       createdAt: p.created_at,
       updatedAt: p.updated_at,
     })),

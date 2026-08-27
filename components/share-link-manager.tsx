@@ -67,6 +67,7 @@ const RESOURCE_LABELS: Record<ShareResourceType, string> = {
   project: 'project',
   panorama_project: 'panorama',
   tour_project: 'virtual tour',
+  website_project: 'website review',
 };
 
 export default function ShareLinkManager({

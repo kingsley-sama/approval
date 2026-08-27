@@ -204,6 +204,10 @@ export default async function SharePage({ params }: SharePageProps) {
       .from('markup_threads')
       .select('*')
       .eq('project_id', shareLink!.resourceId)
+      // Website captures start life with no image while the worker runs.
+      // A guest can do nothing with those, and the viewer would show a
+      // broken tile, so keep them out of the shared view entirely.
+      .not('image_path', 'is', null)
       .order('image_index', { ascending: true, nullsFirst: false })
       .order('created_at', { ascending: true });
 
@@ -243,29 +247,39 @@ export default async function SharePage({ params }: SharePageProps) {
     };
   }
 
-  // Resolve the project ID and name regardless of resource type
-  const projectId =
-    shareLink!.resourceType === 'project'
-      ? shareLink!.resourceId
-      : (resourceData.thread as any)?.project_id ?? null;
+  // Resolve the project ID and name regardless of resource type. A website
+  // review shares markup_projects with an image project, so both resolve the
+  // same way — only the destination route differs.
+  const isProjectScoped =
+    shareLink!.resourceType === 'project' || shareLink!.resourceType === 'website_project';
 
-  const projectName =
-    shareLink!.resourceType === 'project'
-      ? (resourceData.project as any)?.project_name ?? 'Project'
-      : (resourceData.thread as any)?.markup_projects?.project_name ?? 'Project';
+  const projectId = isProjectScoped
+    ? shareLink!.resourceId
+    : (resourceData.thread as any)?.project_id ?? null;
+
+  const projectName = isProjectScoped
+    ? (resourceData.project as any)?.project_name ?? 'Project'
+    : (resourceData.thread as any)?.markup_projects?.project_name ?? 'Project';
+
+  const isWebsite =
+    shareLink!.resourceType === 'website_project' ||
+    (resourceData.project as any)?.kind === 'website' ||
+    (resourceData.thread as any)?.markup_projects?.kind === 'website';
 
   // Logged-in users: auto-save project access then redirect to the real project page.
   // They get the full app UI (with role-based feature gating) instead of a guest viewer.
   if (sessionUser && projectId) {
     if (sessionUser.role !== 'admin') {
       await supabase
-        .from('project_access')
+        .from(isWebsite ? 'website_project_access' : 'project_access')
         .upsert(
           { project_id: projectId, user_email: sessionUser.email, granted_by: 'share_link' },
           { onConflict: 'project_id,user_email' }
         );
     }
-    redirect(`/projects/${projectId}?name=${encodeURIComponent(projectName)}`);
+    redirect(
+      `/${isWebsite ? 'websites' : 'projects'}/${projectId}?name=${encodeURIComponent(projectName)}`
+    );
   }
 
   return (

@@ -1,13 +1,13 @@
 'use client';
 
 import { useState, useRef } from 'react';
-import { getSignedUploadUrl, registerUploadedFile } from '@/app/actions/storage';
 import { Button } from '@/components/ui/button';
 import { IconTooltip } from '@/components/ui/icon-tooltip';
 import { Plus, CheckCircle2, XCircle, Loader2, X } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { xhrUpload, validateFiles, type FileUploadState } from '@/lib/upload';
-import { compressImageWithStats, formatFileSize } from '@/lib/image-compression';
+import { validateFiles, type FileUploadState } from '@/lib/upload';
+import { uploadProjectFile, uploadConcurrencyFor } from '@/lib/upload-thread';
+import { formatFileSize } from '@/lib/image-compression';
 import { CompressionInfo } from '@/components/compression-info';
 
 interface ImageUploaderProps {
@@ -15,8 +15,6 @@ interface ImageUploaderProps {
   onUploadComplete?: () => void;
   trigger?: React.ReactNode;
 }
-
-const CONCURRENCY = 3;
 
 export default function ImageUploader({ projectId, onUploadComplete, trigger }: ImageUploaderProps) {
   const { toast } = useToast();
@@ -27,39 +25,19 @@ export default function ImageUploader({ projectId, onUploadComplete, trigger }: 
   const patch = (id: string, update: Partial<FileUploadState>) =>
     setFileStates(prev => prev.map(f => f.id === id ? { ...f, ...update } : f));
 
+  // Images upload as one thread; PDFs are rendered to one image per page and
+  // registered in page order. Both live in lib/upload-thread.ts so the create
+  // dialog behaves identically.
+  const pdfFallbacks = useRef<string[]>([]);
+
   const uploadOne = async (rawFile: File, state: FileUploadState): Promise<boolean> => {
-    // 0. Compress in the browser before uploading (best-effort; falls back to
-    //    the original on failure or if compression doesn't help).
-    const { file, originalSize, compressedSize, didCompress } = await compressImageWithStats(rawFile);
-
-    // 1. Get presigned URL from server (tiny request — no file data)
-    patch(state.id, { status: 'uploading', progress: 0, originalSize, compressedSize, didCompress });
-    const urlResult = await getSignedUploadUrl(projectId, file.name);
-    if (!urlResult.success || !urlResult.signedUrl || !urlResult.storagePath) {
-      patch(state.id, { status: 'error', error: urlResult.error || 'Could not get upload URL' });
-      return false;
+    const outcome = await uploadProjectFile(projectId, rawFile, (update) =>
+      patch(state.id, update),
+    );
+    if (outcome.pdfFallbackReason) {
+      pdfFallbacks.current.push(`${rawFile.name}: ${outcome.pdfFallbackReason}`);
     }
-
-    // 2. Upload directly from browser → Supabase (real progress, no size limit)
-    try {
-      await xhrUpload(file, urlResult.signedUrl, (pct) =>
-        patch(state.id, { progress: pct }),
-      );
-    } catch (err: any) {
-      patch(state.id, { status: 'error', error: err.message });
-      return false;
-    }
-
-    // 3. Register thread in the database
-    patch(state.id, { status: 'registering', progress: 100 });
-    const regResult = await registerUploadedFile(projectId, file.name, urlResult.storagePath);
-    if (!regResult.success) {
-      patch(state.id, { status: 'error', error: regResult.error || 'Failed to save image' });
-      return false;
-    }
-
-    patch(state.id, { status: 'done', progress: 100 });
-    return true;
+    return outcome.ok;
   };
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -94,7 +72,11 @@ export default function ImageUploader({ projectId, onUploadComplete, trigger }: 
     setFileStates(prev => [...prev, ...newStates]);
     setShowPanel(true);
 
-    // Run up to CONCURRENCY uploads in parallel, track results locally
+    pdfFallbacks.current = [];
+
+    // Plain images upload in parallel; a batch containing a PDF runs one file
+    // at a time so page order survives (threads sort by created_at).
+    const concurrency = uploadConcurrencyFor(files);
     const queue = files.map((file, i) => ({ file, state: newStates[i] }));
     const running: Promise<boolean>[] = [];
     const results: boolean[] = [];
@@ -106,7 +88,7 @@ export default function ImageUploader({ projectId, onUploadComplete, trigger }: 
         return ok;
       });
       running.push(p);
-      if (running.length >= CONCURRENCY) await Promise.race(running);
+      if (running.length >= concurrency) await Promise.race(running);
     }
     await Promise.allSettled(running);
 
@@ -119,6 +101,15 @@ export default function ImageUploader({ projectId, onUploadComplete, trigger }: 
       });
       onUploadComplete?.();
     }
+    if (pdfFallbacks.current.length > 0) {
+      // The document is in the project and viewable, but not as pinnable pages
+      // — worth saying, since that is the whole point of uploading it.
+      toast({
+        title: 'Added as a document, not pages',
+        description: pdfFallbacks.current.slice(0, 2).join(' · '),
+        variant: 'destructive',
+      });
+    }
     if (failed > 0) {
       toast({
         title: `${failed} upload${failed > 1 ? 's' : ''} failed`,
@@ -129,7 +120,9 @@ export default function ImageUploader({ projectId, onUploadComplete, trigger }: 
   };
 
   const clearDone = () => setFileStates(prev => prev.filter(f => f.status !== 'done'));
-  const isActive = fileStates.some(f => f.status === 'pending' || f.status === 'uploading' || f.status === 'registering');
+  const isActive = fileStates.some(
+    f => f.status === 'pending' || f.status === 'converting' || f.status === 'uploading' || f.status === 'registering',
+  );
 
   // Aggregate compression savings across all files in the panel.
   const totalSaved = fileStates.reduce(
@@ -140,6 +133,7 @@ export default function ImageUploader({ projectId, onUploadComplete, trigger }: 
   const statusColor = (f: FileUploadState) => {
     if (f.status === 'done')       return 'bg-green-500';
     if (f.status === 'error')      return 'bg-red-400';
+    if (f.status === 'converting') return 'bg-amber-400';
     if (f.status === 'registering') return 'bg-blue-400';
     if (f.status === 'uploading')  return 'bg-blue-500';
     return 'bg-gray-200';
@@ -147,7 +141,7 @@ export default function ImageUploader({ projectId, onUploadComplete, trigger }: 
 
   const barWidth = (f: FileUploadState) => {
     if (f.status === 'done' || f.status === 'error') return 'w-full';
-    if (f.status === 'registering') return 'w-full animate-pulse';
+    if (f.status === 'registering' || f.status === 'converting') return 'w-full animate-pulse';
     if (f.status === 'uploading') return ``;
     return 'w-0';
   };
@@ -214,7 +208,7 @@ export default function ImageUploader({ projectId, onUploadComplete, trigger }: 
                   <span className="shrink-0 ml-2">
                     {f.status === 'done'        && <CheckCircle2 size={14} className="text-green-500" />}
                     {f.status === 'error'       && <XCircle size={14} className="text-red-500" />}
-                    {(f.status === 'uploading' || f.status === 'registering') &&
+                    {(f.status === 'uploading' || f.status === 'registering' || f.status === 'converting') &&
                       <Loader2 size={14} className="animate-spin text-blue-500" />}
                   </span>
                 </div>
@@ -238,11 +232,27 @@ export default function ImageUploader({ projectId, onUploadComplete, trigger }: 
                     didCompress={f.didCompress}
                     className="truncate"
                   />
+                  {f.status === 'converting' && (
+                    <span className="text-[10px] text-amber-600 shrink-0">
+                      {f.pageProgress?.total
+                        ? `Reading page ${f.pageProgress.done} of ${f.pageProgress.total}`
+                        : 'Reading pages…'}
+                    </span>
+                  )}
                   {f.status === 'uploading' && (
-                    <span className="text-[10px] text-blue-500 shrink-0">{f.progress}%</span>
+                    <span className="text-[10px] text-blue-500 shrink-0">
+                      {f.pageProgress
+                        ? `Page ${f.pageProgress.done} of ${f.pageProgress.total}`
+                        : `${f.progress}%`}
+                    </span>
                   )}
                   {f.status === 'registering' && (
                     <span className="text-[10px] text-blue-400 shrink-0">Saving…</span>
+                  )}
+                  {f.status === 'done' && f.pageProgress && (
+                    <span className="text-[10px] text-green-600 shrink-0">
+                      {f.pageProgress.total} page{f.pageProgress.total === 1 ? '' : 's'}
+                    </span>
                   )}
                   {f.status === 'error' && (
                     <span className="text-[10px] text-red-500 truncate">{f.error}</span>

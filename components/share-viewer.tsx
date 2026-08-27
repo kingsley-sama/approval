@@ -10,6 +10,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { useDocumentTitle } from '@/hooks/use-document-title';
 import { TruncatedName } from '@/components/ui/truncated-name';
+import DownloadFeedbackButton from '@/components/report/download-feedback-button';
 import { useRouter } from 'next/navigation';
 import ImageViewer from '@/components/annotation/image-viewer';
 import CommentModal from '@/components/annotation/comment-modal';
@@ -586,6 +587,11 @@ export default function ShareViewer({ shareLink, resourceData, token }: ShareVie
     }
   };
 
+  // The report is per-project; a single-image share still belongs to one, and
+  // the API accepts that case for the owning project.
+  const reportProjectId: string | null =
+    resourceData.project?.id ?? resourceData.thread?.project_id ?? null;
+
   const projectName =
     resourceData.type === 'project'
       ? resourceData.project?.project_name
@@ -771,6 +777,9 @@ export default function ShareViewer({ shareLink, resourceData, token }: ShareVie
 
           {/* Right — guest identity */}
           <div className="flex items-center gap-4 text-sm">
+            {reportProjectId && (
+              <DownloadFeedbackButton projectId={reportProjectId} token={token} withLabel />
+            )}
             {nameConfirmed && canComment && (
               <>
                 {reviewSubmitted ? (

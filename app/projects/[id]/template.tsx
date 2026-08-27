@@ -7,6 +7,7 @@ import { TruncatedName } from '@/components/ui/truncated-name';
 import CommentsSidebar from '@/components/annotation/comments-sidebar';
 import ThumbnailsSidebar from '@/components/annotation/thumbnails-sidebar';
 import ShareLinkManager from '@/components/share-link-manager';
+import DownloadFeedbackButton from '@/components/report/download-feedback-button';
 import type { Shape } from '@/types/drawing';
 import type { AttachmentRecord } from '@/app/actions/storage';
 import { Button } from '@/components/ui/button';
@@ -45,7 +46,19 @@ export interface ProjectImageData {
 	name: string;
 	url: string;
 	pins: ProjectPin[];
+	/** Website reviews only — the page this screenshot was taken from. */
+	sourceUrl?: string | null;
+	viewport?: string | null;
+	capturedAt?: string | null;
+	captureStatus?: 'pending' | 'ready' | 'failed' | null;
 }
+
+/**
+ * Which section the workspace is serving. Both render the same annotation
+ * surface; only the chrome around it differs — where "back" goes, what a
+ * share link is scoped to, and whether an address bar sits above the image.
+ */
+export type WorkspaceVariant = 'image' | 'website';
 
 interface ProjectRouteLayoutProps {
 	children: React.ReactNode;
@@ -61,6 +74,9 @@ interface ProjectTopNavProps {
 	currentUser?: string;
 	sidebarsCollapsed?: boolean;
 	onToggleSidebars?: () => void;
+	variant?: WorkspaceVariant;
+	/** Extra controls for the website variant (add pages, etc.). */
+	actions?: React.ReactNode;
 }
 
 function getInitials(name?: string): string {
@@ -108,10 +124,15 @@ export function ProjectTopNav({
 	currentUser,
 	sidebarsCollapsed,
 	onToggleSidebars,
+	variant = 'image',
+	actions,
 }: ProjectTopNavProps) {
 	const router = useRouter();
 	const userInitials = getInitials(currentUser);
 	const userLabel = currentUser?.trim() || 'You';
+	const isWebsite = variant === 'website';
+	const backHref = isWebsite ? '/websites' : '/projects';
+	const backLabel = isWebsite ? 'Back to websites' : 'Back to projects';
 
 	if (isFullscreen) {
 		return null;
@@ -120,13 +141,13 @@ export function ProjectTopNav({
 	return (
 		<header className="h-14 flex items-center justify-between px-4 border-b border-border/50 bg-background shrink-0 z-10">
         <div className="flex items-center gap-3">
-          <IconTooltip label="Back to projects">
+          <IconTooltip label={backLabel}>
             <Button
               variant="ghost"
               size="icon"
               className="h-8 w-8 text-muted-foreground hover:text-foreground"
-              onClick={() => router.push('/projects')}
-              aria-label="Back to projects"
+              onClick={() => router.push(backHref)}
+              aria-label={backLabel}
             >
               <ArrowLeft className="h-4 w-4" />
             </Button>
@@ -176,8 +197,10 @@ export function ProjectTopNav({
               </div>
             </IconTooltip>
           </div>
-		  	<ShareLinkManager
-					resourceType="project"
+			{actions}
+			<DownloadFeedbackButton projectId={projectId} />
+			<ShareLinkManager
+				resourceType={isWebsite ? 'website_project' : 'project'}
 				resourceId={projectId}
 				createdBy="user"
 				resourceName={projectName}
