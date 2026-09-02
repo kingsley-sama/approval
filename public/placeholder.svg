@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600" role="img" aria-label="No preview available">
+  <rect width="800" height="600" fill="#f6f3ec"/>
+  <g fill="none" stroke="#cfc8ba" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="286" y="216" width="228" height="168" rx="12"/>
+    <path d="M286 330l58-52a16 16 0 0 1 21 0l52 46 34-28a16 16 0 0 1 21 1l42 39"/>
+  </g>
+  <circle cx="356" cy="266" r="16" fill="#cfc8ba"/>
+  <text x="400" y="430" text-anchor="middle" font-family="Inter, system-ui, sans-serif" font-size="20" fill="#a2a3a7">No preview yet</text>
+</svg>

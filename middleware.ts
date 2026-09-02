@@ -69,6 +69,13 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!api|_next/static|_next/image|favicon.ico).*)'],
+  // Static files in /public must be excluded, not just /_next. Without the
+  // extension guard, a request for /logo.png is treated as a protected route
+  // and redirected to /sign-in — including the image optimizer's own internal
+  // fetch, which then receives HTML and fails with "isn't a valid image".
+  // That broke the logo on every workspace page and every guest share view.
+  matcher: [
+    '/((?!api|_next/static|_next/image|favicon.ico|.*\\.(?:png|jpg|jpeg|gif|svg|webp|avif|ico|css|js|mjs|map|txt|xml|json|woff|woff2|ttf|otf|eot|mp4|webm|ogv|mov|pdf)$).*)',
+  ],
   runtime: 'nodejs',
 };
