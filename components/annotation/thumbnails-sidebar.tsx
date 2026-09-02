@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { ChevronUp, ChevronDown, GripVertical, FileText, Film, Trash2 } from 'lucide-react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { ChevronUp, ChevronDown, GripVertical, FileText, Film, Trash2, Globe } from 'lucide-react';
 import ImageUploader from '@/components/image-uploader';
 import { getMediaKind } from '@/lib/media-type';
 import { IconTooltip } from '@/components/ui/icon-tooltip';
@@ -11,6 +11,8 @@ interface ImageData {
   name: string;
   url: string;
   pins: any[];
+  /** Website reviews: the live page this entry points at, with no stored image. */
+  sourceUrl?: string | null;
 }
 
 interface ThumbnailsSidebarProps {
@@ -66,9 +68,13 @@ function ThumbnailImage({ url, alt }: { url: string; alt: string }) {
   );
 }
 
-/** PDFs and videos have no image thumbnail, so show a labelled icon tile. */
-function MediaPlaceholder({ kind }: { kind: 'pdf' | 'video' }) {
-  const Icon = kind === 'pdf' ? FileText : Film;
+/**
+ * PDFs, videos and live website pages have no image thumbnail, so show a
+ * labelled icon tile. A live page is a URL the workspace opens in a frame —
+ * there is no stored screenshot to show.
+ */
+function MediaPlaceholder({ kind }: { kind: 'pdf' | 'video' | 'page' }) {
+  const Icon = kind === 'pdf' ? FileText : kind === 'video' ? Film : Globe;
   return (
     <div className="w-full h-full flex flex-col items-center justify-center gap-1 bg-gray-100 text-gray-500">
       <Icon className="h-6 w-6" />
@@ -92,22 +98,84 @@ export default function ThumbnailsSidebar({
   const deletable = !readOnly && !!onDeleteImage;
 
   const [draggedId, setDraggedId] = useState<string | null>(null);
-  const [dragOverId, setDragOverId] = useState<string | null>(null);
+  const listRef = useRef<HTMLDivElement>(null);
 
-  const handleDrop = (targetId: string) => {
-    if (draggedId && draggedId !== targetId) {
-      const ids = images.map(img => img.id);
-      const from = ids.indexOf(draggedId);
-      const to = ids.indexOf(targetId);
-      if (from !== -1 && to !== -1) {
-        const next = [...ids];
-        next.splice(from, 1);
-        next.splice(to, 0, draggedId);
-        onReorderImages?.(next);
-      }
-    }
+  // The list reorders live while dragging rather than jumping on drop, so the
+  // tiles themselves show where the image will land. `order` is that working
+  // copy; it is only persisted when the drag finishes.
+  const [order, setOrder] = useState<string[]>(() => images.map(img => img.id));
+  const serverOrder = images.map(img => img.id).join('|');
+
+  useEffect(() => {
+    setOrder(images.map(img => img.id));
+  }, [serverOrder]);
+
+  const orderedImages = useMemo(() => {
+    const byId = new Map(images.map(img => [img.id, img]));
+    const seen = new Set(order);
+    const list = order
+      .map(id => byId.get(id))
+      .filter((img): img is ImageData => Boolean(img));
+    // An image that arrived after the last sync (a fresh upload) goes last.
+    for (const img of images) if (!seen.has(img.id)) list.push(img);
+    return list;
+  }, [images, order]);
+
+  // ── FLIP: animate tiles between positions ───────────────────────────────
+  // Reordering swaps DOM nodes, which the browser paints instantly. Measuring
+  // before and after lets us play the movement back as a transform so the
+  // tiles glide instead of teleporting.
+  const tileRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const prevRects = useRef<Map<string, DOMRect>>(new Map());
+
+  useLayoutEffect(() => {
+    const reduceMotion =
+      typeof window !== 'undefined' &&
+      window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+
+    tileRefs.current.forEach((el, id) => {
+      const next = el.getBoundingClientRect();
+      const prev = prevRects.current.get(id);
+      prevRects.current.set(id, next);
+      if (!prev || reduceMotion) return;
+
+      const dy = prev.top - next.top;
+      if (Math.abs(dy) < 1) return;
+
+      el.style.transition = 'none';
+      el.style.transform = `translateY(${dy}px)`;
+      requestAnimationFrame(() => {
+        el.style.transition = 'transform 180ms cubic-bezier(0.2, 0, 0, 1)';
+        el.style.transform = '';
+      });
+    });
+  }, [orderedImages]);
+
+  const moveWithin = (dragging: string, target: string) => {
+    setOrder(prev => {
+      const from = prev.indexOf(dragging);
+      const to = prev.indexOf(target);
+      if (from === -1 || to === -1 || from === to) return prev;
+      const next = [...prev];
+      next.splice(from, 1);
+      next.splice(to, 0, dragging);
+      return next;
+    });
+  };
+
+  const commitOrder = () => {
     setDraggedId(null);
-    setDragOverId(null);
+    if (order.join('|') !== serverOrder) onReorderImages?.(order);
+  };
+
+  // Dragging towards an edge of a scrollable list should bring more into view.
+  const autoScroll = (clientY: number) => {
+    const el = listRef.current;
+    if (!el) return;
+    const { top, bottom } = el.getBoundingClientRect();
+    const EDGE = 64;
+    if (clientY < top + EDGE) el.scrollTop -= 14;
+    else if (clientY > bottom - EDGE) el.scrollTop += 14;
   };
 
   return (
@@ -116,44 +184,51 @@ export default function ThumbnailsSidebar({
         <span className="text-xs font-semibold text-gray-500">IMAGES</span>
         {!readOnly && <ImageUploader projectId={projectId} onUploadComplete={onUploadComplete} />}
       </div>
-      <div className="flex-1 overflow-y-auto">
-        {images.map((img) => {
+      <div
+        ref={listRef}
+        className="flex-1 overflow-y-auto"
+        onDragOver={reorderable ? (e) => { e.preventDefault(); autoScroll(e.clientY); } : undefined}
+      >
+        {orderedImages.map((img) => {
           const openCount = img.pins.filter(p => p.status !== 'resolved').length;
-          const kind = getMediaKind(img.url, img.name);
+          // A website review's page has a source URL but no stored image.
+          const kind: 'image' | 'pdf' | 'video' | 'page' =
+            !img.url && img.sourceUrl ? 'page' : getMediaKind(img.url, img.name);
           const isDragging = draggedId === img.id;
-          const isDragOver = dragOverId === img.id && draggedId !== img.id;
           return (
           <div
             key={img.id}
+            ref={(el) => {
+              if (el) tileRefs.current.set(img.id, el);
+              else {
+                tileRefs.current.delete(img.id);
+                prevRects.current.delete(img.id);
+              }
+            }}
             draggable={reorderable}
             onClick={() => onSelectImage(img.id)}
             onDragStart={reorderable ? (e) => {
               setDraggedId(img.id);
               e.dataTransfer.effectAllowed = 'move';
+              // Firefox refuses to start a drag without payload.
+              e.dataTransfer.setData('text/plain', img.id);
             } : undefined}
             onDragOver={reorderable ? (e) => {
               e.preventDefault();
               e.dataTransfer.dropEffect = 'move';
-              if (dragOverId !== img.id) setDragOverId(img.id);
-            } : undefined}
-            onDragLeave={reorderable ? () => {
-              setDragOverId(prev => (prev === img.id ? null : prev));
+              if (draggedId && draggedId !== img.id) moveWithin(draggedId, img.id);
             } : undefined}
             onDrop={reorderable ? (e) => {
               e.preventDefault();
-              handleDrop(img.id);
+              commitOrder();
             } : undefined}
-            onDragEnd={reorderable ? () => {
-              setDraggedId(null);
-              setDragOverId(null);
-            } : undefined}
-            className={`group relative border-b border-border cursor-pointer transition-colors ${
+            // Fires on a cancelled drag too, so the working order is never left
+            // diverging from what was saved.
+            onDragEnd={reorderable ? commitOrder : undefined}
+            className={`group relative border-b border-border cursor-pointer ${
               currentImageId === img.id ? 'bg-blue-50' : 'hover:bg-gray-50'
-            } ${isDragging ? 'opacity-40' : ''} ${isDragOver ? 'ring-2 ring-inset ring-primary' : ''}`}
+            } ${isDragging ? 'opacity-60 ring-2 ring-inset ring-primary/60 shadow-sm' : ''}`}
           >
-            {isDragOver && (
-              <div className="absolute top-0 left-0 right-0 h-0.5 bg-primary z-10" />
-            )}
             <div
               className={`relative aspect-square overflow-hidden hover:opacity-80 transition-all ${
                 currentImageId === img.id ? 'ring-2 ring-inset ring-blue-600' : ''

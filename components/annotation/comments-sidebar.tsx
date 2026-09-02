@@ -1,6 +1,6 @@
 'use client';
 
-import { MessageSquare, ChevronDown, ChevronRight, Check, FileText, ArrowLeft, MoreHorizontal, Paperclip, Video, Smile, Send, Pencil, X, ImageIcon, XCircle, Trash2 } from 'lucide-react';
+import { MessageSquare, ChevronDown, ChevronRight, Check, FileText, ArrowLeft, Paperclip, Video, Smile, Send, Pencil, X, ImageIcon, XCircle, Trash2 } from 'lucide-react';
 import { useState, useEffect, useMemo, useRef } from 'react';
 import type { AttachmentRecord } from '@/app/actions/storage';
 import CommentBody from './comment-body';
@@ -415,37 +415,55 @@ function ThreadDetail({ pin, onBack, onResolve, readOnly, canResolve, onEditComm
 
   return (
     <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-border/50">
-        <div className="flex items-center gap-3">
+      {/* Header — same control sizing, pin badge and name/date treatment as
+          the comment list, so opening a comment feels like the same surface. */}
+      <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-border/50 bg-background">
+        <div className="flex items-center gap-2.5 min-w-0">
           <IconTooltip label="Back to comments">
             <button
               onClick={onBack}
-              aria-label="Back"
-              className="flex items-center justify-center size-8 rounded-full ring-1 ring-border hover:ring-foreground hover:bg-foreground hover:text-background text-foreground transition-all duration-200 group"
+              aria-label="Back to comments"
+              className="h-8 w-8 shrink-0 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
             >
-              <ArrowLeft className="size-3.75 transition-transform group-hover:-translate-x-0.5" strokeWidth={1.5} />
+              <ArrowLeft className="h-4 w-4" strokeWidth={1.75} />
             </button>
           </IconTooltip>
-          <div className="h-4 w-px bg-border" />
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] font-semibold text-muted-foreground tracking-[0.18em] uppercase">
-              Thread
-            </span>
-            <span className="flex items-center justify-center size-4 rounded-full bg-muted text-[10px] font-semibold text-foreground">
-              {pin.number}
-            </span>
+
+          <span
+            className={`shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold ${
+              pin.status === 'resolved'
+                ? 'bg-green-100 text-green-700'
+                : 'bg-primary text-white'
+            }`}
+          >
+            {pin.number}
+          </span>
+
+          <div className="min-w-0">
+            <p
+              className={`text-sm font-semibold truncate ${
+                pin.status === 'resolved' ? 'line-through text-gray-500' : 'text-foreground'
+              }`}
+            >
+              {pin.author}
+            </p>
+            <p className="text-[11px] text-muted-foreground truncate">{pin.timestamp}</p>
           </div>
         </div>
-        <div className="flex items-center gap-1">
+
+        <div className="flex items-center gap-1 shrink-0">
           {(!readOnly || canResolve) && (
             <IconTooltip label={pin.status === 'resolved' ? 'Mark active' : 'Mark resolved'}>
               <button
                 onClick={() => onResolve(pin.id)}
-                aria-label="Mark resolved"
-                className="size-7 flex items-center justify-center rounded-full text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+                aria-label={pin.status === 'resolved' ? 'Mark active' : 'Mark resolved'}
+                className={`h-8 w-8 flex items-center justify-center rounded-md transition-colors ${
+                  pin.status === 'resolved'
+                    ? 'text-green-700 bg-green-100 hover:bg-green-200'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+                }`}
               >
-                <Check className="size-3.75" strokeWidth={1.75} />
+                <Check className="h-4 w-4" strokeWidth={1.75} />
               </button>
             </IconTooltip>
           )}
@@ -454,20 +472,12 @@ function ThreadDetail({ pin, onBack, onResolve, readOnly, canResolve, onEditComm
               <button
                 onClick={() => onDeleteComment?.(pin.id)}
                 aria-label="Delete comment"
-                className="size-7 flex items-center justify-center rounded-full text-muted-foreground hover:text-red-600 hover:bg-red-50 transition-colors"
+                className="h-8 w-8 flex items-center justify-center rounded-md text-muted-foreground hover:text-red-600 hover:bg-red-50 transition-colors"
               >
-                <Trash2 className="size-3.75" strokeWidth={1.75} />
+                <Trash2 className="h-4 w-4" strokeWidth={1.75} />
               </button>
             </IconTooltip>
           )}
-          <IconTooltip label="More options">
-            <button
-              aria-label="More options"
-              className="size-7 flex items-center justify-center rounded-full text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
-            >
-              <MoreHorizontal className="size-4" strokeWidth={1.75} />
-            </button>
-          </IconTooltip>
         </div>
       </div>
 
@@ -1036,6 +1046,48 @@ export default function CommentsSidebar({
   const isMineInline = (name?: string) =>
     (name ?? '').trim().toLowerCase() === (currentUser ?? '').trim().toLowerCase();
 
+  // Editing straight from the list, without opening the thread first. Same rule
+  // the thread view uses: an elevated role, or your own comment.
+  const [editingPinId, setEditingPinId] = useState<string | null>(null);
+  const [inlineEditText, setInlineEditText] = useState('');
+  const [isSavingInlineEdit, setIsSavingInlineEdit] = useState(false);
+  const [inlineEditError, setInlineEditError] = useState<string | null>(null);
+
+  const canEditPin = (pin: Pin) =>
+    !!onEditComment &&
+    ((userRole && ELEVATED_ROLES.includes(userRole)) || isMineInline(pin.author));
+
+  const beginInlineEdit = (pin: Pin) => {
+    setEditingPinId(pin.id);
+    setInlineEditText(pin.content);
+    setInlineEditError(null);
+  };
+
+  const cancelInlineEdit = () => {
+    setEditingPinId(null);
+    setInlineEditText('');
+    setInlineEditError(null);
+  };
+
+  const saveInlineEdit = async (pin: Pin) => {
+    if (!onEditComment) return;
+    const trimmed = inlineEditText.trim();
+    if (!trimmed) {
+      setInlineEditError('Comment cannot be empty');
+      return;
+    }
+    if (trimmed === pin.content.trim()) {
+      cancelInlineEdit();
+      return;
+    }
+    setIsSavingInlineEdit(true);
+    setInlineEditError(null);
+    const result = await onEditComment(pin.id, trimmed);
+    setIsSavingInlineEdit(false);
+    if (result.success) cancelInlineEdit();
+    else setInlineEditError(result.error ?? 'Failed to save changes');
+  };
+
   const handleInlineAttachmentDelete = async (commentId: string, attachmentId: string) => {
     if (!onDeleteAttachment) return;
     setDeletingAttachmentId(attachmentId);
@@ -1138,12 +1190,57 @@ export default function CommentsSidebar({
             </span>
           </div>
           <p className="text-xs text-muted-foreground mb-1.5">{pin.timestamp}</p>
-          <CommentBody
-            content={pin.content}
-            className={`text-sm leading-relaxed ${
-              pin.status === 'resolved' ? 'line-through text-gray-500' : 'text-foreground'
-            }`}
-          />
+          {editingPinId === pin.id ? (
+            <div onClick={e => e.stopPropagation()}>
+              <textarea
+                autoFocus
+                value={inlineEditText}
+                onChange={e => {
+                  setInlineEditText(e.target.value);
+                  if (inlineEditError) setInlineEditError(null);
+                }}
+                onKeyDown={e => {
+                  if (e.key === 'Escape') cancelInlineEdit();
+                  // Enter saves; Shift+Enter keeps the newline.
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    if (!isSavingInlineEdit) saveInlineEdit(pin);
+                  }
+                }}
+                rows={3}
+                disabled={isSavingInlineEdit}
+                className="w-full text-sm leading-relaxed rounded border border-border bg-background px-2 py-1.5 resize-y focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-60"
+              />
+              {inlineEditError && (
+                <p className="mt-1 text-[11px] text-destructive">{inlineEditError}</p>
+              )}
+              <div className="mt-1.5 flex items-center gap-1.5">
+                <button
+                  onClick={() => saveInlineEdit(pin)}
+                  disabled={isSavingInlineEdit || !inlineEditText.trim()}
+                  className="text-[11px] px-2 py-0.5 rounded flex items-center gap-1 bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+                >
+                  <Check size={12} />
+                  {isSavingInlineEdit ? 'Saving…' : 'Save'}
+                </button>
+                <button
+                  onClick={cancelInlineEdit}
+                  disabled={isSavingInlineEdit}
+                  className="text-[11px] px-2 py-0.5 rounded flex items-center gap-1 bg-gray-200 text-gray-700 hover:bg-gray-300 disabled:opacity-50 transition-colors"
+                >
+                  <X size={12} />
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <CommentBody
+              content={pin.content}
+              className={`text-sm leading-relaxed ${
+                pin.status === 'resolved' ? 'line-through text-gray-500' : 'text-foreground'
+              }`}
+            />
+          )}
           {pin.attachments && pin.attachments.length > 0 && (
             <div className="mt-2 space-y-1">
               <div className="flex flex-wrap gap-1">
@@ -1210,7 +1307,7 @@ export default function CommentsSidebar({
                 ))}
             </div>
           )}
-          {(!readOnly || canResolve) && (
+          {(!readOnly || canResolve || canEditPin(pin)) && editingPinId !== pin.id && (
             <div className="mt-2 flex items-center justify-end gap-1.5">
               {(pin.replyCount ?? 0) > 0 && (
                 <span
@@ -1221,17 +1318,29 @@ export default function CommentsSidebar({
                   {pin.replyCount}
                 </span>
               )}
-              <button
-                onClick={e => { e.stopPropagation(); onResolve(pin.id); }}
-                className={`text-[11px] px-2 py-0.5 rounded flex items-center gap-1 transition-colors ${
-                  pin.status === 'resolved'
-                    ? 'bg-green-100 text-green-700 hover:bg-green-200'
-                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                }`}
-              >
-                <Check size={12} />
-                {pin.status === 'resolved' ? 'Resolved' : 'Resolve'}
-              </button>
+              {canEditPin(pin) && (
+                <button
+                  onClick={e => { e.stopPropagation(); beginInlineEdit(pin); }}
+                  title="Edit comment"
+                  aria-label="Edit comment"
+                  className="text-[11px] px-2 py-0.5 rounded flex items-center gap-1 bg-gray-100 text-gray-600 hover:bg-gray-200 hover:text-foreground transition-colors"
+                >
+                  <Pencil size={12} />
+                </button>
+              )}
+              {(!readOnly || canResolve) && (
+                <button
+                  onClick={e => { e.stopPropagation(); onResolve(pin.id); }}
+                  className={`text-[11px] px-2 py-0.5 rounded flex items-center gap-1 transition-colors ${
+                    pin.status === 'resolved'
+                      ? 'bg-green-100 text-green-700 hover:bg-green-200'
+                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                  }`}
+                >
+                  <Check size={12} />
+                  {pin.status === 'resolved' ? 'Resolved' : 'Resolve'}
+                </button>
+              )}
             </div>
           )}
         </div>
