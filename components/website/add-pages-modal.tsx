@@ -14,51 +14,29 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
-import { Plus, Loader2, AlertCircle, Monitor, Smartphone, Tablet } from 'lucide-react';
+import { Plus, Loader2, AlertCircle } from 'lucide-react';
 import { parseUrlList } from '@/lib/website/url';
-import type { ViewportLabel } from '@/lib/website/viewports';
 
 interface AddPagesModalProps {
   projectId: string;
-  /** Project default, pre-selected. */
-  defaultViewports: ViewportLabel[];
   onAdded: () => void;
   trigger?: React.ReactNode;
 }
 
-const VIEWPORT_OPTIONS: { label: ViewportLabel; title: string; icon: typeof Monitor }[] = [
-  { label: 'desktop', title: 'Desktop', icon: Monitor },
-  { label: 'tablet', title: 'Tablet', icon: Tablet },
-  { label: 'mobile', title: 'Mobile', icon: Smartphone },
-];
-
-export default function AddPagesModal({
-  projectId,
-  defaultViewports,
-  onAdded,
-  trigger,
-}: AddPagesModalProps) {
+/**
+ * Adds URLs to a website review. No screenshots are taken — a page is just an
+ * address the workspace can open live and hang comments off. Reviewers can
+ * also add whatever page they are looking at straight from the viewer's
+ * toolbar; this dialog is for seeding several at once.
+ */
+export default function AddPagesModal({ projectId, onAdded, trigger }: AddPagesModalProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [raw, setRaw] = useState('');
-  const [viewports, setViewports] = useState<ViewportLabel[]>(
-    defaultViewports.length ? defaultViewports : ['desktop']
-  );
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [rejected, setRejected] = useState<{ url: string; reason: string }[]>([]);
 
   const urls = parseUrlList(raw);
-  const captureCount = urls.length * viewports.length;
-
-  const toggleViewport = (label: ViewportLabel) => {
-    setViewports((prev) =>
-      prev.includes(label)
-        ? prev.length === 1
-          ? prev
-          : prev.filter((v) => v !== label)
-        : [...prev, label]
-    );
-  };
 
   const handleSubmit = async () => {
     if (urls.length === 0) {
@@ -69,7 +47,7 @@ export default function AddPagesModal({
     setError('');
     setRejected([]);
 
-    const result = await addWebsitePages({ projectId, urls, viewports });
+    const result = await addWebsitePages({ projectId, urls });
     setIsLoading(false);
 
     if (!result.success && result.error) {
@@ -78,9 +56,9 @@ export default function AddPagesModal({
     }
     if (result.rejected.length > 0) {
       setRejected(result.rejected);
-      // Some landed — refresh so the good ones show up, but keep the dialog
-      // open so the user can see which addresses were refused and why.
-      if (result.queued.length > 0) {
+      // Some landed — refresh so those show up, but keep the dialog open so the
+      // reviewer can see which addresses were refused and why.
+      if (result.pages.length > 0) {
         setRaw('');
         onAdded();
       }
@@ -123,7 +101,8 @@ export default function AddPagesModal({
             <DialogTitle>Add pages</DialogTitle>
           </div>
           <DialogDescription className="pl-[52px]">
-            One address per line. Each becomes its own screenshot to comment on.
+            One address per line. Each becomes a page of the review you can open
+            live and comment on.
           </DialogDescription>
         </DialogHeader>
 
@@ -145,35 +124,9 @@ export default function AddPagesModal({
             />
           </div>
 
-          <div className="space-y-2">
-            <Label>Capture at</Label>
-            <div className="flex gap-2">
-              {VIEWPORT_OPTIONS.map(({ label, title, icon: Icon }) => {
-                const active = viewports.includes(label);
-                return (
-                  <button
-                    key={label}
-                    type="button"
-                    onClick={() => toggleViewport(label)}
-                    disabled={isLoading}
-                    aria-pressed={active}
-                    className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs transition-colors ${
-                      active
-                        ? 'border-primary bg-primary/5 text-foreground'
-                        : 'border-border text-muted-foreground hover:text-foreground'
-                    }`}
-                  >
-                    <Icon className="h-3.5 w-3.5" />
-                    {title}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {captureCount > 0 && (
+          {urls.length > 0 && (
             <p className="text-xs text-muted-foreground">
-              {captureCount} screenshot{captureCount === 1 ? '' : 's'} will be queued.
+              {urls.length} page{urls.length === 1 ? '' : 's'} will be added.
             </p>
           )}
 
@@ -208,7 +161,7 @@ export default function AddPagesModal({
             {isLoading ? (
               <>
                 <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
-                Queueing…
+                Adding…
               </>
             ) : (
               'Add'

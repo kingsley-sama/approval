@@ -20,7 +20,7 @@ import {
   type CaptureSettings,
 } from '@/lib/website/viewports';
 import { deriveProjectName, normalizeUrl, assertSafeUrl, UnsafeUrlError } from '@/lib/website/url';
-import { enqueueCaptures, type EnqueueResult } from '@/app/actions/website-captures';
+import { createWebsitePages, type CreatePagesResult } from '@/app/actions/website-captures';
 
 const PROJECTS_PAGE_SIZE = 24;
 
@@ -76,7 +76,7 @@ async function uniqueWebsiteName(base: string): Promise<string> {
 export interface CreateWebsiteProjectResult {
   success: boolean;
   project?: { id: string; project_name: string; site_url: string | null };
-  capture?: EnqueueResult;
+  pages?: CreatePagesResult;
   error?: string;
 }
 
@@ -86,7 +86,6 @@ export async function createWebsiteProject(input: {
   settings?: Partial<CaptureSettings>;
 }): Promise<CreateWebsiteProjectResult> {
   await requireAdmin();
-  const user = await getUser();
 
   const parsed = CreateWebsiteProjectSchema.safeParse(input);
   if (!parsed.success) {
@@ -130,16 +129,12 @@ export async function createWebsiteProject(input: {
 
   const project = data as { id: string; project_name: string; site_url: string | null };
 
-  const capture = await enqueueCaptures(
-    project.id,
-    [url.toString()],
-    settings.viewports,
-    settings,
-    user?.email ?? 'system'
-  );
+  // The review opens on the live site rather than a screenshot, so creating it
+  // only needs to register the entry page.
+  const pages = await createWebsitePages(project.id, [url.toString()]);
 
   revalidatePath('/websites');
-  return { success: true, project, capture };
+  return { success: true, project, pages };
 }
 
 export async function getWebsiteProjectsPage(opts?: {

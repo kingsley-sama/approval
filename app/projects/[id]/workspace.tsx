@@ -13,10 +13,9 @@ import { useConfirm } from '@/components/confirm-dialog';
 import { Upload, Loader2, AlertTriangle, Globe } from 'lucide-react';
 import ImageUploader from '@/components/image-uploader';
 import { ProjectTopNav, ProjectShell, ProjectImageData, ProjectPin, type WorkspaceVariant } from './template';
-import BrowserFrame from '@/components/website/browser-frame';
+import LiveViewer, { type LivePin } from '@/components/website/live-viewer';
 import AddPagesModal from '@/components/website/add-pages-modal';
-import { recaptureThread } from '@/app/actions/website-captures';
-import type { ViewportLabel } from '@/lib/website/viewports';
+import { ensureWebsitePage } from '@/app/actions/website-captures';
 import type { Shape } from '@/types/drawing';
 import { useDocumentTitle } from '@/hooks/use-document-title';
 import { compressImageFile } from '@/lib/image-compression';
@@ -86,8 +85,6 @@ interface ProjectWorkspaceProps {
   fallbackName?: string;
   /** 'website' adds the address bar, re-capture and add-pages controls. */
   variant?: WorkspaceVariant;
-  /** Website reviews: the viewports the project was created with. */
-  defaultViewports?: ViewportLabel[];
 }
 
 export default function ProjectWorkspace({
@@ -95,7 +92,6 @@ export default function ProjectWorkspace({
   initialData,
   fallbackName,
   variant = 'image',
-  defaultViewports = ['desktop'],
 }: ProjectWorkspaceProps) {
   const isWebsite = variant === 'website';
   const [isRecapturing, setIsRecapturing] = useState(false);
@@ -318,13 +314,51 @@ export default function ProjectWorkspace({
   const currentImage = imagesState.find(img => img.id === currentImageId);
   const pins = currentImage?.pins || [];
 
-  // ── website reviews: capture state ──────────────────────────────────────
-  const captureStatus = currentImage?.captureStatus ?? 'ready';
-  const isCapturePending = isWebsite && captureStatus === 'pending';
-  const isCaptureFailed = isWebsite && captureStatus === 'failed';
-  const pendingCaptureCount = isWebsite
-    ? imagesState.filter(img => img.captureStatus === 'pending').length
-    : 0;
+  // ── website reviews: live browsing ──────────────────────────────────────
+  // The reviewer can wander the whole site, so the URL in the frame is its own
+  // piece of state — it only tracks the selected page until they navigate.
+  const [liveUrl, setLiveUrl] = useState<string>('');
+  const [isAddingPage, setIsAddingPage] = useState(false);
+
+  useEffect(() => {
+    if (!isWebsite) return;
+    const source = currentImage?.sourceUrl;
+    if (source) setLiveUrl(prev => (prev ? prev : source));
+  }, [isWebsite, currentImage?.sourceUrl]);
+
+  const threadForUrl = useCallback(
+    (target: string) => imagesState.find(img => img.sourceUrl === target),
+    [imagesState],
+  );
+
+  const isTrackedPage = Boolean(liveUrl && threadForUrl(liveUrl));
+
+  /** Follow the frame: if the new URL is a page of the review, select it. */
+  const handleLiveUrlChange = useCallback((next: string) => {
+    setLiveUrl(next);
+    const match = threadForUrl(next);
+    if (match && match.id !== currentImageId) {
+      setCurrentImageId(match.id);
+      setSelectedPin(null);
+    }
+  }, [threadForUrl, currentImageId]);
+
+  const handleAddCurrentPage = useCallback(async () => {
+    if (!liveUrl) return;
+    setIsAddingPage(true);
+    const result = await ensureWebsitePage(projectId, liveUrl);
+    setIsAddingPage(false);
+    if (!result.success) {
+      toast({
+        title: 'Could not add this page',
+        description: result.error ?? 'The page could not be added to the review.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    await refreshWorkspaceRef.current();
+    if (result.threadId) setCurrentImageId(result.threadId);
+  }, [liveUrl, projectId, toast]);
 
   // refreshWorkspace is re-created every render, so anything that captures it
   // in a memo or an interval would hold a stale copy. Read it through a ref,
@@ -332,33 +366,7 @@ export default function ProjectWorkspace({
   const refreshWorkspaceRef = useRef(refreshWorkspace);
   refreshWorkspaceRef.current = refreshWorkspace;
 
-  const handleRecapture = async () => {
-    if (!currentImageId) return;
-    setIsRecapturing(true);
-    const result = await recaptureThread(currentImageId);
-    setIsRecapturing(false);
-    if (!result.success) {
-      toast({
-        title: 'Could not re-capture',
-        description: result.error ?? result.rejected[0]?.reason ?? 'The capture could not be queued.',
-        variant: 'destructive',
-      });
-      return;
-    }
-    await refreshWorkspaceRef.current();
-    // The re-shot page is a new thread; move to it so the reviewer sees the
-    // fresh screenshot rather than staying on the superseded one.
-    const newThreadId = result.queued[0]?.threadId;
-    if (newThreadId) setCurrentImageId(newThreadId);
-  };
 
-  // Captures land asynchronously. Poll while any is still running so tiles
-  // fill in without the reviewer needing to reload.
-  useEffect(() => {
-    if (pendingCaptureCount === 0) return;
-    const timer = setInterval(() => { refreshWorkspaceRef.current(); }, 5000);
-    return () => clearInterval(timer);
-  }, [pendingCaptureCount]);
 
   // Warm the browser cache for full-size images so switching is instant. The
   // viewer renders originals unoptimized, so an unwarmed switch otherwise stalls
@@ -845,7 +853,6 @@ export default function ProjectWorkspace({
           isWebsite ? (
             <AddPagesModal
               projectId={projectId}
-              defaultViewports={defaultViewports}
               onAdded={refreshWorkspace}
             />
           ) : undefined
@@ -906,7 +913,6 @@ export default function ProjectWorkspace({
                 <div className="flex justify-center">
                   <AddPagesModal
                     projectId={projectId}
-                    defaultViewports={defaultViewports}
                     onAdded={refreshWorkspace}
                   />
                 </div>
@@ -939,67 +945,28 @@ export default function ProjectWorkspace({
             </div>
           )
         ) : isWebsite ? (
-          <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-            {!isFullscreen && (
-              <BrowserFrame
-                url={currentImage?.sourceUrl ?? null}
-                viewport={currentImage?.viewport}
-                capturedAt={currentImage?.capturedAt}
-                onRecapture={currentImage?.sourceUrl ? handleRecapture : undefined}
-                isRecapturing={isRecapturing}
-              />
-            )}
-
-            {isCapturePending ? (
-              <div className="flex-1 flex items-center justify-center bg-muted/30">
-                <div className="text-center max-w-sm px-6">
-                  <Loader2 className="h-7 w-7 animate-spin text-primary mx-auto mb-3" />
-                  <p className="text-sm font-medium text-foreground">Capturing this page…</p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    The screenshot appears here as soon as it's ready.
-                  </p>
-                </div>
-              </div>
-            ) : isCaptureFailed ? (
-              <div className="flex-1 flex items-center justify-center bg-muted/30">
-                <div className="text-center max-w-sm px-6">
-                  <AlertTriangle className="h-7 w-7 text-destructive mx-auto mb-3" />
-                  <p className="text-sm font-medium text-foreground">This page couldn't be captured</p>
-                  <p className="text-xs text-muted-foreground mt-1 mb-4">
-                    The site may have blocked the request, been too slow, or needed a login.
-                  </p>
-                  <button
-                    onClick={handleRecapture}
-                    disabled={isRecapturing}
-                    className="px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-60"
-                  >
-                    {isRecapturing ? 'Trying again…' : 'Try again'}
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <ImageViewer
-                pins={visiblePins}
-                selectedPin={selectedPin}
-                drawnShapes={drawnShapes}
-                pendingShapes={pendingShapes}
-                currentImageName={currentImage?.name}
-                onShapeComplete={handleShapeComplete}
-                onUndoShape={handleUndoShape}
-                canUndo={canUndo}
-                onPinClick={handlePinClick}
-                onPinReposition={handlePinReposition}
-                isFullscreen={isFullscreen}
-                onToggleFullscreen={() => setIsFullscreen(!isFullscreen)}
-                hoveredPin={hoveredPin}
-                onPinHover={setHoveredPin}
-                currentImageIndex={currentImageIndex}
-                totalImages={imagesState.length}
-                onNavigate={handleNavigateImages}
-                currentImageUrl={currentImage?.url || ''}
-              />
-            )}
-          </div>
+          <LiveViewer
+            projectId={projectId}
+            url={liveUrl || currentImage?.sourceUrl || ''}
+            onUrlChange={handleLiveUrlChange}
+            pins={visiblePins.map((p): LivePin => ({
+              id: p.id,
+              number: p.number,
+              x: p.x,
+              y: p.y,
+              resolved: p.status === 'resolved',
+            }))}
+            selectedPinId={selectedPin}
+            onSelectPin={(pinId) => {
+              const pin = pins.find(p => p.id === pinId);
+              if (pin) handlePinClick(pin.x, pin.y, pinId);
+            }}
+            onPlacePin={handleImageClick}
+            canComment={currentUserRole !== 'viewer'}
+            isTrackedPage={isTrackedPage}
+            onAddCurrentPage={handleAddCurrentPage}
+            isAddingPage={isAddingPage}
+          />
         ) : (
           <ImageViewer
             pins={visiblePins}

@@ -18,7 +18,7 @@ import { getOptimizedImageUrl, IMAGE_SIZES } from '@/lib/image-url'
 import { getMediaKind } from '@/lib/media-type'
 import {
   Filter, ArrowUpDown, Search, Globe, Trash2, X, CheckSquare,
-  AlertTriangle, Pencil, Plus, Loader2,
+  AlertTriangle, Pencil, Plus,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -175,14 +175,6 @@ export default function WebsitesDashboard({
     observer.observe(sentinel)
     return () => observer.disconnect()
   }, [])
-
-  // While any capture is still running, poll so tiles fill in on their own.
-  const pendingTotal = projects.reduce((sum, p) => sum + p.pendingCaptures, 0)
-  useEffect(() => {
-    if (pendingTotal === 0) return
-    const timer = setInterval(() => refresh(), 5000)
-    return () => clearInterval(timer)
-  }, [pendingTotal, refresh])
 
   const handleOpen = (project: Project) => {
     router.push(`/websites/${project.id}?name=${encodeURIComponent(project.title)}`)
@@ -342,12 +334,6 @@ export default function WebsitesDashboard({
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <h1 className="text-lg font-semibold text-foreground font-display">Websites</h1>
-            {pendingTotal > 0 && (
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-accent/10 px-2.5 py-1 text-[11px] font-medium text-accent">
-                <Loader2 className="h-3 w-3 animate-spin" />
-                {pendingTotal} capture{pendingTotal === 1 ? '' : 's'} running
-              </span>
-            )}
           </div>
           <div className="flex items-center gap-2">
             <Tooltip>
@@ -435,12 +421,6 @@ export default function WebsitesDashboard({
                     basePath="/websites"
                     shareResourceType="website_project"
                   />
-                  {project.pendingCaptures > 0 && (
-                    <span className="pointer-events-none absolute left-3 top-3 z-10 inline-flex items-center gap-1 rounded-full bg-background/90 px-2 py-1 text-[10px] font-medium text-foreground shadow-sm backdrop-blur">
-                      <Loader2 className="h-2.5 w-2.5 animate-spin" />
-                      {project.pendingCaptures} capturing
-                    </span>
-                  )}
                   {project.siteUrl && (
                     <p
                       className="mt-1 truncate px-1 font-mono text-[11px] text-muted-foreground"

@@ -41,7 +41,6 @@ export default async function WebsiteProjectPage({ params, searchParams }: Websi
       initialData={initialData}
       fallbackName={name ? decodeURIComponent(name) : meta.name}
       variant="website"
-      defaultViewports={meta.settings.viewports}
     />
   );
 }

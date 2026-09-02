@@ -1,7 +1,7 @@
 'use server';
 
 /**
- * Capture lifecycle for the Websites section.
+ * Pages and captures for the Websites section.
  *
  * A capture is a markup_threads row. It is created immediately in
  * capture_status='pending' so the workspace has a stable place for the image
@@ -27,6 +27,115 @@ import {
 import { refreshProjectCounts } from '@/lib/website/project-counts';
 import { derivePageName, safeUrlString, UnsafeUrlError } from '@/lib/website/url';
 import { AddWebsitePagesSchema, RecaptureThreadSchema } from '@/lib/validation/schemas';
+
+export interface CreatedPage {
+  threadId: string;
+  url: string;
+}
+
+export interface CreatePagesResult {
+  success: boolean;
+  pages: CreatedPage[];
+  rejected: { url: string; reason: string }[];
+  error?: string;
+}
+
+/**
+ * Registers URLs as reviewable pages. No screenshot is taken — the workspace
+ * frames the live site through /api/websites/proxy, so a page is just a row
+ * holding its URL that comments can hang off.
+ *
+ * A page with no `image_path` is what tells the rest of the app this thread is
+ * live rather than a stored capture.
+ */
+export async function createWebsitePages(
+  projectId: string,
+  urls: string[]
+): Promise<CreatePagesResult> {
+  const rejected: { url: string; reason: string }[] = [];
+  const safe: string[] = [];
+
+  for (const raw of urls) {
+    try {
+      safe.push(safeUrlString(raw));
+    } catch (err) {
+      rejected.push({
+        url: raw,
+        reason: err instanceof UnsafeUrlError ? err.message : 'Could not be read as a URL',
+      });
+    }
+  }
+  if (safe.length === 0) {
+    return { success: false, pages: [], rejected, error: 'No usable URLs' };
+  }
+
+  // A page already in the review is reused rather than duplicated — navigating
+  // back to it should return to the same comments, not start a second copy.
+  const { data: existingRows } = await supabaseAdmin
+    .from('markup_threads')
+    .select('id, source_url')
+    .eq('project_id', projectId)
+    .not('source_url', 'is', null);
+
+  const existing = new Map(
+    ((existingRows ?? []) as { id: string; source_url: string | null }[])
+      .filter((r) => r.source_url)
+      .map((r) => [r.source_url as string, r.id])
+  );
+
+  const pages: CreatedPage[] = [];
+  let index = await nextImageIndex(projectId);
+
+  for (const url of safe) {
+    const already = existing.get(url);
+    if (already) {
+      pages.push({ threadId: already, url });
+      continue;
+    }
+
+    const { data: thread, error } = await supabaseAdmin
+      .from('markup_threads')
+      .insert({
+        project_id: projectId,
+        thread_name: derivePageName(url),
+        image_index: index++,
+        source_url: url,
+        capture_status: 'ready',
+        capture_version: 1,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .select('id')
+      .single();
+
+    if (error || !thread) {
+      rejected.push({ url, reason: error?.message ?? 'Could not add the page' });
+      continue;
+    }
+    const id = (thread as { id: string }).id;
+    existing.set(url, id);
+    pages.push({ threadId: id, url });
+  }
+
+  await refreshProjectCounts(projectId);
+  revalidatePath('/websites');
+  revalidatePath(`/websites/${projectId}`);
+
+  return { success: pages.length > 0, pages, rejected };
+}
+
+/** Adds the page the reviewer is currently looking at, if it is not already in. */
+export async function ensureWebsitePage(
+  projectId: string,
+  url: string
+): Promise<{ success: boolean; threadId?: string; error?: string }> {
+  await requireUser();
+  const result = await createWebsitePages(projectId, [url]);
+  if (!result.success) {
+    return { success: false, error: result.error ?? result.rejected[0]?.reason ?? 'Could not add the page' };
+  }
+  return { success: true, threadId: result.pages[0]?.threadId };
+}
 
 async function requestOrigin(): Promise<string> {
   try {
@@ -192,47 +301,31 @@ export async function addWebsitePages(input: {
   projectId: string;
   urls: string[];
   viewports?: ViewportLabel[];
-}): Promise<EnqueueResult> {
-  const user = await requireUser();
+}): Promise<CreatePagesResult> {
+  await requireUser();
 
   const parsed = AddWebsitePagesSchema.safeParse(input);
   if (!parsed.success) {
     return {
       success: false,
-      queued: [],
+      pages: [],
       rejected: [],
-      awaitingWorker: !isCaptureConfigured(),
       error: 'Invalid input: ' + parsed.error.issues[0]?.message,
     };
   }
 
   const { data: project } = await supabaseAdmin
     .from('markup_projects')
-    .select('id, kind, capture_defaults')
+    .select('id, kind')
     .eq('id', parsed.data.projectId)
     .maybeSingle();
 
-  const row = project as { kind: string | null; capture_defaults: unknown } | null;
+  const row = project as { kind: string | null } | null;
   if (!row || row.kind !== 'website') {
-    return {
-      success: false,
-      queued: [],
-      rejected: [],
-      awaitingWorker: !isCaptureConfigured(),
-      error: 'That project is not a website review',
-    };
+    return { success: false, pages: [], rejected: [], error: 'That project is not a website review' };
   }
 
-  const settings = normalizeCaptureSettings(row.capture_defaults);
-  const viewports = parsed.data.viewports ?? settings.viewports;
-
-  return enqueueCaptures(
-    parsed.data.projectId,
-    parsed.data.urls,
-    viewports,
-    settings,
-    user.email ?? 'system'
-  );
+  return createWebsitePages(parsed.data.projectId, parsed.data.urls);
 }
 
 /**
