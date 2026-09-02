@@ -5,7 +5,8 @@
       "name": "approval-dev",
       "runtimeExecutable": "/home/callstack/approval/.claude/dev.sh",
       "runtimeArgs": [],
-      "port": 3000
+      "port": 3100,
+      "autoPort": true
     }
   ]
 }
