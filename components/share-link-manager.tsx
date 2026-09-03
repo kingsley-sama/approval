@@ -44,12 +44,26 @@ interface ShareLinkManagerProps {
   trigger?: React.ReactNode;
 }
 
-/** Resource types that offer a public read-only iframe viewer. */
+/**
+ * Resource types that can be embedded on a client's own site.
+ *
+ * 'iframe' hands over a read-only viewer. 'script' is the website-review case
+ * and is the opposite shape: the tag goes on the site being reviewed, and
+ * comments are collected on the real page rather than a copy of it.
+ */
 const EMBED_CONFIG: Partial<Record<ShareResourceType, {
+  mode?: 'iframe' | 'script';
   embedPathPrefix: string;
   iframeTitle: string;
   description: string;
 }>> = {
+  website_project: {
+    mode: 'script',
+    embedPathPrefix: '',
+    iframeTitle: 'Feedback widget',
+    description:
+      'Put this tag on the site being reviewed and a Feedback button appears on every page. Comments land on the real page — no screenshots, and nothing to load through us.',
+  },
   panorama_project: {
     embedPathPrefix: '/panoramas/embed/',
     iframeTitle: 'Panorama viewer',
@@ -139,16 +153,29 @@ export default function ShareLinkManager({
     const result = await createShareLink({
       resourceType,
       resourceId,
-      permissions: 'view',
+      // A feedback widget that cannot take feedback is not much use; the
+      // read-only viewers stay 'view'.
+      permissions: embedConfig.mode === 'script' ? 'comment' : 'view',
       createdBy,
     });
 
     if (result.success && result.url) {
-      const embedTarget = result.url.replace('/share/', embedConfig.embedPathPrefix);
       const origin = typeof window !== 'undefined' ? window.location.origin : '';
-      const iframeCode = `<iframe src="${origin ? `${origin}${embedTarget.replace(origin, '')}` : embedTarget}" title="${embedConfig.iframeTitle}" width="100%" height="600" style="border:0; border-radius:12px;" allowfullscreen></iframe>`;
-      setEmbedUrl(embedTarget);
-      setEmbedCode(iframeCode);
+
+      if (embedConfig.mode === 'script') {
+        // The token is the key the widget authenticates with, so it comes
+        // straight off the share URL rather than being a second credential.
+        const token = result.url.split('/share/').pop() ?? '';
+        setEmbedUrl(result.url);
+        setEmbedCode(
+          `<script src="${origin}/embed/v1.js" data-key="${token}" defer></script>`
+        );
+      } else {
+        const embedTarget = result.url.replace('/share/', embedConfig.embedPathPrefix);
+        const iframeCode = `<iframe src="${origin ? `${origin}${embedTarget.replace(origin, '')}` : embedTarget}" title="${embedConfig.iframeTitle}" width="100%" height="600" style="border:0; border-radius:12px;" allowfullscreen></iframe>`;
+        setEmbedUrl(embedTarget);
+        setEmbedCode(iframeCode);
+      }
       await loadShareLinks();
     } else {
       setError(result.error || 'Failed to create embed link');
@@ -248,7 +275,9 @@ export default function ShareLinkManager({
             {embedUrl && (
               <div className="space-y-3 rounded-lg border border-emerald-200 bg-emerald-50 p-4">
                 <div className="space-y-2">
-                  <Label className="text-xs font-semibold uppercase tracking-wide text-emerald-800">Embed URL</Label>
+                  <Label className="text-xs font-semibold uppercase tracking-wide text-emerald-800">
+                    {EMBED_CONFIG[resourceType]?.mode === 'script' ? 'Share link (same key)' : 'Embed URL'}
+                  </Label>
                   <div className="flex gap-2">
                     <Input value={embedUrl} readOnly className="flex-1" />
                     <Button onClick={() => copyToClipboard(embedUrl, 'embed-url')} variant="outline" size="sm" aria-live="polite">
@@ -257,7 +286,9 @@ export default function ShareLinkManager({
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <Label className="text-xs font-semibold uppercase tracking-wide text-emerald-800">Iframe embed code</Label>
+                  <Label className="text-xs font-semibold uppercase tracking-wide text-emerald-800">
+                    {EMBED_CONFIG[resourceType]?.mode === 'script' ? 'Paste this before </body>' : 'Iframe embed code'}
+                  </Label>
                   <textarea readOnly value={embedCode} className="min-h-24 w-full rounded-md border border-emerald-200 bg-white px-3 py-2 text-xs font-mono text-gray-700" />
                   <Button onClick={() => copyToClipboard(embedCode, 'embed-code')} variant="outline" size="sm" aria-live="polite">
                     {copiedKey === 'embed-code' ? <><Check className="h-3.5 w-3.5 mr-1" />Copied</> : <><Copy className="h-3.5 w-3.5 mr-1" />Copy embed</>}

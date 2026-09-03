@@ -16,6 +16,7 @@ export type Database = {
     Tables: {
       markup_comments: {
         Row: {
+          anchor: Json | null
           comment_index: number
           content: string
           created_at: string | null
@@ -34,6 +35,7 @@ export type Database = {
           display_number: number | null
         }
         Insert: {
+          anchor?: Json | null
           comment_index: number
           content: string
           created_at?: string | null
@@ -52,6 +54,7 @@ export type Database = {
           display_number?: number | null
         }
         Update: {
+          anchor?: Json | null
           comment_index?: number
           content?: string
           created_at?: string | null
