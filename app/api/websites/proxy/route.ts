@@ -3,7 +3,13 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { getUser } from '@/lib/db/queries';
 import { validateShareToken } from '@/app/actions/share-links';
 import { normalizeUrl, assertSafeUrl, UnsafeUrlError } from '@/lib/website/url';
-import { rewriteHtml, shouldStripHeader, isSameSite } from '@/lib/website/proxy-html';
+import {
+  rewriteHtml,
+  rewriteCss,
+  shouldStripHeader,
+  isSameSite,
+  type ProxyContext,
+} from '@/lib/website/proxy-html';
 
 /**
  * GET /api/websites/proxy?projectId=…&url=…[&token=…]
@@ -150,8 +156,27 @@ export async function GET(request: NextRequest) {
   // Our own frame policy: this response is only ever meant to be framed by us.
   headers.set('X-Robots-Tag', 'noindex, nofollow');
 
-  // ── non-HTML passes straight through ────────────────────────────────────
-  if (!contentType.toLowerCase().includes('text/html')) {
+  const ctx: ProxyContext = {
+    pageUrl: finalUrl.toString(),
+    projectId,
+    token,
+  };
+
+  const lower = contentType.toLowerCase();
+
+  // ── stylesheets: rewrite url() and @import so fonts and images come back
+  // through the proxy. Webfonts are the reason this matters — @font-face is
+  // CORS-checked, so a font left on the origin server is simply blocked. ────
+  if (lower.includes('text/css')) {
+    const css = await upstream.text();
+    if (css.length > MAX_BYTES) return fail(413, 'That stylesheet is too large to open here.');
+    headers.set('Content-Type', contentType);
+    headers.delete('Content-Length');
+    return new NextResponse(rewriteCss(css, ctx), { status: upstream.status, headers });
+  }
+
+  // ── everything else (scripts, images, fonts) passes through untouched ────
+  if (!lower.includes('text/html')) {
     const buf = Buffer.from(await upstream.arrayBuffer());
     if (buf.length > MAX_BYTES) return fail(413, 'That file is too large to open here.');
     headers.set('Content-Type', contentType);
@@ -162,7 +187,7 @@ export async function GET(request: NextRequest) {
   const raw = await upstream.text();
   if (raw.length > MAX_BYTES) return fail(413, 'That page is too large to open here.');
 
-  const { html } = rewriteHtml(raw, finalUrl.toString());
+  const { html } = rewriteHtml(raw, ctx);
 
   headers.set('Content-Type', 'text/html; charset=utf-8');
   // The viewer reads this to keep its address bar in step after redirects.
