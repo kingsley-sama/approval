@@ -16,6 +16,9 @@ export type Database = {
     Tables: {
       markup_comments: {
         Row: {
+          comment_screenshot_path: string | null
+          snapshot_id: string | null
+          anchor_confidence: number | null
           anchor: Json | null
           comment_index: number
           content: string
@@ -35,6 +38,9 @@ export type Database = {
           display_number: number | null
         }
         Insert: {
+          comment_screenshot_path?: string | null
+          snapshot_id?: string | null
+          anchor_confidence?: number | null
           anchor?: Json | null
           comment_index: number
           content: string
@@ -54,6 +60,9 @@ export type Database = {
           display_number?: number | null
         }
         Update: {
+          comment_screenshot_path?: string | null
+          snapshot_id?: string | null
+          anchor_confidence?: number | null
           anchor?: Json | null
           comment_index?: number
           content?: string
@@ -140,6 +149,7 @@ export type Database = {
       }
       markup_threads: {
         Row: {
+          current_snapshot_id: string | null
           capture_status: string | null
           capture_version: number | null
           captured_at: string | null
@@ -159,6 +169,7 @@ export type Database = {
           viewport_width: number | null
         }
         Insert: {
+          current_snapshot_id?: string | null
           capture_status?: string | null
           capture_version?: number | null
           captured_at?: string | null
@@ -178,6 +189,7 @@ export type Database = {
           viewport_width?: number | null
         }
         Update: {
+          current_snapshot_id?: string | null
           capture_status?: string | null
           capture_version?: number | null
           captured_at?: string | null
@@ -972,6 +984,81 @@ export type Database = {
             columns: ["tour_project_id"]
             isOneToOne: false
             referencedRelation: "tour_projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      website_snapshots: {
+        Row: {
+          asset_count: number | null
+          bytes_stored: number | null
+          captured_at: string | null
+          created_at: string | null
+          doc_height: number | null
+          doc_width: number | null
+          error: string | null
+          html_path: string | null
+          id: string
+          project_id: string
+          screenshot_path: string | null
+          status: string
+          thread_id: string | null
+          updated_at: string | null
+          url: string
+          version: number
+          viewport_width: number
+        }
+        Insert: {
+          asset_count?: number | null
+          bytes_stored?: number | null
+          captured_at?: string | null
+          created_at?: string | null
+          doc_height?: number | null
+          doc_width?: number | null
+          error?: string | null
+          html_path?: string | null
+          id?: string
+          project_id: string
+          screenshot_path?: string | null
+          status?: string
+          thread_id?: string | null
+          updated_at?: string | null
+          url: string
+          version?: number
+          viewport_width?: number
+        }
+        Update: {
+          asset_count?: number | null
+          bytes_stored?: number | null
+          captured_at?: string | null
+          created_at?: string | null
+          doc_height?: number | null
+          doc_width?: number | null
+          error?: string | null
+          html_path?: string | null
+          id?: string
+          project_id?: string
+          screenshot_path?: string | null
+          status?: string
+          thread_id?: string | null
+          updated_at?: string | null
+          url?: string
+          version?: number
+          viewport_width?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "website_snapshots_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "markup_projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "website_snapshots_thread_id_fkey"
+            columns: ["thread_id"]
+            isOneToOne: false
+            referencedRelation: "markup_threads"
             referencedColumns: ["id"]
           },
         ]

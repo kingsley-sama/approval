@@ -6,6 +6,7 @@ import { validateShareToken } from '@/app/actions/share-links';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { allocateProjectCommentNumber } from '@/lib/comment-numbering';
 import { normalizeUrl, derivePageName, UnsafeUrlError } from '@/lib/website/url';
+import { captureCommentShot } from '@/lib/website/snapshot/comment-shot';
 
 /**
  * The endpoint the embed script talks to.
@@ -178,11 +179,24 @@ export async function GET(request: NextRequest) {
 
 // ── POST: leave a comment ─────────────────────────────────────────────────
 const AnchorSchema = z.object({
+  // Stamped by the capture serializer; exact within a snapshot version and the
+  // reason a snapshot anchor is stronger than a bare CSS path.
+  rv: z.coerce.number().int().optional(),
   selector: z.string().max(2000).optional(),
   xPct: z.coerce.number().optional(),
   yPct: z.coerce.number().optional(),
   elementText: z.string().max(300).optional(),
   viewportWidth: z.coerce.number().optional(),
+  snapshotVersion: z.coerce.number().int().optional(),
+});
+
+/** Where the anchored element sits in the snapshot, for cropping the record. */
+const RectSchema = z.object({
+  x: z.coerce.number(),
+  y: z.coerce.number(),
+  width: z.coerce.number(),
+  height: z.coerce.number(),
+  docWidth: z.coerce.number(),
 });
 
 const BodySchema = z.object({
@@ -195,6 +209,10 @@ const BodySchema = z.object({
   xPosition: z.coerce.number().optional().default(50),
   yPosition: z.coerce.number().optional().default(50),
   anchor: AnchorSchema.optional(),
+  // Present when the comment was made on a captured snapshot rather than the
+  // live proxy; drives the immutable screenshot.
+  snapshotId: z.string().uuid().optional(),
+  rect: RectSchema.optional(),
 });
 
 const clamp = (v: number) => (Number.isFinite(v) ? Math.max(0, Math.min(100, v)) : 50);
@@ -267,11 +285,46 @@ export async function POST(request: NextRequest) {
   }
 
   const saved = data as any;
+
+  // The immutable record. Cropped from the snapshot's own full-page image, so
+  // it is by definition what the commenter was looking at. Best-effort: a
+  // comment must never be lost because its screenshot could not be made.
+  let screenshotPath: string | null = null;
+  if (parsed.snapshotId && parsed.rect) {
+    const { data: snapRow } = await supabase
+      .from('website_snapshots')
+      .select('screenshot_path, doc_width')
+      .eq('id', parsed.snapshotId)
+      .maybeSingle();
+    const snap = snapRow as { screenshot_path: string | null; doc_width: number | null } | null;
+
+    if (snap?.screenshot_path) {
+      const shot = await captureCommentShot(
+        saved.id,
+        snap.screenshot_path,
+        parsed.rect,
+        parsed.rect.docWidth || snap.doc_width || 1440
+      );
+      screenshotPath = shot?.path ?? null;
+    }
+
+    await supabase
+      .from('markup_comments')
+      .update({
+        snapshot_id: parsed.snapshotId,
+        comment_screenshot_path: screenshotPath,
+        anchor_confidence: 1,
+      })
+      .eq('id', saved.id);
+  }
+
   return json(
     {
       success: true,
       comment: {
         id: saved.id,
+        snapshotId: parsed.snapshotId ?? null,
+        screenshotPath,
         number: saved.display_number,
         content: saved.content,
         author: saved.user_name,
