@@ -962,6 +962,19 @@ export default function ProjectWorkspace({
               if (pin) handlePinClick(pin.x, pin.y, pinId);
             }}
             onPlacePin={handleImageClick}
+            onPinReposition={handlePinReposition}
+            hoveredPin={hoveredPin}
+            onPinHover={setHoveredPin}
+            drawnShapes={drawnShapes}
+            pendingShapes={pendingShapes}
+            onShapeComplete={handleShapeComplete}
+            onUndoShape={handleUndoShape}
+            canUndo={canUndo}
+            isFullscreen={isFullscreen}
+            onToggleFullscreen={() => setIsFullscreen(!isFullscreen)}
+            currentIndex={currentImageIndex}
+            totalPages={imagesState.length}
+            onNavigate={handleNavigateImages}
             canComment={currentUserRole !== 'viewer'}
             isTrackedPage={isTrackedPage}
             onAddCurrentPage={handleAddCurrentPage}
