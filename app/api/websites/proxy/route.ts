@@ -105,7 +105,24 @@ export async function GET(request: NextRequest) {
     return fail(400, err instanceof UnsafeUrlError ? err.message : 'That address could not be read.');
   }
 
-  if (!isSameSite(target, site)) {
+  // Sub-resources may come from anywhere; documents may not.
+  //
+  // The host lock exists so this endpoint cannot be used to browse arbitrary
+  // sites through our server. That reasoning applies to pages, not to the
+  // stylesheet a page pulls off a CDN — and real sites pull plenty: the
+  // Webflow test site serves its CSS, fonts and images from
+  // cdn.prod.website-files.com and fonts.gstatic.com. Rewriting those through
+  // the proxy and then refusing them left the page loading with a screenful of
+  // 403s.
+  //
+  // Sec-Fetch-Dest is the browser's own statement of what the request is for,
+  // and it cannot be spoofed by page script. Anything that is not a navigation
+  // is treated as an asset and allowed through, still behind the auth check and
+  // the SSRF guard above.
+  const dest = (request.headers.get('sec-fetch-dest') || '').toLowerCase();
+  const isNavigation = dest === '' || dest === 'document' || dest === 'iframe' || dest === 'frame';
+
+  if (isNavigation && !isSameSite(target, site)) {
     return fail(
       403,
       `Only pages on ${site.hostname} can be opened here. This review is scoped to that site.`
@@ -139,7 +156,7 @@ export async function GET(request: NextRequest) {
   let finalUrl = target;
   try {
     const resolved = new URL(upstream.url || target.toString());
-    if (!isSameSite(resolved, site)) {
+    if (isNavigation && !isSameSite(resolved, site)) {
       return fail(403, `The site redirected to ${resolved.hostname}, which is outside this review.`);
     }
     finalUrl = resolved;

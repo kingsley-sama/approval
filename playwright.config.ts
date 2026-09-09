@@ -8,7 +8,7 @@ export default defineConfig({
   workers: 1,
   reporter: [['list'], ['html', { open: 'never' }]],
   use: {
-    baseURL: 'http://localhost:3000',
+    baseURL: process.env.PLAYWRIGHT_BASE_URL ?? 'http://localhost:3000',
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
     video: 'off',
@@ -45,10 +45,21 @@ export default defineConfig({
       dependencies: ['setup'],
       testMatch: /\.(auth|share|guest)\.spec\.ts/,
     },
+    {
+      // Website review, guest surface. No `setup` dependency on purpose: these
+      // paths are the ones a client uses without an account, so they must be
+      // runnable in a checkout that has no test users seeded.
+      name: 'website',
+      use: {
+        ...devices['Desktop Chrome'],
+        storageState: { cookies: [], origins: [] },
+      },
+      testMatch: /website\.spec\.ts/,
+    },
   ],
   webServer: {
     command: 'npm run dev',
-    url: 'http://localhost:3000',
+    url: process.env.PLAYWRIGHT_BASE_URL ?? 'http://localhost:3000',
     reuseExistingServer: true,
     timeout: 120_000,
   },
