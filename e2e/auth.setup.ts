@@ -7,8 +7,11 @@ const PASSWORD = 'TestPassword123!';
 
 async function signIn(page: any, email: string, password: string, storePath: string) {
   await page.goto('/sign-in');
-  await page.getByLabel('Email').fill(email);
-  await page.getByLabel('Password').fill(password);
+  // Exact matching matters here: the form grew a "Show password" toggle whose
+  // aria-label also contains "Password", and a loose getByLabel then resolves
+  // to two elements and fails strict mode.
+  await page.getByLabel('Email', { exact: true }).fill(email);
+  await page.getByLabel('Password', { exact: true }).fill(password);
   await page.getByRole('button', { name: 'Sign in' }).click();
   // Auth action redirects to '/' which middleware then bounces to '/projects'
   await expect(page).toHaveURL(/\/(projects)?$/, { timeout: 15_000 });

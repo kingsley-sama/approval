@@ -1349,7 +1349,7 @@ export default function CommentsSidebar({
   );
 
   return (
-    <div className="w-72 border-r border-border/50 bg-background flex flex-col overflow-hidden relative">
+    <div data-testid="comments-sidebar" className="w-72 border-r border-border/50 bg-background flex flex-col overflow-hidden relative">
       {/* Main list — slides left when thread opens */}
       <div
         className={`flex flex-col h-full transition-transform duration-300 ease-in-out ${

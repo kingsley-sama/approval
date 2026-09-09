@@ -2,6 +2,7 @@
  * Annotation workspace tests — run as admin
  */
 import { test, expect } from '@playwright/test';
+import { ANNOTATION_IMAGE, annotationImage, freeSpot } from './fixtures/annotate';
 
 const TEST_PROJECT_ID = '6bb4acd7-6437-490e-b260-1b1d9c2ca0b7';
 const PROJECT_URL = `/projects/${TEST_PROJECT_ID}?name=Playwright+Test+Project`;
@@ -13,17 +14,16 @@ test.describe('Annotation Workspace — layout', () => {
   });
 
   test('renders top navigation with project name', async ({ page }) => {
-    await expect(page.getByText('Playwright Test Project')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText('Playwright Test Project', { exact: true })).toBeVisible({ timeout: 10_000 });
   });
 
   test('renders comments sidebar', async ({ page }) => {
-    // Comments sidebar should be present on the left
-    await expect(page.locator('[class*="sidebar"], [data-sidebar], aside').first()).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId('comments-sidebar')).toBeVisible({ timeout: 10_000 });
   });
 
   test('renders thumbnails sidebar', async ({ page }) => {
     // Should have at least one image thumbnail on the right
-    await expect(page.locator('img[src*="picsum"]')).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator(ANNOTATION_IMAGE).first()).toBeVisible({ timeout: 15_000 });
   });
 
   test('fullscreen toggle works', async ({ page }) => {
@@ -51,28 +51,22 @@ test.describe('Annotation Workspace — comments', () => {
   });
 
   test('clicking on the image opens comment modal', async ({ page }) => {
-    const imageContainer = page.locator('[data-annotation-image-container]');
-    const hasContainer = await imageContainer.isVisible({ timeout: 15_000 }).catch(() => false);
+    // The container is what carries the click handler; the image inside it is
+    // what defines the drawable area. Aim through freeSpot either way — the
+    // centre of the image is claimed by an earlier test's pin by this point.
+    await expect(page.locator('[data-annotation-image-container]')).toBeVisible({ timeout: 15_000 });
 
-    if (!hasContainer) {
-      // Fallback: find image area
-      const imgEl = page.locator('img[src*="picsum"]').first();
-      await expect(imgEl).toBeVisible({ timeout: 15_000 });
-      const box = await imgEl.boundingBox();
-      if (box) await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
-    } else {
-      const box = await imageContainer.boundingBox();
-      if (box) await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
-    }
+    const imgEl = await annotationImage(page);
+    const spot = await freeSpot(page, imgEl);
+    await page.mouse.click(spot.x, spot.y);
 
     await expect(page.locator('textarea[placeholder="Add comment..."]')).toBeVisible({ timeout: 8_000 });
   });
 
   test('comment modal has attachment and link-picker buttons', async ({ page }) => {
-    const imgEl = page.locator('img[src*="picsum"]').first();
-    await expect(imgEl).toBeVisible({ timeout: 15_000 });
-    const box = await imgEl.boundingBox();
-    if (box) await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+    const imgEl = await annotationImage(page);
+    const spot = await freeSpot(page, imgEl);
+    await page.mouse.click(spot.x, spot.y);
 
     const textarea = page.locator('textarea[placeholder="Add comment..."]');
     await expect(textarea).toBeVisible({ timeout: 8_000 });
@@ -89,10 +83,9 @@ test.describe('Annotation Workspace — comments', () => {
   });
 
   test('closing modal via X button hides it', async ({ page }) => {
-    const imgEl = page.locator('img[src*="picsum"]').first();
-    await expect(imgEl).toBeVisible({ timeout: 15_000 });
-    const box = await imgEl.boundingBox();
-    if (box) await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+    const imgEl = await annotationImage(page);
+    const spot = await freeSpot(page, imgEl);
+    await page.mouse.click(spot.x, spot.y);
 
     const textarea = page.locator('textarea[placeholder="Add comment..."]');
     await expect(textarea).toBeVisible({ timeout: 8_000 });
@@ -109,13 +102,11 @@ test.describe('Annotation Workspace — comments', () => {
   });
 
   test('submitting a comment shows pin (optimistic UI)', async ({ page }) => {
-    const imgEl = page.locator('img[src*="picsum"]').first();
-    await expect(imgEl).toBeVisible({ timeout: 15_000 });
+    const imgEl = await annotationImage(page);
 
     const pinsBefore = await page.locator('[data-pin]').count();
-
-    const box = await imgEl.boundingBox();
-    if (box) await page.mouse.click(box.x + box.width * 0.25, box.y + box.height * 0.25);
+    const spot = await freeSpot(page, imgEl, { x: 0.25, y: 0.25 });
+    await page.mouse.click(spot.x, spot.y);
 
     const textarea = page.locator('textarea[placeholder="Add comment..."]');
     await expect(textarea).toBeVisible({ timeout: 8_000 });
@@ -128,12 +119,11 @@ test.describe('Annotation Workspace — comments', () => {
   });
 
   test('submitted comment appears in the sidebar', async ({ page }) => {
-    const imgEl = page.locator('img[src*="picsum"]').first();
-    await expect(imgEl).toBeVisible({ timeout: 15_000 });
+    const imgEl = await annotationImage(page);
 
     const uniqueText = `Playwright sidebar test ${Date.now()}`;
-    const box = await imgEl.boundingBox();
-    if (box) await page.mouse.click(box.x + box.width * 0.35, box.y + box.height * 0.35);
+    const spot = await freeSpot(page, imgEl, { x: 0.35, y: 0.35 });
+    await page.mouse.click(spot.x, spot.y);
 
     const textarea = page.locator('textarea[placeholder="Add comment..."]');
     await expect(textarea).toBeVisible({ timeout: 8_000 });
@@ -146,24 +136,23 @@ test.describe('Annotation Workspace — comments', () => {
 
   test('clicking a pin in the sidebar opens the comment modal', async ({ page }) => {
     // First add a comment so there's something to click
-    const imgEl = page.locator('img[src*="picsum"]').first();
-    await expect(imgEl).toBeVisible({ timeout: 15_000 });
-
-    const box = await imgEl.boundingBox();
-    if (box) await page.mouse.click(box.x + box.width * 0.45, box.y + box.height * 0.45);
+    const imgEl = await annotationImage(page);
+    const spot = await freeSpot(page, imgEl, { x: 0.45, y: 0.45 });
+    await page.mouse.click(spot.x, spot.y);
 
     const textarea = page.locator('textarea[placeholder="Add comment..."]');
     await expect(textarea).toBeVisible({ timeout: 8_000 });
-    await textarea.fill('Click test comment');
+    const clickText = `Click test comment ${Date.now()}`;
+    await textarea.fill(clickText);
     await page.getByRole('button', { name: /save|submit|post/i }).click();
 
     // Now click that comment entry in the sidebar
-    const sidebarComment = page.getByText('Click test comment').first();
+    const sidebarComment = page.getByText(clickText).first();
     await expect(sidebarComment).toBeVisible({ timeout: 10_000 });
     await sidebarComment.click();
 
     // Modal should show with the comment content
-    await expect(page.getByText('Click test comment')).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText(clickText).first()).toBeVisible({ timeout: 5_000 });
   });
 });
 

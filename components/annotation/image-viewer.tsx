@@ -596,6 +596,7 @@ function ImageViewerInner({
             width={imageDimensions.width}
             height={imageDimensions.height}
             alt="Annotation view"
+            data-testid="annotation-image"
             className="block"
             sizes="(max-width: 768px) 100vw, calc(100vw - 600px)"
             // Serve the original file rather than routing it through the Next.js

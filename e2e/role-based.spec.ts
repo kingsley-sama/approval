@@ -64,35 +64,35 @@ test.describe('Admin role — project page', () => {
     await expect(shareBtn).toBeVisible({ timeout: 10_000 });
     await shareBtn.click();
 
-    // Dialog/popover should open
-    await expect(page.getByText(/link|permission|copy/i)).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByRole('dialog')).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByRole('dialog').getByText(/link|permission|copy/i).first()).toBeVisible();
   });
 });
 
 test.describe('Settings page', () => {
   test('profile section shows name and email', async ({ page }) => {
     await page.goto('/projects/settings');
-    await expect(page.getByText(/profile/i)).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('heading', { name: 'Profile' })).toBeVisible({ timeout: 10_000 });
     await expect(page.getByPlaceholder(/your name/i)).toBeVisible();
-    // Email should show testadmin
-    await expect(page.locator('input[disabled]')).toBeVisible();
+    await expect(page.locator('input[disabled]').first()).toBeVisible();
   });
 
   test('role badge shows "admin"', async ({ page }) => {
     await page.goto('/projects/settings');
-    await expect(page.getByText(/admin/i)).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId('user-role')).toHaveText('admin', { timeout: 10_000 });
   });
 
   test('security tab renders password fields', async ({ page }) => {
     await page.goto('/projects/settings');
     await page.getByRole('button', { name: /security/i }).click();
-    await expect(page.getByPlaceholder('••••••••')).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByPlaceholder('••••••••').first()).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByPlaceholder('••••••••')).toHaveCount(3);
   });
 
   test('notifications tab renders checkboxes', async ({ page }) => {
     await page.goto('/projects/settings');
     await page.getByRole('button', { name: /notifications/i }).click();
-    await expect(page.locator('input[type="checkbox"]')).toBeVisible({ timeout: 5_000 });
+    await expect(page.locator('input[type="checkbox"]').first()).toBeVisible({ timeout: 5_000 });
   });
 
   test('appearance tab renders theme options', async ({ page }) => {

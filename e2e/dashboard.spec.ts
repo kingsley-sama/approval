@@ -14,9 +14,8 @@ test.describe('Dashboard', () => {
   });
 
   test('renders projects page with sidebar', async ({ page }) => {
-    await expect(page.getByText('Projects')).toBeVisible();
-    // Sidebar should be present
-    await expect(page.locator('nav, [data-sidebar]')).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Projects' })).toBeVisible();
+    await expect(page.locator('[data-sidebar]').first()).toBeVisible();
   });
 
   test('search input is visible', async ({ page }) => {
@@ -86,8 +85,8 @@ test.describe('Dashboard — sidebar navigation', () => {
 
   test('Settings page loads with profile section', async ({ page }) => {
     await page.goto('/projects/settings');
-    await expect(page.getByText(/settings/i)).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByText(/profile/i)).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('heading', { name: 'Profile' })).toBeVisible();
   });
 
   test('Archive page loads', async ({ page }) => {

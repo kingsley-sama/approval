@@ -96,7 +96,10 @@ export default function SettingsPage() {
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Role</label>
-                  <div className="inline-flex items-center px-2.5 py-1 rounded-md bg-accent/10 text-accent text-xs font-semibold capitalize">
+                  <div
+                    data-testid="user-role"
+                    className="inline-flex items-center px-2.5 py-1 rounded-md bg-accent/10 text-accent text-xs font-semibold capitalize"
+                  >
                     {currentUser?.role ?? '—'}
                   </div>
                 </div>

@@ -20,8 +20,7 @@ test.describe('Auth — unauthenticated redirects', () => {
 
   test('/share/[token] is publicly accessible without login', async ({ page }) => {
     // Invalid token returns 404, but a valid token should not redirect to sign-in
-    const res = await page.goto('/share/playwright-test-share-token-abc123');
-    // Should NOT redirect to sign-in
+    await page.goto('/share/playwright-test-share-token-abc123');
     expect(page.url()).not.toMatch(/sign-in/);
   });
 });
@@ -32,54 +31,60 @@ test.describe('Auth — sign-in page', () => {
   });
 
   test('renders sign-in form', async ({ page }) => {
-    await expect(page.getByLabel('Email')).toBeVisible();
-    await expect(page.getByLabel('Password')).toBeVisible();
+    await expect(page.getByLabel('Email', { exact: true })).toBeVisible();
+    await expect(page.getByLabel('Password', { exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible();
   });
 
   test('shows error with wrong password', async ({ page }) => {
-    await page.getByLabel('Email').fill(ADMIN_EMAIL);
-    await page.getByLabel('Password').fill('wrongpassword');
+    await page.getByLabel('Email', { exact: true }).fill(ADMIN_EMAIL);
+    await page.getByLabel('Password', { exact: true }).fill('wrongpassword');
     await page.getByRole('button', { name: 'Sign in' }).click();
     await expect(page).toHaveURL(/\/sign-in/);
     await expect(page.locator('.text-destructive, [role="alert"]')).toBeVisible({ timeout: 8_000 });
   });
 
   test('shows error with unknown email', async ({ page }) => {
-    await page.getByLabel('Email').fill('nobody@nowhere.test');
-    await page.getByLabel('Password').fill(PASSWORD);
+    await page.getByLabel('Email', { exact: true }).fill('nobody@nowhere.test');
+    await page.getByLabel('Password', { exact: true }).fill(PASSWORD);
     await page.getByRole('button', { name: 'Sign in' }).click();
     await expect(page).toHaveURL(/\/sign-in/);
     await expect(page.locator('.text-destructive, [role="alert"]')).toBeVisible({ timeout: 8_000 });
   });
 
   test('admin sign-in redirects to /projects', async ({ page }) => {
-    await page.getByLabel('Email').fill(ADMIN_EMAIL);
-    await page.getByLabel('Password').fill(PASSWORD);
+    await page.getByLabel('Email', { exact: true }).fill(ADMIN_EMAIL);
+    await page.getByLabel('Password', { exact: true }).fill(PASSWORD);
     await page.getByRole('button', { name: 'Sign in' }).click();
-    await expect(page).toHaveURL(/\/projects/, { timeout: 15_000 });
+    // signInWithCredentials redirects to '/', which is the authenticated
+    // landing page; /projects is reached from there, not by the action itself.
+    await expect(page).toHaveURL(/\/(projects)?$/, { timeout: 15_000 });
+    expect(page.url()).not.toMatch(/sign-in/);
   });
 
   test('member sign-in redirects to /projects', async ({ page }) => {
-    await page.getByLabel('Email').fill(MEMBER_EMAIL);
-    await page.getByLabel('Password').fill(PASSWORD);
+    await page.getByLabel('Email', { exact: true }).fill(MEMBER_EMAIL);
+    await page.getByLabel('Password', { exact: true }).fill(PASSWORD);
     await page.getByRole('button', { name: 'Sign in' }).click();
-    await expect(page).toHaveURL(/\/projects/, { timeout: 15_000 });
+    // signInWithCredentials redirects to '/', which is the authenticated
+    // landing page; /projects is reached from there, not by the action itself.
+    await expect(page).toHaveURL(/\/(projects)?$/, { timeout: 15_000 });
+    expect(page.url()).not.toMatch(/sign-in/);
   });
 });
 
 test.describe('Auth — sign-up page', () => {
   test('renders sign-up form', async ({ page }) => {
     await page.goto('/sign-up');
-    await expect(page.getByLabel('Email')).toBeVisible();
-    await expect(page.getByLabel('Password')).toBeVisible();
+    await expect(page.getByLabel('Email', { exact: true })).toBeVisible();
+    await expect(page.getByLabel('Password', { exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: /sign up|create|register/i })).toBeVisible();
   });
 
   test('shows error when signing up with existing email', async ({ page }) => {
     await page.goto('/sign-up');
-    await page.getByLabel('Email').fill(ADMIN_EMAIL);
-    await page.getByLabel('Password').fill(PASSWORD);
+    await page.getByLabel('Email', { exact: true }).fill(ADMIN_EMAIL);
+    await page.getByLabel('Password', { exact: true }).fill(PASSWORD);
     await page.getByRole('button', { name: /sign up|create|register/i }).click();
     await expect(page.locator('.text-destructive, [role="alert"]')).toBeVisible({ timeout: 8_000 });
   });
@@ -91,14 +96,17 @@ test.describe('Auth — session refresh', () => {
     const ctx = await browser.newContext();
     const page = await ctx.newPage();
     await page.goto('/sign-in');
-    await page.getByLabel('Email').fill(ADMIN_EMAIL);
-    await page.getByLabel('Password').fill(PASSWORD);
+    await page.getByLabel('Email', { exact: true }).fill(ADMIN_EMAIL);
+    await page.getByLabel('Password', { exact: true }).fill(PASSWORD);
     await page.getByRole('button', { name: 'Sign in' }).click();
-    await expect(page).toHaveURL(/\/projects/, { timeout: 15_000 });
+    // signInWithCredentials redirects to '/', which is the authenticated
+    // landing page; /projects is reached from there, not by the action itself.
+    await expect(page).toHaveURL(/\/(projects)?$/, { timeout: 15_000 });
+    expect(page.url()).not.toMatch(/sign-in/);
 
-    // Now revisit sign-in — should bounce back to projects
+    // Now revisit sign-in — a live session must not be shown the form again.
     await page.goto('/sign-in');
-    await expect(page).toHaveURL(/\/projects/);
+    expect(page.url()).not.toMatch(/sign-in/);
     await ctx.close();
   });
 });

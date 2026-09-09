@@ -159,6 +159,7 @@ export default function EnhancedImageViewer({
           <Image
             src={imagePath}
             alt={threadName}
+            data-testid="annotation-image"
             width={imageWidth}
             height={imageHeight}
             className="w-full h-auto"

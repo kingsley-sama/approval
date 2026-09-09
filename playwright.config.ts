@@ -2,6 +2,7 @@ import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
   testDir: './e2e',
+  globalSetup: './e2e/global-setup.ts',
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: 1,
@@ -25,7 +26,7 @@ export default defineConfig({
         storageState: 'e2e/.auth/admin.json',
       },
       dependencies: ['setup'],
-      testMatch: /\.(admin|dashboard|annotation|comments|role-based)\.spec\.ts/,
+      testMatch: /(admin|dashboard|annotation|comments|role-based)\.spec\.ts$/,
     },
     {
       name: 'member',
@@ -43,7 +44,7 @@ export default defineConfig({
         storageState: { cookies: [], origins: [] },
       },
       dependencies: ['setup'],
-      testMatch: /\.(auth|share|guest)\.spec\.ts/,
+      testMatch: /(auth|share|guest)\.spec\.ts$/,
     },
     {
       // Website review, guest surface. No `setup` dependency on purpose: these
@@ -53,7 +54,14 @@ export default defineConfig({
       use: {
         ...devices['Desktop Chrome'],
         storageState: { cookies: [], origins: [] },
+        // These navigations fetch a whole third-party page through the proxy
+        // and wait for it to settle. The default 30s is enough against a warm
+        // dev server and not enough against a cold one, which showed up as the
+        // suite passing alone and failing as part of a full run.
+        navigationTimeout: 90_000,
+        actionTimeout: 30_000,
       },
+      timeout: 150_000,
       testMatch: /website\.spec\.ts/,
     },
   ],
