@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { IconTooltip } from '@/components/ui/icon-tooltip';
 import DrawingToolbar, { DRAWING_COLOR, STROKE_WIDTH } from '@/components/drawing-toolbar';
 import { denormalizeShape, normalizeShape } from '@/lib/drawing';
+import { COMMENT_PIN_CURSOR, DRAWING_PENCIL_CURSOR } from '@/lib/annotation/cursors';
 import type { DrawingTool, Shape } from '@/types/drawing';
 
 /**
@@ -277,11 +278,31 @@ export default function LiveViewer({
     svg.setAttribute('width', String(w));
     svg.setAttribute('height', String(h));
     svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
-    const erasing = s.current.mode === 'comment' && s.current.tool === 'eraser';
-    const drawing = s.current.mode === 'comment' && !!s.current.tool && !erasing;
-    const armed = drawing || erasing;
-    svg.setAttribute('style', `position:absolute;inset:0;pointer-events:${armed ? 'auto' : 'none'};${drawing ? 'cursor:crosshair;' : ''}`);
+    const commenting = s.current.mode === 'comment';
+    const erasing = commenting && s.current.tool === 'eraser';
+    const drawing = commenting && !!s.current.tool && !erasing;
+
+    // In comment mode the overlay swallows every pointer event before the page
+    // sees it. Without this the site underneath stays live while you annotate:
+    // buttons depress, menus open, and a mis-aimed pin navigates you away.
+    // Blocking `click` alone was not enough — mousedown/pointerdown reached the
+    // page first, so widgets reacted before the click was ever cancelled.
+    const cursor = commenting
+      ? s.current.tool
+        ? DRAWING_PENCIL_CURSOR
+        : COMMENT_PIN_CURSOR
+      : '';
+    svg.setAttribute(
+      'style',
+      `position:absolute;inset:0;pointer-events:${commenting ? 'auto' : 'none'};${
+        cursor ? `cursor:${cursor};` : ''
+      }`
+    );
     layer.appendChild(svg);
+
+    // "Browse the site normally" means exactly that: no pins and no markup
+    // laid over the page. Annotations belong to comment mode.
+    if (!commenting) return;
 
     for (const shape of s.current.drawnShapes) {
       const node = buildShapeNode(d, shape, w, h);
@@ -330,6 +351,7 @@ export default function LiveViewer({
         ].join(';')
       );
       el.textContent = String(pin.number);
+      el.setAttribute('data-rv-pin', pin.id);
       el.addEventListener('mouseenter', () => s.current.onPinHover?.(pin.id));
       el.addEventListener('mouseleave', () => s.current.onPinHover?.(null));
 
@@ -494,8 +516,12 @@ export default function LiveViewer({
         // With a tool selected the drawing handlers own the gesture.
         if (t) return;
         if (!allowed) return;
+        // A click on a pin is that pin's business — it selects or drags. Any
+        // other click, including one on the overlay itself (which is what the
+        // reviewer is actually clicking now that it covers the page), places a
+        // new pin.
         const target = e.target as HTMLElement | null;
-        if (target?.closest?.(`#${LAYER_ID}`)) return;
+        if (target?.closest?.('[data-rv-pin]')) return;
         e.preventDefault();
         e.stopPropagation();
         const { w, h } = docBox();
@@ -568,7 +594,10 @@ export default function LiveViewer({
   useEffect(() => {
     const d = doc();
     if (!d?.documentElement) return;
-    d.documentElement.style.cursor = mode === 'comment' && !tool ? 'crosshair' : '';
+    // The overlay carries the cursor for the area it covers; this catches the
+    // rest of the viewport when the document is shorter than the frame.
+    d.documentElement.style.cursor =
+      mode === 'comment' ? (tool ? DRAWING_PENCIL_CURSOR : COMMENT_PIN_CURSOR) : '';
 
   }, [mode, tool, isLoading]);
 
