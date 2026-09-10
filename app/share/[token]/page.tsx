@@ -168,7 +168,7 @@ export default async function SharePage({ params }: SharePageProps) {
     // Single image/thread share
     const { data: thread, error } = await supabase
       .from('markup_threads')
-      .select('*, markup_projects(project_name)')
+      .select('*, markup_projects(project_name, kind, site_url)')
       .eq('id', shareLink!.resourceId)
       .single();
 
@@ -200,14 +200,20 @@ export default async function SharePage({ params }: SharePageProps) {
 
     if (projectError || !project) notFound();
 
-    const { data: threads, error: threadsError } = await supabase
+    // A website review annotates the live page, not a screenshot, so its
+    // threads are useful to a guest with no image at all. An image project's
+    // threads are not: the viewer would show a broken tile, so those stay out.
+    const isWebsiteProject =
+      shareLink!.resourceType === 'website_project' || (project as any).kind === 'website';
+
+    let threadQuery = supabase
       .from('markup_threads')
       .select('*')
-      .eq('project_id', shareLink!.resourceId)
-      // Website captures start life with no image while the worker runs.
-      // A guest can do nothing with those, and the viewer would show a
-      // broken tile, so keep them out of the shared view entirely.
-      .not('image_path', 'is', null)
+      .eq('project_id', shareLink!.resourceId);
+
+    if (!isWebsiteProject) threadQuery = threadQuery.not('image_path', 'is', null);
+
+    const { data: threads, error: threadsError } = await threadQuery
       .order('image_index', { ascending: true, nullsFirst: false })
       .order('created_at', { ascending: true });
 
@@ -266,6 +272,15 @@ export default async function SharePage({ params }: SharePageProps) {
     (resourceData.project as any)?.kind === 'website' ||
     (resourceData.thread as any)?.markup_projects?.kind === 'website';
 
+  // The live viewer needs the site it is allowed to browse, and the proxy needs
+  // the project it belongs to. Both are resolved here so the guest component
+  // never has to know which shape of share link it was handed.
+  const siteUrl: string | null = isWebsite
+    ? (resourceData.project as any)?.site_url ??
+      (resourceData.thread as any)?.markup_projects?.site_url ??
+      null
+    : null;
+
   // Logged-in users: auto-save project access then redirect to the real project page.
   // They get the full app UI (with role-based feature gating) instead of a guest viewer.
   if (sessionUser && projectId) {
@@ -287,6 +302,7 @@ export default async function SharePage({ params }: SharePageProps) {
       shareLink={shareLink!}
       resourceData={resourceData}
       token={token}
+      website={isWebsite && siteUrl && projectId ? { projectId, siteUrl } : undefined}
     />
   );
 }

@@ -1,10 +1,12 @@
 'use client';
 
 import { useState } from 'react';
-import { addWebsitePages } from '@/app/actions/website-captures';
+import { addWebsitePages, type CreatedPage } from '@/app/actions/website-captures';
+import { discoverWebsitePages, type DiscoveredPageStatus } from '@/app/actions/website-discovery';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Dialog,
   DialogContent,
@@ -14,20 +16,23 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
-import { Plus, Loader2, AlertCircle } from 'lucide-react';
+import { Plus, Loader2, AlertCircle, Search, Check } from 'lucide-react';
 import { parseUrlList } from '@/lib/website/url';
 
 interface AddPagesModalProps {
   projectId: string;
-  onAdded: () => void;
+  onAdded: (created?: CreatedPage[]) => void | Promise<void>;
   trigger?: React.ReactNode;
 }
 
 /**
  * Adds URLs to a website review. No screenshots are taken — a page is just an
- * address the workspace can open live and hang comments off. Reviewers can
- * also add whatever page they are looking at straight from the viewer's
- * toolbar; this dialog is for seeding several at once.
+ * address the workspace can open live and hang comments off.
+ *
+ * Discovery is the front door: most reviewers want "all of it", and typing a
+ * sitemap by hand is nobody's idea of a good time. The textarea stays for the
+ * cases discovery cannot reach — a staging path, a page behind a query string,
+ * anything not linked from the entry page.
  */
 export default function AddPagesModal({ projectId, onAdded, trigger }: AddPagesModalProps) {
   const [isOpen, setIsOpen] = useState(false);
@@ -36,11 +41,60 @@ export default function AddPagesModal({ projectId, onAdded, trigger }: AddPagesM
   const [error, setError] = useState('');
   const [rejected, setRejected] = useState<{ url: string; reason: string }[]>([]);
 
-  const urls = parseUrlList(raw);
+  const [isDiscovering, setIsDiscovering] = useState(false);
+  const [discovered, setDiscovered] = useState<DiscoveredPageStatus[] | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [truncated, setTruncated] = useState(false);
+
+  const typed = parseUrlList(raw);
+  const totalToAdd = selected.size + typed.length;
+
+  const reset = () => {
+    setError('');
+    setRejected([]);
+    setDiscovered(null);
+    setSelected(new Set());
+    setTruncated(false);
+    setRaw('');
+  };
+
+  const handleDiscover = async () => {
+    setIsDiscovering(true);
+    setError('');
+    const result = await discoverWebsitePages(projectId);
+    setIsDiscovering(false);
+
+    if (!result.success) {
+      setError(result.error ?? 'The site could not be read.');
+      return;
+    }
+    setDiscovered(result.pages);
+    setTruncated(result.truncated);
+    // Pre-tick everything not already in the review — "add the whole site" is
+    // the common case, and un-ticking a few is less work than ticking thirty.
+    setSelected(new Set(result.pages.filter((p) => !p.alreadyAdded).map((p) => p.url)));
+
+    if (result.pages.every((p) => p.alreadyAdded)) {
+      setError('Every page we could find is already in this review.');
+    }
+  };
+
+  const toggle = (url: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(url)) next.delete(url);
+      else next.add(url);
+      return next;
+    });
+  };
+
+  const selectable = (discovered ?? []).filter((p) => !p.alreadyAdded);
+  const allSelected = selectable.length > 0 && selectable.every((p) => selected.has(p.url));
 
   const handleSubmit = async () => {
+    const urls = [...selected, ...typed];
     if (urls.length === 0) {
-      setError('Paste at least one address');
+      setError('Choose at least one page, or paste an address');
       return;
     }
     setIsLoading(true);
@@ -48,39 +102,37 @@ export default function AddPagesModal({ projectId, onAdded, trigger }: AddPagesM
     setRejected([]);
 
     const result = await addWebsitePages({ projectId, urls });
-    setIsLoading(false);
 
     if (!result.success && result.error) {
+      setIsLoading(false);
       setError(result.error);
       return;
     }
+
+    // Refresh before closing: the dialog vanishing while the workspace still
+    // shows the old page list is what made this look like it had not worked.
+    await onAdded(result.pages);
+    setIsLoading(false);
+
     if (result.rejected.length > 0) {
       setRejected(result.rejected);
-      // Some landed — refresh so those show up, but keep the dialog open so the
-      // reviewer can see which addresses were refused and why.
-      if (result.pages.length > 0) {
-        setRaw('');
-        onAdded();
-      }
+      // Keep the dialog open so the reviewer can see what was refused and why.
+      setRaw('');
+      setSelected(new Set());
       return;
     }
 
-    setRaw('');
+    reset();
     setIsOpen(false);
-    onAdded();
   };
 
   return (
     <Dialog
       open={isOpen}
       onOpenChange={(open) => {
-        if (!isLoading) {
-          setIsOpen(open);
-          if (!open) {
-            setError('');
-            setRejected([]);
-          }
-        }
+        if (isLoading) return;
+        setIsOpen(open);
+        if (!open) reset();
       }}
     >
       <DialogTrigger asChild>
@@ -92,7 +144,7 @@ export default function AddPagesModal({ projectId, onAdded, trigger }: AddPagesM
         )}
       </DialogTrigger>
 
-      <DialogContent className="sm:max-w-[520px]">
+      <DialogContent className="sm:max-w-[560px]">
         <DialogHeader>
           <div className="flex items-center gap-3 mb-1">
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
@@ -101,18 +153,99 @@ export default function AddPagesModal({ projectId, onAdded, trigger }: AddPagesM
             <DialogTitle>Add pages</DialogTitle>
           </div>
           <DialogDescription className="pl-[52px]">
-            One address per line. Each becomes a page of the review you can open
-            live and comment on.
+            Find the pages on this site automatically, or paste addresses yourself.
+            Each becomes a page of the review you can open live and comment on.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 pl-[52px] pr-1">
+          {/* ── discovery ─────────────────────────────────────────────── */}
+          {discovered === null ? (
+            <Button
+              type="button"
+              variant="secondary"
+              className="w-full gap-2"
+              onClick={handleDiscover}
+              disabled={isDiscovering || isLoading}
+            >
+              {isDiscovering ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  Looking for pages…
+                </>
+              ) : (
+                <>
+                  <Search className="h-3.5 w-3.5" />
+                  Find pages on this site
+                </>
+              )}
+            </Button>
+          ) : (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs">
+                  {discovered.length} page{discovered.length === 1 ? '' : 's'} found
+                  {truncated ? ' (first 150)' : ''}
+                </Label>
+                {selectable.length > 0 && (
+                  <button
+                    type="button"
+                    className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+                    onClick={() =>
+                      setSelected(allSelected ? new Set() : new Set(selectable.map((p) => p.url)))
+                    }
+                    disabled={isLoading}
+                  >
+                    {allSelected ? 'Clear all' : 'Select all'}
+                  </button>
+                )}
+              </div>
+
+              <div className="max-h-56 overflow-y-auto rounded-lg border border-border divide-y divide-border/60">
+                {discovered.map((page) => (
+                  <label
+                    key={page.url}
+                    className={`flex items-center gap-2.5 px-2.5 py-1.5 text-xs ${
+                      page.alreadyAdded ? 'opacity-60' : 'cursor-pointer hover:bg-muted/50'
+                    }`}
+                  >
+                    {page.alreadyAdded ? (
+                      <Check className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                    ) : (
+                      <Checkbox
+                        checked={selected.has(page.url)}
+                        onCheckedChange={() => toggle(page.url)}
+                        disabled={isLoading}
+                        className="shrink-0"
+                      />
+                    )}
+                    <span className="font-mono truncate flex-1">{page.path}</span>
+                    {page.alreadyAdded && (
+                      <span className="text-[10px] text-muted-foreground shrink-0">added</span>
+                    )}
+                  </label>
+                ))}
+              </div>
+
+              <button
+                type="button"
+                className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+                onClick={handleDiscover}
+                disabled={isDiscovering || isLoading}
+              >
+                {isDiscovering ? 'Looking again…' : 'Search again'}
+              </button>
+            </div>
+          )}
+
+          {/* ── manual ────────────────────────────────────────────────── */}
           <div className="space-y-1.5">
-            <Label htmlFor="page-urls">Addresses</Label>
+            <Label htmlFor="page-urls" className="text-xs text-muted-foreground">
+              Or paste addresses, one per line
+            </Label>
             <Textarea
               id="page-urls"
-              autoFocus
-              rows={6}
+              rows={discovered === null ? 5 : 3}
               placeholder={'example.com/about\nexample.com/contact'}
               value={raw}
               onChange={(e) => {
@@ -124,9 +257,9 @@ export default function AddPagesModal({ projectId, onAdded, trigger }: AddPagesM
             />
           </div>
 
-          {urls.length > 0 && (
+          {totalToAdd > 0 && (
             <p className="text-xs text-muted-foreground">
-              {urls.length} page{urls.length === 1 ? '' : 's'} will be added.
+              {totalToAdd} page{totalToAdd === 1 ? '' : 's'} will be added.
             </p>
           )}
 
@@ -157,7 +290,7 @@ export default function AddPagesModal({ projectId, onAdded, trigger }: AddPagesM
           <Button variant="outline" onClick={() => setIsOpen(false)} disabled={isLoading}>
             Cancel
           </Button>
-          <Button onClick={handleSubmit} disabled={isLoading || urls.length === 0}>
+          <Button onClick={handleSubmit} disabled={isLoading || totalToAdd === 0}>
             {isLoading ? (
               <>
                 <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />

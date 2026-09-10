@@ -12,6 +12,12 @@ interface DrawingToolbarProps {
   onToolSelect: (tool: DrawingTool | null) => void;
   onUndo?: () => void;
   canUndo?: boolean;
+  /**
+   * The eraser removes a stroke the viewer can point at, so it is only offered
+   * where the surface can service that. Hidden rather than inert: a tool that
+   * silently does nothing reads as a broken tool.
+   */
+  showEraser?: boolean;
 }
 
 const tools: { value: DrawingTool; label: string; icon: React.ReactNode }[] = [
@@ -74,16 +80,23 @@ const tools: { value: DrawingTool; label: string; icon: React.ReactNode }[] = [
   },
 ];
 
-export default function DrawingToolbar({ activeTool, onToolSelect, onUndo, canUndo }: DrawingToolbarProps) {
+export default function DrawingToolbar({
+  activeTool,
+  onToolSelect,
+  onUndo,
+  canUndo,
+  showEraser = false,
+}: DrawingToolbarProps) {
+  const visibleTools = showEraser ? tools : tools.filter(t => t.value !== 'eraser');
   return (
     <div className="flex items-center gap-0.5 bg-white/90 backdrop-blur-sm border border-gray-200 rounded-lg shadow-sm px-1 py-1">
-      {tools.map((tool, i) => (
+      {visibleTools.map((tool, i) => (
         <React.Fragment key={tool.value}>
           {/* Divider before eraser */}
-          {i === tools.length - 1 && (
+          {showEraser && i === visibleTools.length - 1 && (
             <div className="w-px h-5 bg-gray-200 mx-0.5 flex-shrink-0" />
           )}
-          <IconTooltip label={tool.label}>
+          <IconTooltip label={tool.value === 'eraser' ? 'Eraser — click a stroke you just drew' : tool.label}>
             <button
               onClick={() => onToolSelect(activeTool === tool.value ? null : tool.value)}
               aria-label={tool.label}

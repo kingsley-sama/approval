@@ -203,17 +203,28 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
   }
 
   // ── assemble ──────────────────────────────────────────────────────────────
+  const isWebsite = project.kind === 'website';
+
   const candidates = threads.filter((t) => {
-    if (!t.image_path) return false;
+    const pinCount = pinsByThread.get(t.id)?.length ?? 0;
+    if (!t.image_path) {
+      // A website review in live mode has no stored screenshot — the page is
+      // an address the reviewer annotated through the proxy. Its comments are
+      // the entire point of the report, so the page goes in as a heading and
+      // its comments rather than being dropped and taking the feedback with it.
+      return isWebsite && pinCount > 0;
+    }
     // PDFs and videos have no raster to annotate; their pages are the split
     // images, which appear as their own threads.
     if (getMediaKind(t.image_path, t.thread_name) !== 'image') return false;
-    return includeAll || (pinsByThread.get(t.id)?.length ?? 0) > 0;
+    return includeAll || pinCount > 0;
   });
 
   const selected = candidates.slice(0, MAX_IMAGES);
-  const skipped =
-    threads.filter((t) => t.image_path).length - selected.length;
+  const reportable = threads.filter(
+    (t) => t.image_path || (isWebsite && (pinsByThread.get(t.id)?.length ?? 0) > 0)
+  ).length;
+  const skipped = reportable - selected.length;
 
   const rendered = await mapLimit(selected, RENDER_CONCURRENCY, async (thread) => {
     const pins = (pinsByThread.get(thread.id) ?? []).slice().sort(
@@ -237,7 +248,11 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
       replies: repliesByParent.get(c.id) ?? [],
     }));
 
-    const image = await renderAnnotatedImage(thread.image_path!, reportPins);
+    // No raster for a live website page; the PDF builder lays the section out
+    // without one.
+    const image = thread.image_path
+      ? await renderAnnotatedImage(thread.image_path, reportPins)
+      : null;
 
     const page: ReportPageInput = {
       title: thread.thread_name || thread.image_filename || 'Untitled',
@@ -254,6 +269,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
       siteUrl: project.site_url,
       generatedAt: new Date(),
       pages: rendered,
+      kind: isWebsite ? 'website' : 'image',
       skippedCount: Math.max(0, skipped),
     });
 

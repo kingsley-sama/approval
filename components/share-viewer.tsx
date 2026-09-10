@@ -13,6 +13,7 @@ import { TruncatedName } from '@/components/ui/truncated-name';
 import DownloadFeedbackButton from '@/components/report/download-feedback-button';
 import { useRouter } from 'next/navigation';
 import ImageViewer from '@/components/annotation/image-viewer';
+import LiveViewer, { type LivePin } from '@/components/website/live-viewer';
 import CommentModal from '@/components/annotation/comment-modal';
 import CommentsSidebar from '@/components/annotation/comments-sidebar';
 import ThumbnailsSidebar from '@/components/annotation/thumbnails-sidebar';
@@ -55,6 +56,8 @@ interface ThreadData {
   id: string;
   name: string;
   url: string;
+  /** The page this thread reviews. Website reviews only; null for images. */
+  sourceUrl: string | null;
   pins: Pin[];
 }
 
@@ -62,6 +65,12 @@ interface ShareViewerProps {
   shareLink: ShareLink;
   resourceData: any;
   token: string;
+  /**
+   * Set when the share points at a website review. Its presence is what swaps
+   * the still image for the live site — everything else on this screen
+   * (comments, replies, attachments, resolve, PDF) is already shared.
+   */
+  website?: { projectId: string; siteUrl: string };
 }
 
 /** Normalize a pin's drawingData (single shape, array, or none) to a flat array. */
@@ -95,6 +104,7 @@ function buildThreads(resourceData: any): ThreadData[] {
       id: resourceData.thread.id,
       name: resourceData.thread.thread_name || resourceData.thread.image_filename || 'Image',
       url: resourceData.thread.image_path,
+      sourceUrl: resourceData.thread.source_url ?? null,
       pins: (resourceData.comments || []).map((c: any) => dbCommentToPin(c, attachmentsByComment)),
     }];
   }
@@ -102,13 +112,14 @@ function buildThreads(resourceData: any): ThreadData[] {
     id: t.id,
     name: t.thread_name || t.image_filename || `Image ${i + 1}`,
     url: t.image_path,
+    sourceUrl: t.source_url ?? null,
     pins: (resourceData.commentsByThread?.[t.id] || []).map((c: any) =>
       dbCommentToPin(c, attachmentsByComment),
     ),
   }));
 }
 
-export default function ShareViewer({ shareLink, resourceData, token }: ShareViewerProps) {
+export default function ShareViewer({ shareLink, resourceData, token, website }: ShareViewerProps) {
   const canComment = shareLink.permissions === 'comment' || shareLink.permissions === 'draw_and_comment';
   const canDraw = shareLink.permissions === 'draw_and_comment';
   const { toast } = useToast();
@@ -176,10 +187,39 @@ export default function ShareViewer({ shareLink, resourceData, token }: ShareVie
   const currentThread = threads[currentIndex];
   const pins = currentThread?.pins || [];
 
+  // ── website reviews: which page the frame is showing ────────────────────
+  // A guest may follow links off the reviewed page, so the address is its own
+  // state rather than a read of the current thread. Commenting is only offered
+  // while the address matches a page that is actually part of the review —
+  // a guest cannot add pages, so a comment elsewhere would have nowhere to go.
+  const [liveUrl, setLiveUrl] = useState<string>('');
+  useEffect(() => {
+    if (!website) return;
+    const next = currentThread?.sourceUrl || website.siteUrl;
+    if (next) setLiveUrl(next);
+  }, [website, currentThread?.sourceUrl]);
+
+  const sameAddress = (a: string, b: string) => {
+    try {
+      const ua = new URL(a), ub = new URL(b);
+      return ua.origin === ub.origin && ua.pathname.replace(/\/$/, '') === ub.pathname.replace(/\/$/, '');
+    } catch { return a === b; }
+  };
+  const liveThreadIndex = website && liveUrl
+    ? threads.findIndex(t => t.sourceUrl && sameAddress(t.sourceUrl, liveUrl))
+    : -1;
+  const isTrackedPage = liveThreadIndex !== -1;
+
+  // Following a link to another page of the review moves the whole screen —
+  // sidebar, pin numbering and all — onto that page's thread.
+  useEffect(() => {
+    if (liveThreadIndex !== -1 && liveThreadIndex !== currentIndex) setCurrentIndex(liveThreadIndex);
+  }, [liveThreadIndex]);
+
   // Warm the browser cache for full-size images so switching is instant. The
   // viewer renders originals unoptimized, so an unwarmed switch otherwise stalls
   // on a fresh multi-MB fetch + decode.
-  const imageUrls = useMemo(() => threads.map(t => t.url), [threads]);
+  const imageUrls = useMemo(() => threads.map(t => t.url).filter(Boolean), [threads]);
   useImagePreloader(imageUrls, currentIndex);
   // Pins shown on the image follow the sidebar's active/resolved tab, so resolved
   // pins only appear while viewing the Resolved tab (matching the main project
@@ -864,14 +904,66 @@ export default function ShareViewer({ shareLink, resourceData, token }: ShareVie
           />
         )}
 
-        {/* Image viewer */}
-        {currentThread ? (
+        {/* The reviewed surface: the live site for a website, else the image */}
+        {website ? (
+          <LiveViewer
+            projectId={website.projectId}
+            token={token}
+            url={liveUrl || website.siteUrl}
+            onUrlChange={setLiveUrl}
+            pins={visiblePins.map((p): LivePin => ({
+              id: p.id,
+              number: p.number,
+              x: p.x,
+              y: p.y,
+              resolved: p.status === 'resolved',
+            }))}
+            selectedPinId={selectedPin}
+            onSelectPin={(pinId) => {
+              setSelectedPin(pinId);
+              const pin = pins.find(p => p.id === pinId);
+              if (pin) {
+                setModalPosition({ x: pin.x, y: pin.y });
+                setIsNewPin(false);
+                setShowModal(true);
+              }
+            }}
+            onPlacePin={handleImageClick}
+            hoveredPin={hoveredPin}
+            onPinHover={setHoveredPin}
+            drawnShapes={drawnShapes}
+            pendingShapes={pendingShapes}
+            onShapeComplete={canDraw && nameConfirmed ? handleShapeComplete : undefined}
+            onEraseShape={canDraw && nameConfirmed
+              ? (id) => setPendingShapes(prev => prev.filter(sh => sh.id !== id))
+              : undefined}
+            onUndoShape={canDraw ? handleUndoDrawing : () => setPendingShapes(prev => prev.slice(0, -1))}
+            canUndo={canDraw ? canUndoDrawing : pendingShapes.length > 0}
+            isFullscreen={isFullscreen}
+            onToggleFullscreen={() => setIsFullscreen(!isFullscreen)}
+            currentIndex={currentIndex}
+            totalPages={threads.length}
+            onNavigate={(dir) => {
+              const next = dir === 'prev' ? currentIndex - 1 : currentIndex + 1;
+              if (next < 0 || next >= threads.length) return;
+              setCurrentIndex(next);
+              const target = threads[next]?.sourceUrl;
+              if (target) setLiveUrl(target);
+            }}
+            canComment={canComment && nameConfirmed}
+            canDraw={canDraw && nameConfirmed}
+            isTrackedPage={isTrackedPage}
+          />
+        ) : currentThread ? (
           <ImageViewer
             pins={visiblePins}
             selectedPin={selectedPin}
             drawnShapes={drawnShapes}
             pendingShapes={pendingShapes}
             onShapeComplete={canDraw && nameConfirmed ? handleShapeComplete : () => {}}
+            onEraseShape={canDraw && nameConfirmed
+              ? (id) => setPendingShapes(prev => prev.filter(sh => sh.id !== id))
+              : undefined}
             onPinClick={(x, y, pinId) => {
               if (pinId) {
                 setSelectedPin(pinId);
@@ -910,14 +1002,20 @@ export default function ShareViewer({ shareLink, resourceData, token }: ShareVie
         {/* Thumbnails sidebar — upload disabled for guests */}
         {!isFullscreen && (
           <ThumbnailsSidebar
-            images={threads.map(t => ({ id: t.id, name: t.name, url: t.url, pins: t.pins }))}
+            images={threads.map(t => ({
+              id: t.id, name: t.name, url: t.url, pins: t.pins, sourceUrl: t.sourceUrl,
+            }))}
             currentImageId={currentThread?.id || ''}
             onSelectImage={(id) => {
               const idx = threads.findIndex(t => t.id === id);
-              if (idx !== -1) setCurrentIndex(idx);
+              if (idx === -1) return;
+              setCurrentIndex(idx);
+              const target = threads[idx]?.sourceUrl;
+              if (target) setLiveUrl(target);
             }}
             projectId=""
             readOnly
+            variant={website ? 'website' : 'image'}
           />
         )}
       </div>

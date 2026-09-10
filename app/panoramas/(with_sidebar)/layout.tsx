@@ -3,7 +3,14 @@ import { getUser } from '@/app/actions/auth'
 import AppSidebar from '@/components/sidebar'
 
 export default async function Layout({ children }: { children: React.ReactNode }) {
-  const user = await getUser()
+  const account = await getUser()
+  // Only the fields the sidebar renders cross into the client payload.
+  const user = account && {
+    name: account.name,
+    email: account.email,
+    role: account.role,
+    avatarUrl: account.avatarUrl,
+  }
   return (
     <SidebarProvider>
       <div className="flex h-screen w-full">

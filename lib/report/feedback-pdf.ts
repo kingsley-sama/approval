@@ -47,7 +47,13 @@ export interface FeedbackReportInput {
   siteUrl?: string | null;
   generatedAt: Date;
   pages: ReportPageInput[];
-  /** Images with no feedback, left out of the body but counted on the cover. */
+  /**
+   * What a section is, for the cover wording only. A website review's sections
+   * are pages of a site, not uploaded images, and calling them "images" in the
+   * client's report reads as a mistake.
+   */
+  kind?: 'image' | 'website';
+  /** Sections with no feedback, left out of the body but counted on the cover. */
   skippedCount: number;
 }
 
@@ -183,15 +189,16 @@ export async function buildFeedbackPdf(input: FeedbackReportInput): Promise<Uint
   });
   flow.y -= 22;
 
+  const unit = input.kind === 'website' ? 'Pages' : 'Images';
   const summary: [string, string][] = [
     ['Generated', formatDate(input.generatedAt.toISOString())],
-    ['Images with feedback', String(input.pages.length)],
+    [`${unit} with feedback`, String(input.pages.length)],
     ['Comments', String(totalComments)],
     ['Open', String(openComments)],
     ['Resolved', String(totalComments - openComments)],
   ];
   if (input.skippedCount > 0) {
-    summary.push(['Images without feedback', `${input.skippedCount} (not shown)`]);
+    summary.push([`${unit} without feedback`, `${input.skippedCount} (not shown)`]);
   }
 
   for (const [label, value] of summary) {

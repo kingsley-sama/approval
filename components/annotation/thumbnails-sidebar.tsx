@@ -29,6 +29,11 @@ interface ThumbnailsSidebarProps {
   onUploadComplete?: () => void | Promise<void>;
   /** When true the upload button is hidden */
   readOnly?: boolean;
+  /**
+   * A website review lists pages, not images: the noun changes and there is
+   * nothing to upload — pages are added by address, from the viewer.
+   */
+  variant?: 'image' | 'website';
 }
 
 /**
@@ -92,7 +97,10 @@ export default function ThumbnailsSidebar({
   projectId,
   onUploadComplete,
   readOnly = false,
+  variant = 'image',
 }: ThumbnailsSidebarProps) {
+  const isWebsite = variant === 'website';
+  const noun = isWebsite ? 'page' : 'image';
   const currentIndex = images.findIndex(img => img.id === currentImageId);
   const reorderable = !readOnly && !!onReorderImages;
   const deletable = !readOnly && !!onDeleteImage;
@@ -181,8 +189,10 @@ export default function ThumbnailsSidebar({
   return (
     <div className="w-32 border-l border-border bg-white flex flex-col overflow-hidden">
       <div className="p-2 border-b border-border flex justify-between items-center">
-        <span className="text-xs font-semibold text-gray-500">IMAGES</span>
-        {!readOnly && <ImageUploader projectId={projectId} onUploadComplete={onUploadComplete} />}
+        <span className="text-xs font-semibold text-gray-500">{isWebsite ? 'PAGES' : 'IMAGES'}</span>
+        {!readOnly && !isWebsite && (
+          <ImageUploader projectId={projectId} onUploadComplete={onUploadComplete} />
+        )}
       </div>
       <div
         ref={listRef}
@@ -259,7 +269,7 @@ export default function ThumbnailsSidebar({
                 <button
                   type="button"
                   aria-label={`Delete ${img.name}`}
-                  title="Delete image"
+                  title={`Delete ${noun}`}
                   className="absolute bottom-1 right-1 p-1 rounded bg-black/40 text-white opacity-0 group-hover:opacity-100 hover:bg-red-600 focus-visible:opacity-100 transition-all"
                   // Deleting must not also select the tile underneath.
                   onClick={(e) => {
@@ -287,9 +297,9 @@ export default function ThumbnailsSidebar({
       <div className="border-t border-border p-2 flex items-center justify-between text-xs text-gray-600">
         <span>{currentIndex + 1} of {images.length}</span>
         <div className="flex gap-1">
-          <IconTooltip label="Previous image" side="top">
+          <IconTooltip label={`Previous ${noun}`} side="top">
             <button
-              aria-label="Previous image"
+              aria-label={`Previous ${noun}`}
               className="p-1 hover:bg-gray-100 rounded disabled:opacity-40"
               disabled={currentIndex <= 0}
               onClick={() => {
@@ -299,9 +309,9 @@ export default function ThumbnailsSidebar({
               <ChevronUp size={16} />
             </button>
           </IconTooltip>
-          <IconTooltip label="Next image" side="top">
+          <IconTooltip label={`Next ${noun}`} side="top">
             <button
-              aria-label="Next image"
+              aria-label={`Next ${noun}`}
               className="p-1 hover:bg-gray-100 rounded disabled:opacity-40"
               disabled={currentIndex === images.length - 1}
               onClick={() => {

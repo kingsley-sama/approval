@@ -188,3 +188,100 @@ test.describe('website review — embed widget', () => {
     expect(typeof body.canComment).toBe('boolean');
   });
 });
+
+test.describe('website review — shared with a guest', () => {
+  test.skip(!TOKEN || !SITE_URL, 'set E2E_WEBSITE_TOKEN / E2E_WEBSITE_URL');
+
+  /**
+   * The regression this guards: a website review's pages carry no screenshot,
+   * and the share page used to drop every image-less thread on the way out.
+   * A client opening the link got "No images in this project" — the whole
+   * review, invisible — while the same project was fully populated for the
+   * team. It must serve the live page instead.
+   */
+  test('opens the live site rather than an empty project', async ({ page }) => {
+    await page.goto(`/share/${TOKEN}`);
+
+    await expect(page.getByText('No images in this project')).toHaveCount(0);
+
+    const frame = page.locator('iframe[title="Website under review"]');
+    await expect(frame).toHaveCount(1);
+    // Served through our own proxy, carrying the share token — that is what
+    // authorises a guest with no session.
+    const src = await frame.getAttribute('src');
+    expect(src).toContain('/api/websites/proxy');
+    expect(src).toContain(`token=${TOKEN}`);
+  });
+
+  test('lists the reviewed pages, not images', async ({ page }) => {
+    await page.goto(`/share/${TOKEN}`);
+    await expect(page.getByText('PAGES', { exact: true })).toBeVisible();
+    await expect(page.getByText('IMAGES', { exact: true })).toHaveCount(0);
+  });
+
+  test('the framed page actually renders for the guest', async ({ page }) => {
+    await page.goto(`/share/${TOKEN}`);
+    const frame = page.frameLocator('iframe[title="Website under review"]');
+    await expect(frame.locator('body')).not.toBeEmpty();
+  });
+
+  /**
+   * The comment box positions itself off `[data-annotation-image-container]`,
+   * reading a pin's x/y as a percentage of that element's rect. The website
+   * viewer has no image to hang that on — pins live inside the iframe — so it
+   * publishes a mirror of the framed document instead.
+   *
+   * When that mirror was missing, the modal found no anchor, skipped
+   * positioning altogether and rendered in the bottom-left corner of the
+   * screen instead of next to the pin. These assertions are the contract that
+   * kept it there.
+   */
+  test('publishes the anchor the comment box measures', async ({ page }) => {
+    await page.goto(`/share/${TOKEN}`);
+    await page.waitForSelector('iframe[title="Website under review"]');
+
+    const anchor = page.locator('[data-annotation-image-container]');
+    await expect(anchor).toHaveCount(1);
+
+    await expect
+      .poll(async () =>
+        page.evaluate(() => {
+          const a = document.querySelector('[data-annotation-image-container]');
+          const f = document.querySelector('iframe[title="Website under review"]');
+          const d = (f as HTMLIFrameElement).contentDocument;
+          if (!a || !d?.documentElement) return null;
+          const r = a.getBoundingClientRect();
+          const fr = (f as HTMLElement).getBoundingClientRect();
+          return {
+            // The mirror spans the whole scrollable document, not the visible
+            // frame — that is what makes a percentage resolve to the right spot.
+            matchesDocument: Math.abs(r.height - d.documentElement.scrollHeight) <= 2,
+            tallerThanFrame: r.height > fr.height,
+            originAtFrame: Math.abs(r.top - fr.top) <= 2,
+          };
+        }),
+      { timeout: 30_000 }
+      )
+      .toEqual({ matchesDocument: true, tallerThanFrame: true, originAtFrame: true });
+  });
+
+  test('the anchor follows the framed page as it scrolls', async ({ page }) => {
+    await page.goto(`/share/${TOKEN}`);
+    await page.waitForSelector('[data-annotation-image-container]');
+
+    const topBefore = async () =>
+      page.evaluate(() =>
+        document.querySelector('[data-annotation-image-container]')!.getBoundingClientRect().top,
+      );
+
+    const before = await topBefore();
+    await page.evaluate(() => {
+      const f = document.querySelector('iframe[title="Website under review"]') as HTMLIFrameElement;
+      f.contentDocument!.defaultView!.scrollTo(0, 300);
+    });
+
+    // Scrolling the site must move the mirror by the same amount, or a pin
+    // halfway down the page would open its comment box somewhere else entirely.
+    await expect.poll(topBefore, { timeout: 15_000 }).toBeCloseTo(before - 300, 0);
+  });
+});

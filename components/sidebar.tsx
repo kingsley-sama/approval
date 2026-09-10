@@ -12,7 +12,6 @@ import {
   SidebarGroupContent, SidebarHeader, SidebarMenu,
   SidebarMenuButton, SidebarMenuItem, SidebarTrigger,
 } from '@/components/ui/sidebar'
-import type { users } from '@/lib/db/schema'
 interface NavItem {
   title: string;
   href: string;
@@ -38,8 +37,22 @@ const memberNavItems: NavItem[] = [
   { title: 'Settings', href: '/projects/settings', icon: Settings },
 ]
 
+/**
+ * Deliberately not the whole `users` row.
+ *
+ * This is a client component, so every field named here is serialised into the
+ * RSC payload and shipped to the browser. Passing the Drizzle row put the
+ * bcrypt `passwordHash` in the HTML of every page that renders a sidebar.
+ */
+export interface SidebarUser {
+  name: string | null
+  email: string
+  role: string
+  avatarUrl: string | null
+}
+
 interface AppSidebarProps {
-  user: typeof users.$inferSelect | null
+  user: SidebarUser | null
 }
 
 

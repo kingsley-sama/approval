@@ -63,6 +63,8 @@ interface LiveViewerProps {
   drawnShapes?: Shape[];
   pendingShapes?: Shape[];
   onShapeComplete?: (shape: Shape, center: { x: number; y: number }) => void;
+  /** Erase one not-yet-saved shape by id. Enables the eraser tool. */
+  onEraseShape?: (shapeId: string) => void;
   onUndoShape?: () => void;
   canUndo?: boolean;
 
@@ -95,12 +97,13 @@ const RESOLVED = '#649256';
 export default function LiveViewer({
   projectId, token, url, onUrlChange,
   pins, selectedPinId, onSelectPin, onPlacePin, onPinReposition, hoveredPin, onPinHover,
-  drawnShapes = [], pendingShapes = [], onShapeComplete, onUndoShape, canUndo,
+  drawnShapes = [], pendingShapes = [], onShapeComplete, onEraseShape, onUndoShape, canUndo,
   isFullscreen = false, onToggleFullscreen,
   currentIndex = 0, totalPages = 1, onNavigate,
   canComment, canDraw = true, isTrackedPage, onAddCurrentPage, isAddingPage,
 }: LiveViewerProps) {
   const frameRef = useRef<HTMLIFrameElement>(null);
+  const anchorRef = useRef<HTMLDivElement>(null);
   const [mode, setMode] = useState<LiveMode>('browse');
   const [tool, setTool] = useState<DrawingTool | null>(null);
   const [device, setDevice] = useState<(typeof DEVICES)[number]['label']>('desktop');
@@ -108,6 +111,12 @@ export default function LiveViewer({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [history, setHistory] = useState<string[]>([url]);
   const [historyIndex, setHistoryIndex] = useState(0);
+  /** What is in the address box while it is being edited. */
+  const [draftUrl, setDraftUrl] = useState(url);
+
+  useEffect(() => {
+    setDraftUrl(url);
+  }, [url]);
 
   const proxySrc = `/api/websites/proxy?projectId=${encodeURIComponent(projectId)}&url=${encodeURIComponent(
     url
@@ -117,12 +126,12 @@ export default function LiveViewer({
   // they need is read through a ref rather than captured at attach time.
   const s = useRef({
     mode, tool, pins, selectedPinId, hoveredPin, drawnShapes, pendingShapes,
-    onPlacePin, onSelectPin, onPinHover, onPinReposition, onShapeComplete, onUrlChange,
+    onPlacePin, onSelectPin, onPinHover, onPinReposition, onShapeComplete, onEraseShape, onUrlChange,
     canComment, canDraw,
   });
   s.current = {
     mode, tool, pins, selectedPinId, hoveredPin, drawnShapes, pendingShapes,
-    onPlacePin, onSelectPin, onPinHover, onPinReposition, onShapeComplete, onUrlChange,
+    onPlacePin, onSelectPin, onPinHover, onPinReposition, onShapeComplete, onEraseShape, onUrlChange,
     canComment, canDraw,
   };
 
@@ -210,7 +219,42 @@ export default function LiveViewer({
     }
   };
 
+  /**
+   * Mirror the framed document's coordinate space into the parent page.
+   *
+   * CommentModal positions itself off `[data-annotation-image-container]`:
+   * it reads that element's rect and treats a pin's x/y as a percentage of it.
+   * On an image the element is the image itself. Here the pins live inside the
+   * iframe, so the parent has nothing to measure — the modal found no anchor,
+   * bailed out of positioning entirely, and the comment box fell to the corner
+   * of the screen.
+   *
+   * This div is that anchor: an empty, untouchable box laid over the frame,
+   * sized to the *whole* scrollable document and offset by the frame's own
+   * scroll. Its rect is therefore exactly where the document's origin sits on
+   * screen, so the modal's existing arithmetic lands on the pin with no
+   * special-casing on its side — the website and the image feed it the same
+   * contract.
+   */
+  const syncAnchor = useCallback(() => {
+    const el = anchorRef.current;
+    if (!el) return;
+    const d = doc();
+    const { w, h } = docBox();
+    if (!d?.documentElement || !w || !h) {
+      el.style.display = 'none';
+      return;
+    }
+    const view = d.defaultView;
+    el.style.display = 'block';
+    el.style.left = `${-(view?.scrollX ?? 0)}px`;
+    el.style.top = `${-(view?.scrollY ?? 0)}px`;
+    el.style.width = `${w}px`;
+    el.style.height = `${h}px`;
+  }, [docBox]);
+
   const paint = useCallback(() => {
+    syncAnchor();
     const d = doc();
     if (!d?.documentElement) return;
     const { w, h } = docBox();
@@ -233,13 +277,35 @@ export default function LiveViewer({
     svg.setAttribute('width', String(w));
     svg.setAttribute('height', String(h));
     svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
-    const drawing = s.current.mode === 'comment' && !!s.current.tool;
-    svg.setAttribute('style', `position:absolute;inset:0;pointer-events:${drawing ? 'auto' : 'none'};${drawing ? 'cursor:crosshair;' : ''}`);
+    const erasing = s.current.mode === 'comment' && s.current.tool === 'eraser';
+    const drawing = s.current.mode === 'comment' && !!s.current.tool && !erasing;
+    const armed = drawing || erasing;
+    svg.setAttribute('style', `position:absolute;inset:0;pointer-events:${armed ? 'auto' : 'none'};${drawing ? 'cursor:crosshair;' : ''}`);
     layer.appendChild(svg);
 
-    for (const shape of [...s.current.drawnShapes, ...s.current.pendingShapes]) {
+    for (const shape of s.current.drawnShapes) {
       const node = buildShapeNode(d, shape, w, h);
       if (node) svg.appendChild(node);
+    }
+
+    // Only strokes not yet attached to a comment can be erased. A saved
+    // drawing belongs to somebody's comment, and removing it is the undo
+    // path's job, which confirms before it takes a comment down with it.
+    for (const shape of s.current.pendingShapes) {
+      const node = buildShapeNode(d, shape, w, h);
+      if (!node) continue;
+      if (erasing && s.current.onEraseShape) {
+        node.setAttribute('style', 'pointer-events:auto;cursor:pointer');
+        // A thin stroke is a small target, so widen the hit area without
+        // changing what is painted.
+        node.setAttribute('stroke-linecap', 'round');
+        node.addEventListener('click', (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          s.current.onEraseShape?.(shape.id);
+        });
+      }
+      svg.appendChild(node);
     }
 
     // pins
@@ -310,7 +376,7 @@ export default function LiveViewer({
 
       layer.appendChild(el);
     }
-  }, [docBox]);
+  }, [docBox, syncAnchor]);
 
   const ticking = useRef(false);
   const schedule = useCallback(() => {
@@ -335,7 +401,7 @@ export default function LiveViewer({
     const onDown = (ev: Event) => {
       const e = ev as MouseEvent;
       const t = s.current.tool;
-      if (s.current.mode !== 'comment' || !t || !s.current.canDraw) return;
+      if (s.current.mode !== 'comment' || !t || t === 'eraser' || !s.current.canDraw) return;
       const target = e.target as Element | null;
       // Only the markup layer starts a stroke; a pin must stay clickable.
       if (!target || target.namespaceURI !== SVG_NS) return;
@@ -494,16 +560,32 @@ export default function LiveViewer({
 
   useEffect(() => { paint(); }, [pins, selectedPinId, hoveredPin, drawnShapes, pendingShapes, tool, mode, paint]);
 
+  // A page the review has not seen before is no longer a dead end: commenting
+  // on one registers it (workspace's handleAddComment), so the reviewer can
+  // walk the whole site and mark up whatever they find. Comment mode therefore
+  // survives navigation instead of snapping back to browsing.
+
   useEffect(() => {
     const d = doc();
     if (!d?.documentElement) return;
     d.documentElement.style.cursor = mode === 'comment' && !tool ? 'crosshair' : '';
+
   }, [mode, tool, isLoading]);
 
   // Leaving comment mode must also drop the tool, or the next click draws.
   const setModeSafely = (next: LiveMode) => {
     setMode(next);
     if (next === 'browse') setTool(null);
+  };
+
+  /**
+   * Picking a tool is itself the intent to mark the page up, so it carries the
+   * viewer into comment mode; clearing the tool leaves the user in comment mode
+   * placing pins, which is where they were heading anyway.
+   */
+  const pickTool = (next: DrawingTool | null) => {
+    setTool(next);
+    if (next) setMode('comment');
   };
 
   useEffect(() => {
@@ -519,6 +601,30 @@ export default function LiveViewer({
   const deviceWidth = DEVICES.find((x) => x.label === device)?.width ?? 0;
   const isSecure = url.startsWith('https://');
 
+  /**
+   * Typing an address is the other half of "browse the site freely" — links
+   * only reach what a page happens to link to. The proxy refuses anything
+   * off-site anyway; resolving here means a typo shows as a no-op instead of
+   * an error page inside the frame.
+   */
+  const resolveTyped = (raw: string): string | null => {
+    const candidate = /^[a-z][a-z0-9+.-]*:\/\//i.test(raw)
+      ? raw
+      : raw.startsWith('/')
+      ? new URL(raw, url).toString()
+      : `https://${raw}`;
+    try {
+      const next = new URL(candidate);
+      if (next.protocol !== 'http:' && next.protocol !== 'https:') return null;
+      const a = next.hostname.toLowerCase().replace(/^www\./, '');
+      const b = new URL(url).hostname.toLowerCase().replace(/^www\./, '');
+      if (a !== b && !a.endsWith(`.${b}`)) return null;
+      return next.toString();
+    } catch {
+      return null;
+    }
+  };
+
   return (
     <div className={`flex-1 flex flex-col min-w-0 overflow-hidden ${isFullscreen ? 'bg-black' : 'bg-muted/30'}`}>
       {!isFullscreen && (
@@ -527,11 +633,42 @@ export default function LiveViewer({
           <IconTooltip label="Forward"><Button variant="ghost" size="icon" className="h-7 w-7" onClick={goForward} disabled={historyIndex >= history.length - 1} aria-label="Forward"><ArrowRight className="h-3.5 w-3.5" /></Button></IconTooltip>
           <IconTooltip label="Reload"><Button variant="ghost" size="icon" className="h-7 w-7" onClick={reload} aria-label="Reload"><RotateCw className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`} /></Button></IconTooltip>
 
-          <div className="flex-1 min-w-[160px] flex items-center gap-2 h-7 px-3 rounded-full bg-muted/60 border border-border/60">
+          <form
+            className="flex-1 min-w-[160px] flex items-center gap-2 h-7 px-3 rounded-full bg-muted/60 border border-border/60 focus-within:border-accent/60"
+            onSubmit={(e) => {
+              e.preventDefault();
+              const next = draftUrl.trim();
+              if (!next || next === url) return;
+              const resolved = resolveTyped(next);
+              if (!resolved) {
+                setDraftUrl(url);
+                return;
+              }
+              // Through navigate() so a typed address joins the back/forward
+              // history like a clicked link does.
+              navigate(resolved);
+            }}
+          >
             {isSecure ? <Lock className="h-3 w-3 text-emerald-600 shrink-0" /> : <span className="text-[10px] font-semibold uppercase text-amber-600 shrink-0">http</span>}
-            <span className="truncate text-xs text-muted-foreground font-mono" title={url}>{url}</span>
+            <input
+              type="text"
+              aria-label="Page address"
+              value={draftUrl}
+              title={url}
+              onChange={(e) => setDraftUrl(e.target.value)}
+              onFocus={(e) => e.currentTarget.select()}
+              onBlur={() => setDraftUrl(url)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  setDraftUrl(url);
+                  e.currentTarget.blur();
+                }
+              }}
+              className="flex-1 min-w-0 bg-transparent text-xs text-muted-foreground font-mono outline-none focus:text-foreground"
+              spellCheck={false}
+            />
             {isLoading && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground shrink-0" />}
-          </div>
+          </form>
 
           {!isTrackedPage && onAddCurrentPage && (
             <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs shrink-0" onClick={onAddCurrentPage} disabled={isAddingPage}>
@@ -566,9 +703,9 @@ export default function LiveViewer({
                   <MousePointer2 className="h-3.5 w-3.5" />Browse
                 </button>
               </IconTooltip>
-              <IconTooltip label={isTrackedPage ? 'Click the page to comment, or pick a drawing tool' : 'Add this page to the review first'}>
-                <button type="button" onClick={() => setModeSafely('comment')} aria-pressed={mode === 'comment'} disabled={!isTrackedPage}
-                  className={`h-7 px-2.5 flex items-center gap-1 text-xs transition-colors disabled:opacity-40 ${mode === 'comment' ? 'bg-accent/10 text-accent' : 'text-muted-foreground hover:text-foreground'}`}>
+              <IconTooltip label={isTrackedPage ? 'Click the page to comment, or pick a drawing tool' : 'Comment here — this page joins the review automatically'}>
+                <button type="button" onClick={() => setModeSafely('comment')} aria-pressed={mode === 'comment'}
+                  className={`h-7 px-2.5 flex items-center gap-1 text-xs transition-colors ${mode === 'comment' ? 'bg-accent/10 text-accent' : 'text-muted-foreground hover:text-foreground'}`}>
                   <MessageSquarePlus className="h-3.5 w-3.5" />Comment
                 </button>
               </IconTooltip>
@@ -588,10 +725,28 @@ export default function LiveViewer({
         </div>
       )}
 
-      {/* Drawing tools, shown in comment mode exactly as on an image. */}
-      {!isFullscreen && mode === 'comment' && canComment && canDraw && (
-        <div className="px-3 py-1.5 border-b border-border/50 bg-background shrink-0">
-          <DrawingToolbar activeTool={tool} onToolSelect={setTool} onUndo={onUndoShape} canUndo={canUndo} />
+      {/*
+        Drawing tools sit in the open, as they do on an image. They used to be
+        revealed only after switching to comment mode, which made drawing on a
+        website look like a feature that did not exist. Picking a tool now
+        switches the mode itself, so the toolbar is the way in rather than a
+        reward for having already found the way in.
+      */}
+      {!isFullscreen && canComment && canDraw && (
+        <div className="px-3 py-1.5 border-b border-border/50 bg-background shrink-0 flex items-center gap-3">
+          <DrawingToolbar
+            activeTool={tool}
+            onToolSelect={pickTool}
+            onUndo={onUndoShape}
+            canUndo={canUndo}
+            showEraser={!!onEraseShape}
+          />
+          {mode === 'comment' ? (
+            <span className="text-[11px] text-muted-foreground">
+              {tool ? 'Drag on the page to mark it up.' : 'Click the page to drop a comment pin.'}
+              {!isTrackedPage && ' This page joins the review when you save.'}
+            </span>
+          ) : null}
         </div>
       )}
 
@@ -603,7 +758,7 @@ export default function LiveViewer({
       )}
 
       <div className="flex-1 overflow-auto flex justify-center bg-muted/40">
-        <div className="bg-white shadow-sm transition-[width] duration-200"
+        <div className="relative overflow-hidden bg-white shadow-sm transition-[width] duration-200"
           style={{ width: deviceWidth ? `${deviceWidth}px` : '100%', maxWidth: '100%', height: '100%' }}>
           {loadError ? (
             <div className="h-full flex items-center justify-center p-8 text-center">
@@ -613,15 +768,27 @@ export default function LiveViewer({
               </div>
             </div>
           ) : (
-            <iframe
-              ref={frameRef}
-              key={proxySrc}
-              src={proxySrc}
-              onLoad={handleLoad}
-              title="Website under review"
-              className="w-full h-full border-0 bg-white"
-              sandbox="allow-same-origin allow-scripts allow-forms"
-            />
+            <>
+              <iframe
+                ref={frameRef}
+                key={proxySrc}
+                src={proxySrc}
+                onLoad={handleLoad}
+                title="Website under review"
+                className="w-full h-full border-0 bg-white"
+                sandbox="allow-same-origin allow-scripts allow-forms"
+              />
+              {/* See syncAnchor: the framed document's box, projected here so
+                  the comment modal can measure it. Never visible, never
+                  clickable — it exists only to be measured. */}
+              <div
+                ref={anchorRef}
+                data-annotation-image-container
+                aria-hidden="true"
+                className="absolute pointer-events-none"
+                style={{ display: 'none' }}
+              />
+            </>
           )}
         </div>
       </div>

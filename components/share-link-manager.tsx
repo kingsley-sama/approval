@@ -34,6 +34,7 @@ import {
 } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { Share, Check, Copy } from 'lucide-react';
+import WebsiteTeamAccess from '@/components/website/team-access';
 import { useConfirm } from '@/components/confirm-dialog';
 
 interface ShareLinkManagerProps {
@@ -41,6 +42,8 @@ interface ShareLinkManagerProps {
   resourceId: string;
   createdBy: string;
   resourceName?: string;
+  /** Admins get the team-access controls; members only see the link tools. */
+  isAdmin?: boolean;
   trigger?: React.ReactNode;
 }
 
@@ -89,6 +92,7 @@ export default function ShareLinkManager({
   resourceId,
   createdBy,
   resourceName = 'this resource',
+  isAdmin = false,
   trigger,
 }: ShareLinkManagerProps) {
   const [isOpen, setIsOpen] = useState(false);
@@ -258,6 +262,10 @@ export default function ShareLinkManager({
             Create secure links for clients to access this {RESOURCE_LABELS[resourceType] ?? resourceType}
           </DialogDescription>
         </DialogHeader>
+
+        {resourceType === 'website_project' && isAdmin && (
+          <WebsiteTeamAccess projectId={resourceId} />
+        )}
 
         {EMBED_CONFIG[resourceType] && (
           <div className="space-y-4 py-4 border-b">

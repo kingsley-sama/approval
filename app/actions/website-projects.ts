@@ -278,6 +278,37 @@ export async function deleteWebsiteProject(
   return { success: true };
 }
 
+/**
+ * Who on the team has been given this review.
+ *
+ * Website access was previously only ever written by the share-link redirect,
+ * which meant an admin had no way to hand a review to a colleague short of
+ * sending them a client link. This is what the Share dialog reads.
+ */
+export async function getWebsiteAccessList(
+  projectId: string
+): Promise<{ success: boolean; emails: string[]; error?: string }> {
+  const currentUser = await getUser();
+  if (!currentUser || currentUser.role !== 'admin') {
+    return { success: false, emails: [], error: 'Unauthorized' };
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from('website_project_access')
+    .select('user_email')
+    .eq('project_id', projectId);
+
+  if (error) {
+    console.error('Error reading website access:', error);
+    return { success: false, emails: [], error: error.message };
+  }
+
+  return {
+    success: true,
+    emails: ((data ?? []) as { user_email: string }[]).map((r) => r.user_email),
+  };
+}
+
 export async function grantWebsiteAccess(
   projectId: string,
   userEmail: string

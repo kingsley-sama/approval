@@ -75,6 +75,8 @@ interface ProjectTopNavProps {
 	sidebarsCollapsed?: boolean;
 	onToggleSidebars?: () => void;
 	variant?: WorkspaceVariant;
+	/** Gates the admin-only parts of the share dialog. */
+	userRole?: string;
 	/** Extra controls for the website variant (add pages, etc.). */
 	actions?: React.ReactNode;
 }
@@ -107,6 +109,7 @@ interface ProjectShellProps {
 	currentUser?: string;
 	userRole?: string;
 	sidebarsCollapsed?: boolean;
+	variant?: WorkspaceVariant;
 	children: React.ReactNode;
 }
 
@@ -125,6 +128,7 @@ export function ProjectTopNav({
 	sidebarsCollapsed,
 	onToggleSidebars,
 	variant = 'image',
+	userRole,
 	actions,
 }: ProjectTopNavProps) {
 	const router = useRouter();
@@ -204,6 +208,7 @@ export function ProjectTopNav({
 				resourceId={projectId}
 				createdBy="user"
 				resourceName={projectName}
+				isAdmin={userRole === 'admin'}
 			/>
         </div>
       </header>
@@ -229,6 +234,7 @@ export function ProjectShell({
 	currentUser,
 	userRole,
 	sidebarsCollapsed,
+	variant = 'image',
 	children,
 }: ProjectShellProps) {
 	const showSidebars = !isFullscreen && !sidebarsCollapsed;
@@ -262,6 +268,7 @@ export function ProjectShell({
 					onDeleteImage={onDeleteImage}
 					projectId={projectId}
 					onUploadComplete={onUploadComplete}
+					variant={variant}
 				/>
 			)}
 		</div>

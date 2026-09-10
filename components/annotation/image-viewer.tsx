@@ -80,6 +80,8 @@ interface ImageViewerProps {
   drawnShapes: Shape[];
   pendingShapes: Shape[];
   onShapeComplete: (shape: Shape, center: { x: number; y: number }) => void;
+  /** Erase one not-yet-saved shape by id. Enables the eraser tool. */
+  onEraseShape?: (shapeId: string) => void;
   onUndoShape?: () => void;
   /** Whether the undo control is actionable. Defaults to "has pending shapes"
    *  when omitted; pass explicitly to also cover saved-drawing undo. */
@@ -106,6 +108,7 @@ function ImageViewerInner({
   drawnShapes,
   pendingShapes,
   onShapeComplete,
+  onEraseShape,
   onUndoShape,
   canUndo,
   showDrawingTools = true,
@@ -239,6 +242,13 @@ function ImageViewerInner({
   const shapes = useMemo(
     () => [...drawnShapes, ...pendingShapes],
     [drawnShapes, pendingShapes]
+  );
+
+  // Only strokes not yet attached to a comment are erasable. A saved drawing
+  // belongs to somebody's comment; removing it is undo's job, which confirms.
+  const erasableIds = useMemo(
+    () => new Set(pendingShapes.map(sh => sh.id)),
+    [pendingShapes]
   );
 
   // PDFs and videos are view-only: no zoom/pan, drawing tools, or pins. They
@@ -497,6 +507,7 @@ function ImageViewerInner({
                 onToolSelect={setActiveTool}
                 onUndo={onUndoShape}
                 canUndo={undoEnabled}
+                showEraser={!!onEraseShape}
               />
             </div>
           )}
@@ -632,6 +643,8 @@ function ImageViewerInner({
                 currentColor={DRAWING_COLOR}
                 strokeWidth={STROKE_WIDTH}
                 isEnabled={activeTool !== null}
+                erasableIds={erasableIds}
+                onEraseShape={onEraseShape}
                 onShapeComplete={(shape) => {
                   // Compute the pin anchor from the raw pixel-coord shape (matches
                   // the canvas coords the user just clicked), then normalize the

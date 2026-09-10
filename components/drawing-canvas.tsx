@@ -35,6 +35,13 @@ interface DrawingCanvasProps {
   isEnabled: boolean;
   /** Called when the user finishes drawing a new shape. */
   onShapeComplete?: (shape: Shape) => void;
+  /**
+   * Ids of shapes the eraser may remove — in practice the strokes not yet
+   * attached to a comment. Anything outside this set stays untouchable, so a
+   * stray eraser click cannot take somebody's saved annotation with it.
+   */
+  erasableIds?: ReadonlySet<string>;
+  onEraseShape?: (shapeId: string) => void;
 }
 
 function DrawingCanvasInner({
@@ -46,7 +53,10 @@ function DrawingCanvasInner({
   strokeWidth,
   isEnabled,
   onShapeComplete,
+  erasableIds,
+  onEraseShape,
 }: DrawingCanvasProps) {
+  const erasing = isEnabled && currentTool === 'eraser' && !!onEraseShape;
   const [currentShape, setCurrentShape] = useState<Shape | null>(null);
   const startPoint = useRef<Point>({ x: 0, y: 0 });
 
@@ -106,16 +116,38 @@ function DrawingCanvasInner({
   };
 
   const renderShape = (shape: Shape, key: string) => {
+    // A thin stroke is a small target, so the eraser gets a generous hit area
+    // without changing what is painted.
+    const target = erasing && erasableIds?.has(shape.id);
+    const hit = target
+      ? {
+          listening: true,
+          hitStrokeWidth: Math.max(shape.strokeWidth ?? 3, 14),
+          onClick: () => onEraseShape?.(shape.id),
+          onTap: () => onEraseShape?.(shape.id),
+          onMouseEnter: (e: Konva.KonvaEventObject<MouseEvent>) => {
+            const stage = e.target.getStage();
+            if (stage) stage.container().style.cursor = 'pointer';
+          },
+          onMouseLeave: (e: Konva.KonvaEventObject<MouseEvent>) => {
+            const stage = e.target.getStage();
+            if (stage) stage.container().style.cursor = '';
+          },
+          opacity: 0.75,
+        }
+      : { listening: false };
+
+
     if (shape.type === 'pen') {
-      return <Line key={key} points={shape.points} stroke={shape.color} strokeWidth={shape.strokeWidth} lineCap="round" lineJoin="round" tension={0.5} />;
+      return <Line key={key} {...hit} points={shape.points} stroke={shape.color} strokeWidth={shape.strokeWidth} lineCap="round" lineJoin="round" tension={0.5} />;
     } else if (shape.type === 'rectangle') {
-      return <Rect key={key} x={shape.x} y={shape.y} width={shape.width} height={shape.height} stroke={shape.color} strokeWidth={shape.strokeWidth} fill={shape.fill} />;
+      return <Rect key={key} {...hit} x={shape.x} y={shape.y} width={shape.width} height={shape.height} stroke={shape.color} strokeWidth={shape.strokeWidth} fill={shape.fill} />;
     } else if (shape.type === 'arrow') {
-      return <Arrow key={key} points={shape.points} stroke={shape.color} strokeWidth={shape.strokeWidth} pointerLength={shape.pointerLength} pointerWidth={shape.pointerWidth} fill={shape.color} />;
+      return <Arrow key={key} {...hit} points={shape.points} stroke={shape.color} strokeWidth={shape.strokeWidth} pointerLength={shape.pointerLength} pointerWidth={shape.pointerWidth} fill={shape.color} />;
     } else if (shape.type === 'line') {
-      return <Line key={key} points={shape.points} stroke={shape.color} strokeWidth={shape.strokeWidth} lineCap="round" lineJoin="round" />;
+      return <Line key={key} {...hit} points={shape.points} stroke={shape.color} strokeWidth={shape.strokeWidth} lineCap="round" lineJoin="round" />;
     } else if (shape.type === 'highlight') {
-      return <Rect key={key} x={shape.x} y={shape.y} width={shape.width} height={shape.height} fill={shape.color} opacity={shape.opacity} />;
+      return <Rect key={key} {...hit} x={shape.x} y={shape.y} width={shape.width} height={shape.height} fill={shape.color} opacity={target ? 0.5 : shape.opacity} />;
     }
     return null;
   };

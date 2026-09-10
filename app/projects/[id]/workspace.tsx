@@ -108,7 +108,6 @@ export default function ProjectWorkspace({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [sidebarsCollapsed, setSidebarsCollapsed] = useState(false);
   const [hoveredPin, setHoveredPin] = useState<string | null>(null);
-  const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [isNewPin, setIsNewPin] = useState(false);
   const [pendingPinPos, setPendingPinPos] = useState<{ x: number; y: number } | null>(null);
@@ -222,11 +221,17 @@ export default function ProjectWorkspace({
       setImagesState(mapped);
       if (mapped.length > 0 && !currentImageId) {
         setCurrentImageId(mapped[0].id);
-        setCurrentImageIndex(0);
       }
       drainQueue(syncCallbacks.onSynced, syncCallbacks.onFailed);
     } catch (error) {
       console.error('Failed to refresh project', error);
+      // Silent failure here used to look like "the thing I just did did not
+      // happen" — the page was added, the workspace simply never re-read it.
+      toast({
+        title: 'Could not refresh the workspace',
+        description: 'Your change was saved. Reload the page to see it.',
+        variant: 'destructive',
+      });
     } finally {
       setIsLoading(false);
     }
@@ -312,6 +317,11 @@ export default function ProjectWorkspace({
   // must all leave existing numbers untouched. `dbCommentToPin` already carries
   // the persisted value through, so rendering uses it as-is.
   const currentImage = imagesState.find(img => img.id === currentImageId);
+  // Derived, never stored. Holding the index as its own state meant every path
+  // that set the id without also setting the index — the page picker, a page
+  // added mid-session, a page registered by commenting on it — left the
+  // viewer's "n of m" counter pointing at a different page than the sidebar.
+  const currentImageIndex = Math.max(0, imagesState.findIndex(img => img.id === currentImageId));
   const pins = currentImage?.pins || [];
 
   // ── website reviews: live browsing ──────────────────────────────────────
@@ -320,11 +330,21 @@ export default function ProjectWorkspace({
   const [liveUrl, setLiveUrl] = useState<string>('');
   const [isAddingPage, setIsAddingPage] = useState(false);
 
+  // Which page the framed URL currently belongs to. Selecting a page in the
+  // sidebar must move the frame to it; wandering off that page inside the
+  // frame must NOT be undone by this effect. The ref is what tells the two
+  // apart — it only advances when the frame is deliberately pointed somewhere.
+  const framedPageRef = useRef<string | null>(null);
+
   useEffect(() => {
     if (!isWebsite) return;
-    const source = currentImage?.sourceUrl;
-    if (source) setLiveUrl(prev => (prev ? prev : source));
-  }, [isWebsite, currentImage?.sourceUrl]);
+    const page = currentImage;
+    if (!page?.sourceUrl) return;
+    // Already showing this page (or a URL the reviewer browsed to from it).
+    if (framedPageRef.current === page.id) return;
+    framedPageRef.current = page.id;
+    setLiveUrl(page.sourceUrl);
+  }, [isWebsite, currentImage?.id, currentImage?.sourceUrl]);
 
   const threadForUrl = useCallback(
     (target: string) => imagesState.find(img => img.sourceUrl === target),
@@ -337,11 +357,33 @@ export default function ProjectWorkspace({
   const handleLiveUrlChange = useCallback((next: string) => {
     setLiveUrl(next);
     const match = threadForUrl(next);
-    if (match && match.id !== currentImageId) {
-      setCurrentImageId(match.id);
-      setSelectedPin(null);
+    if (match) {
+      // Claim the page for the frame so the sync effect treats this as
+      // "already showing it" rather than resetting the URL underneath.
+      framedPageRef.current = match.id;
+      if (match.id !== currentImageId) {
+        setCurrentImageId(match.id);
+        setSelectedPin(null);
+      }
     }
   }, [threadForUrl, currentImageId]);
+
+  /**
+   * After the Add pages dialog lands: re-read the workspace, then move to the
+   * first page that was actually new. Landing on it is the confirmation that
+   * the add worked — a silently-refreshed list behind a closed dialog is not.
+   */
+  const handlePagesAdded = useCallback(async (created?: { threadId: string; url: string }[]) => {
+    const known = new Set(imagesState.map(img => img.id));
+    await refreshWorkspaceRef.current();
+    const firstNew = created?.find(page => !known.has(page.threadId));
+    if (firstNew) {
+      framedPageRef.current = firstNew.threadId;
+      setCurrentImageId(firstNew.threadId);
+      setLiveUrl(firstNew.url);
+      setSelectedPin(null);
+    }
+  }, [imagesState]);
 
   const handleAddCurrentPage = useCallback(async () => {
     if (!liveUrl) return;
@@ -402,6 +444,11 @@ export default function ProjectWorkspace({
       setShowModal(true);
     }
   }, [showModal]);
+
+  /** Erase one unsaved stroke by id — the eraser's precise counterpart to undo. */
+  const handleEraseShape = useCallback((shapeId: string) => {
+    setPendingShapes(prev => prev.filter(sh => sh.id !== shapeId));
+  }, []);
 
   // A saved drawing remains undoable on the current image when there are no
   // unsaved strokes left to peel first.
@@ -477,7 +524,29 @@ export default function ProjectWorkspace({
   }, []);
 
   const handleAddComment = async (text: string, attachmentFiles: File[] = []) => {
-    if (!currentImageId || !pendingPinPos) return;
+    if (!pendingPinPos) return;
+
+    // A website reviewer can browse the whole site, not just the pages someone
+    // remembered to add. Commenting on an untracked page registers it first, so
+    // "navigate anywhere and annotate" needs no bookkeeping from the reviewer.
+    let targetImageId = currentImageId;
+    if (isWebsite && liveUrl && !threadForUrl(liveUrl)) {
+      const added = await ensureWebsitePage(projectId, liveUrl);
+      if (!added.success || !added.threadId) {
+        toast({
+          title: 'Could not add this page',
+          description: added.error ?? 'The comment was not saved.',
+          variant: 'destructive',
+        });
+        return;
+      }
+      targetImageId = added.threadId;
+      await refreshWorkspaceRef.current();
+      framedPageRef.current = added.threadId;
+      setCurrentImageId(added.threadId);
+    }
+
+    if (!targetImageId) return;
     // Provisional number for the optimistic pin only, so it reads sensibly for
     // the moment before the server responds. The authoritative number is
     // allocated server-side from the project counter and replaces this when the
@@ -492,7 +561,7 @@ export default function ProjectWorkspace({
 
     // 1. Enqueue locally — instant, no network wait
     const drawingPayload = pendingShapes.length > 0 ? pendingShapes : undefined;
-    const queued = enqueue(currentImageId, text, currentUserName, pendingPinPos.x, pendingPinPos.y, pinNumber, drawingPayload);
+    const queued = enqueue(targetImageId, text, currentUserName, pendingPinPos.x, pendingPinPos.y, pinNumber, drawingPayload);
     // Store any attachment files keyed by localId — uploaded after the comment syncs
     if (attachmentFiles.length > 0) {
       pendingAttachments.current.set(queued.localId, attachmentFiles);
@@ -501,7 +570,7 @@ export default function ProjectWorkspace({
 
     // 2. Add pin to UI state immediately
     setImagesState(prev => prev.map(img =>
-      img.id === currentImageId
+      img.id === targetImageId
         ? { ...img, pins: [...img.pins, localPin] }
         : img
     ));
@@ -642,13 +711,10 @@ export default function ProjectWorkspace({
       const missing = prev.filter(img => !orderedIds.includes(img.id));
       return [...reordered, ...missing];
     });
-    const newIndex = orderedIds.indexOf(currentImageId);
-    if (newIndex !== -1) setCurrentImageIndex(newIndex);
 
     reorderThreads(projectId, orderedIds).then(res => {
       if (!res.success) {
         setImagesState(snapshot);
-        setCurrentImageIndex(snapshot.findIndex(img => img.id === currentImageId));
         toast({
           title: 'Failed to reorder images',
           description: res.error ?? 'Please try again.',
@@ -678,7 +744,6 @@ export default function ProjectWorkspace({
     if (!confirmed) return;
 
     const snapshot = imagesState;
-    const snapshotIndex = currentImageIndex;
     const remaining = imagesState.filter(img => img.id !== imageId);
 
     setImagesState(remaining);
@@ -688,32 +753,23 @@ export default function ProjectWorkspace({
       const nextIndex = Math.min(removedIndex, remaining.length - 1);
       const next = remaining[nextIndex];
       setCurrentImageId(next?.id ?? '');
-      setCurrentImageIndex(next ? nextIndex : 0);
       setSelectedPin(null);
       setShowModal(false);
-    } else {
-      const reindexed = remaining.findIndex(img => img.id === currentImageId);
-      if (reindexed !== -1) setCurrentImageIndex(reindexed);
     }
 
     const result = await deleteThread(imageId, projectId);
     if (!result.success) {
       setImagesState(snapshot);
       setCurrentImageId(currentImageId);
-      setCurrentImageIndex(snapshotIndex);
       toast({
         title: 'Failed to delete image',
         description: result.error ?? 'Please try again.',
         variant: 'destructive',
       });
     }
-  }, [imagesState, currentImageId, currentImageIndex, projectId, confirm, toast]);
+  }, [imagesState, currentImageId, projectId, confirm, toast]);
 
   const handleSwitchImage = useCallback((imageId: string) => {
-    const index = imagesState.findIndex(img => img.id === imageId);
-    if (index !== -1) {
-      setCurrentImageIndex(index);
-    }
     setCurrentImageId(imageId);
     setSelectedPin(null);
     setShowModal(false);
@@ -756,10 +812,8 @@ export default function ProjectWorkspace({
   const handleNavigateImages = useCallback((direction: 'prev' | 'next') => {
     if (direction === 'prev' && currentImageIndex > 0) {
       handleSwitchImage(imagesState[currentImageIndex - 1].id);
-      setCurrentImageIndex(currentImageIndex - 1);
     } else if (direction === 'next' && currentImageIndex < imagesState.length - 1) {
       handleSwitchImage(imagesState[currentImageIndex + 1].id);
-      setCurrentImageIndex(currentImageIndex + 1);
     }
   }, [currentImageIndex, imagesState, handleSwitchImage]);
 
@@ -849,11 +903,12 @@ export default function ProjectWorkspace({
         sidebarsCollapsed={sidebarsCollapsed}
         onToggleSidebars={() => setSidebarsCollapsed(v => !v)}
         variant={variant}
+        userRole={currentUserRole}
         actions={
           isWebsite ? (
             <AddPagesModal
               projectId={projectId}
-              onAdded={refreshWorkspace}
+              onAdded={handlePagesAdded}
             />
           ) : undefined
         }
@@ -891,6 +946,7 @@ export default function ProjectWorkspace({
         currentUser={currentUserName}
         userRole={currentUserRole}
         sidebarsCollapsed={sidebarsCollapsed}
+        variant={variant}
       >
 
         {imagesState.length === 0 ? (
@@ -913,7 +969,7 @@ export default function ProjectWorkspace({
                 <div className="flex justify-center">
                   <AddPagesModal
                     projectId={projectId}
-                    onAdded={refreshWorkspace}
+                    onAdded={handlePagesAdded}
                   />
                 </div>
               </div>
@@ -968,6 +1024,7 @@ export default function ProjectWorkspace({
             drawnShapes={drawnShapes}
             pendingShapes={pendingShapes}
             onShapeComplete={handleShapeComplete}
+            onEraseShape={handleEraseShape}
             onUndoShape={handleUndoShape}
             canUndo={canUndo}
             isFullscreen={isFullscreen}
@@ -988,6 +1045,7 @@ export default function ProjectWorkspace({
             pendingShapes={pendingShapes}
             currentImageName={currentImage?.name}
             onShapeComplete={handleShapeComplete}
+            onEraseShape={handleEraseShape}
             onUndoShape={handleUndoShape}
             canUndo={canUndo}
             onPinClick={handlePinClick}
