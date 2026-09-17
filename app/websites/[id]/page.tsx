@@ -3,7 +3,6 @@ import { notFound } from 'next/navigation';
 import { getProjectNameForMetadata } from '@/lib/metadata/project-name';
 import { getProjectWorkspaceData } from '@/app/actions/threads';
 import { getWebsiteProjectMeta } from '@/app/actions/website-projects';
-import { hasWebsiteProjectAccess } from '@/lib/auth/require-user';
 import { Lock } from 'lucide-react';
 import ProjectWorkspace from '@/app/projects/[id]/workspace';
 
@@ -38,7 +37,7 @@ export default async function WebsiteProjectPage({ params, searchParams }: Websi
   // Say so here rather than letting the workspace render and the framed site
   // fail with "You do not have access to this review" inside it. A member who
   // has not been given the review should be told, not handed broken chrome.
-  if (!(await hasWebsiteProjectAccess(id))) {
+  if (!meta.hasAccess) {
     return (
       <div className="flex h-screen items-center justify-center bg-background p-6">
         <div className="max-w-sm text-center">

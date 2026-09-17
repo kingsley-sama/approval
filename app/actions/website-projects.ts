@@ -193,19 +193,35 @@ export interface WebsiteProjectMeta {
   name: string;
   siteUrl: string | null;
   settings: CaptureSettings;
+  hasAccess: boolean;
 }
 
 /** Site URL + capture settings for the workspace header and the add-pages form. */
 export async function getWebsiteProjectMeta(projectId: string): Promise<WebsiteProjectMeta | null> {
-  await requireUser();
+  const user = await requireUser();
 
-  const { data } = await supabaseAdmin
-    .from('markup_projects')
-    .select('id, project_name, site_url, capture_defaults, kind')
-    .eq('id', projectId)
-    .maybeSingle();
+  const [projectResult, accessResult] = await Promise.all([
+    supabaseAdmin
+      .from('markup_projects')
+      .select('id, project_name, site_url, capture_defaults, kind')
+      .eq('id', projectId)
+      .maybeSingle(),
+    user.role === 'admin' || !user.email
+      ? Promise.resolve({ data: null, error: null })
+      : supabaseAdmin
+          .from('website_project_access')
+          .select('project_id')
+          .eq('project_id', projectId)
+          .eq('user_email', user.email)
+          .maybeSingle(),
+  ]);
 
-  const row = data as {
+  if (projectResult.error) {
+    console.error('Error fetching website project metadata:', projectResult.error);
+    return null;
+  }
+
+  const row = projectResult.data as {
     id: string;
     project_name: string;
     site_url: string | null;
@@ -220,6 +236,7 @@ export async function getWebsiteProjectMeta(projectId: string): Promise<WebsiteP
     name: row.project_name,
     siteUrl: row.site_url,
     settings: normalizeCaptureSettings(row.capture_defaults),
+    hasAccess: user.role === 'admin' || Boolean(accessResult.data),
   };
 }
 
