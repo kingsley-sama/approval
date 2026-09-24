@@ -34,6 +34,8 @@ interface ThumbnailsSidebarProps {
    * nothing to upload — pages are added by address, from the viewer.
    */
   variant?: 'image' | 'website';
+  /** Share token, so guests on a share link can load page thumbnails. */
+  shareToken?: string;
 }
 
 /**
@@ -74,9 +76,35 @@ function ThumbnailImage({ url, alt }: { url: string; alt: string }) {
 }
 
 /**
- * PDFs, videos and live website pages have no image thumbnail, so show a
- * labelled icon tile. A live page is a URL the workspace opens in a frame —
- * there is no stored screenshot to show.
+ * A website page's tile: a rendering of the page as it first appears, made on
+ * the server the first time it is asked for (which can take a few seconds).
+ * The globe tile shows until it arrives, and stays if the page can't be
+ * rendered.
+ */
+function PageThumbnail({ threadId, alt, shareToken }: { threadId: string; alt: string; shareToken?: string }) {
+  const [state, setState] = useState<'loading' | 'ready' | 'failed'>('loading');
+  const src = `/api/websites/thumbnail/${threadId}${shareToken ? `?token=${encodeURIComponent(shareToken)}` : ''}`;
+  return (
+    <>
+      {state !== 'ready' && <MediaPlaceholder kind="page" />}
+      {state !== 'failed' && (
+        // eslint-disable-next-line @next/next/no-img-element -- served from Storage via redirect, see ThumbnailImage
+        <img
+          src={src}
+          alt={alt}
+          loading="lazy"
+          decoding="async"
+          className={`w-full h-full object-cover object-left-top ${state === 'ready' ? '' : 'absolute inset-0 opacity-0'}`}
+          onLoad={() => setState('ready')}
+          onError={() => setState('failed')}
+        />
+      )}
+    </>
+  );
+}
+
+/**
+ * PDFs, videos, and website pages without a thumbnail get a labelled icon tile.
  */
 function MediaPlaceholder({ kind }: { kind: 'pdf' | 'video' | 'page' }) {
   const Icon = kind === 'pdf' ? FileText : kind === 'video' ? Film : Globe;
@@ -98,6 +126,7 @@ export default function ThumbnailsSidebar({
   onUploadComplete,
   readOnly = false,
   variant = 'image',
+  shareToken,
 }: ThumbnailsSidebarProps) {
   const isWebsite = variant === 'website';
   const noun = isWebsite ? 'page' : 'image';
@@ -246,7 +275,9 @@ export default function ThumbnailsSidebar({
             >
               {kind === 'image'
                 ? <ThumbnailImage url={img.url} alt={img.name} />
-                : <MediaPlaceholder kind={kind} />}
+                : kind === 'page'
+                  ? <PageThumbnail threadId={img.id} alt={img.name} shareToken={shareToken} />
+                  : <MediaPlaceholder kind={kind} />}
               {reorderable && (
                 <span
                   className="absolute top-1 left-1 p-0.5 rounded bg-black/40 text-white opacity-0 group-hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing"

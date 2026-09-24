@@ -165,11 +165,118 @@ async function main() {
     .select('id');
   console.log('retired', (retired ?? []).length, 'pin(s) from earlier runs (resolved, not deleted)');
 
+  await seedWebsiteReview(now);
+
   const { count } = await supabase
     .from('markup_threads')
     .select('id', { count: 'exact', head: true })
     .eq('project_id', FIXTURE_PROJECT_ID);
   console.log(`\nready — project holds ${count} image(s)`);
+}
+
+/** A website review over example.com, for the viewer tests (e2e/website-viewer.spec.ts). */
+export const WEBSITE_FIXTURE_PROJECT_ID = '0d7c3f5e-1a2b-4c3d-8e9f-5a6b7c8d9e01';
+export const WEBSITE_FIXTURE_TOKEN = 'playwright-test-website-token';
+const WEBSITE_HOME_THREAD = '0d7c3f5e-1a2b-4c3d-8e9f-5a6b7c8d9e02';
+const WEBSITE_OTHER_THREAD = '0d7c3f5e-1a2b-4c3d-8e9f-5a6b7c8d9e03';
+
+/**
+ * Pins covering each way the viewer places one: anchored to an element, two
+ * anchored to the same spot (they must fan out), one from before anchors
+ * existed (a bare percentage), one placed in the mobile view, and one on a
+ * second page (it must never show on the first). Fixed ids and upserts, so a
+ * re-run restores them — including any a test dragged elsewhere.
+ */
+async function seedWebsiteReview(now) {
+  const { error: projectError } = await supabase.from('markup_projects').upsert(
+    {
+      id: WEBSITE_FIXTURE_PROJECT_ID,
+      project_name: 'Playwright Website Review',
+      kind: 'website',
+      site_url: 'https://example.com/',
+      total_threads: 2,
+      total_screenshots: 0,
+      updated_at: now,
+    },
+    { onConflict: 'id' }
+  );
+  if (projectError) throw projectError;
+
+  const threads = [
+    { id: WEBSITE_HOME_THREAD, name: 'Home', url: 'https://example.com/', index: 0 },
+    { id: WEBSITE_OTHER_THREAD, name: 'Other', url: 'https://example.com/other', index: 1 },
+  ];
+  for (const t of threads) {
+    const { error } = await supabase.from('markup_threads').upsert(
+      {
+        id: t.id,
+        project_id: WEBSITE_FIXTURE_PROJECT_ID,
+        thread_name: t.name,
+        source_url: t.url,
+        image_index: t.index,
+        capture_status: 'ready',
+        capture_version: 1,
+        updated_at: now,
+      },
+      { onConflict: 'id' }
+    );
+    if (error) throw error;
+  }
+
+  const base = { docWidth: 1184, docHeight: 788, pageUrl: 'https://example.com/' };
+  const comments = [
+    { id: 'pw-web-h1', thread: WEBSITE_HOME_THREAD, n: 1, x: 30, y: 20, text: 'Anchored to the heading',
+      anchor: { ...base, selector: 'body > div > h1', xPct: 10, yPct: 50, pageX: 300, pageY: 150, device: 'desktop' } },
+    { id: 'pw-web-p-a', thread: WEBSITE_HOME_THREAD, n: 2, x: 30, y: 30, text: 'Overlap A',
+      anchor: { ...base, selector: 'body > div > p:nth-of-type(1)', xPct: 20, yPct: 50, pageX: 350, pageY: 230, device: 'desktop' } },
+    { id: 'pw-web-p-b', thread: WEBSITE_HOME_THREAD, n: 3, x: 30, y: 30, text: 'Overlap B',
+      anchor: { ...base, selector: 'body > div > p:nth-of-type(1)', xPct: 20, yPct: 50, pageX: 350, pageY: 230, device: 'desktop' } },
+    { id: 'pw-web-legacy', thread: WEBSITE_HOME_THREAD, n: 4, x: 50, y: 80, text: 'Placed before anchors', anchor: null },
+    { id: 'pw-web-mobile', thread: WEBSITE_HOME_THREAD, n: 5, x: 60, y: 20, text: 'Placed in the mobile view',
+      anchor: { ...base, selector: 'body > div > p:nth-of-type(2)', xPct: 50, yPct: 50, pageX: 600, pageY: 300, device: 'mobile' } },
+    { id: 'pw-web-other', thread: WEBSITE_OTHER_THREAD, n: 6, x: 40, y: 40, text: 'On the other page', anchor: null },
+  ];
+  for (const c of comments) {
+    const { error } = await supabase.from('markup_comments').upsert(
+      {
+        id: c.id,
+        thread_id: c.thread,
+        user_name: 'Playwright',
+        content: c.text,
+        pin_number: c.n,
+        comment_index: c.n,
+        display_number: c.n,
+        x_position: c.x,
+        y_position: c.y,
+        anchor: c.anchor,
+        status: 'active',
+        type: 'comment',
+        updated_at: now,
+      },
+      { onConflict: 'id' }
+    );
+    if (error) throw error;
+  }
+
+  const { data: existing } = await supabase
+    .from('share_links')
+    .select('id')
+    .eq('token', WEBSITE_FIXTURE_TOKEN)
+    .maybeSingle();
+  const link = {
+    token: WEBSITE_FIXTURE_TOKEN,
+    resource_type: 'website_project',
+    resource_id: WEBSITE_FIXTURE_PROJECT_ID,
+    permissions: 'comment',
+    created_by: 'testadmin@revision.test',
+    is_active: true,
+    expires_at: null,
+  };
+  const { error: linkError } = existing
+    ? await supabase.from('share_links').update(link).eq('id', existing.id)
+    : await supabase.from('share_links').insert(link);
+  if (linkError) throw linkError;
+  console.log('website', WEBSITE_FIXTURE_PROJECT_ID, `share ${WEBSITE_FIXTURE_TOKEN}`, `${comments.length} pins`);
 }
 
 main().catch((err) => {

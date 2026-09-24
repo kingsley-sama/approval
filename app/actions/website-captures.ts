@@ -25,7 +25,7 @@ import {
   type ViewportLabel,
 } from '@/lib/website/viewports';
 import { refreshProjectCounts } from '@/lib/website/project-counts';
-import { derivePageName, safeUrlString, UnsafeUrlError } from '@/lib/website/url';
+import { derivePageName, pageKey, safeUrlString, UnsafeUrlError } from '@/lib/website/url';
 import { AddWebsitePagesSchema, RecaptureThreadSchema } from '@/lib/validation/schemas';
 
 export interface CreatedPage {
@@ -42,7 +42,7 @@ export interface CreatePagesResult {
 
 /**
  * Registers URLs as reviewable pages. No screenshot is taken — the workspace
- * frames the live site through /api/websites/proxy, so a page is just a row
+ * frames the live site through /api/websites/p/…, so a page is just a row
  * holding its URL that comments can hang off.
  *
  * A page with no `image_path` is what tells the rest of the app this thread is
@@ -77,17 +77,19 @@ export async function createWebsitePages(
     .eq('project_id', projectId)
     .not('source_url', 'is', null);
 
+  // Keyed by page identity, not the literal string: `/about` and `/about/`
+  // (or a utm-tagged link) are the same page and must not become two.
   const existing = new Map(
     ((existingRows ?? []) as { id: string; source_url: string | null }[])
       .filter((r) => r.source_url)
-      .map((r) => [r.source_url as string, r.id])
+      .map((r) => [pageKey(r.source_url as string), r.id])
   );
 
   const pages: CreatedPage[] = [];
   let index = await nextImageIndex(projectId);
 
   for (const url of safe) {
-    const already = existing.get(url);
+    const already = existing.get(pageKey(url));
     if (already) {
       pages.push({ threadId: already, url });
       continue;
@@ -113,7 +115,7 @@ export async function createWebsitePages(
       continue;
     }
     const id = (thread as { id: string }).id;
-    existing.set(url, id);
+    existing.set(pageKey(url), id);
     pages.push({ threadId: id, url });
   }
 

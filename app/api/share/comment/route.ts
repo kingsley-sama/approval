@@ -4,6 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { parsePinAnchor } from '@/lib/website/anchor-schema';
 import { validateShareToken } from '@/app/actions/share-links';
 import { supabaseAdmin as supabase } from '@/lib/supabase';
 import { checkRateLimit } from '@/lib/rate-limit';
@@ -46,6 +47,8 @@ const CommentSchema = z.object({
   xPosition: z.coerce.number().optional().default(50).transform(clampPercent),
   yPosition: z.coerce.number().optional().default(50).transform(clampPercent),
   drawingData: z.any().optional().transform(normalizeDrawingPayload),
+  // Website reviews: the element the pin is attached to. Malformed → dropped.
+  anchor: z.unknown().optional().transform(parsePinAnchor),
 });
 
 export async function POST(request: NextRequest) {
@@ -149,6 +152,7 @@ export async function POST(request: NextRequest) {
       display_number: nextIndex,
       x_position: validated.xPosition,
       y_position: validated.yPosition,
+      ...(validated.anchor ? { anchor: validated.anchor } : {}),
       status: 'active',
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),

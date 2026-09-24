@@ -28,19 +28,22 @@ function BlurImage({
   alt,
   placeholderClass,
   eager = false,
+  round = 'rounded-xl',
 }: {
   src: string
   alt: string
   placeholderClass: string
   eager?: boolean
+  round?: string
 }) {
   const [loaded, setLoaded] = React.useState(false)
+  const ownThumbnail = src.startsWith('/api/')
 
   return (
     <div className="relative w-full h-full">
       {/* Shimmer placeholder — hidden once image is loaded */}
       <div
-        className={`absolute inset-0 rounded-xl overflow-hidden transition-opacity duration-300 ${
+        className={`absolute inset-0 ${round} overflow-hidden transition-opacity duration-300 ${
           loaded ? 'opacity-0 pointer-events-none' : 'opacity-100'
         } ${placeholderClass}`}
         aria-hidden
@@ -50,17 +53,35 @@ function BlurImage({
       </div>
 
       {/* Real image — fades + unblurs in */}
-      <NextImage
-        src={src}
-        alt={alt}
-        fill
-        sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, (max-width: 1280px) 33vw, 25vw"
-        loading={eager ? 'eager' : 'lazy'}
-        onLoad={() => setLoaded(true)}
-        className={`object-cover rounded-xl transition-all duration-500 ease-out ${
-          loaded ? 'opacity-100 blur-0 scale-100' : 'opacity-0 blur-md scale-[1.04]'
-        }`}
-      />
+      {ownThumbnail ? (
+        // Thumbnails this app serves itself bypass the optimizer: it fetches
+        // the URL from the server, without the viewer's session, and an
+        // access-checked route rightly refuses that (a 400 and a blank card).
+        // They are already thumbnail-sized, so there is nothing to optimize.
+        // eslint-disable-next-line @next/next/no-img-element -- see above
+        <img
+          src={src}
+          alt={alt}
+          loading={eager ? 'eager' : 'lazy'}
+          decoding="async"
+          onLoad={() => setLoaded(true)}
+          className={`absolute inset-0 w-full h-full object-cover ${round} transition-all duration-500 ease-out ${
+            loaded ? 'opacity-100 blur-0 scale-100' : 'opacity-0 blur-md scale-[1.04]'
+          }`}
+        />
+      ) : (
+        <NextImage
+          src={src}
+          alt={alt}
+          fill
+          sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, (max-width: 1280px) 33vw, 25vw"
+          loading={eager ? 'eager' : 'lazy'}
+          onLoad={() => setLoaded(true)}
+          className={`object-cover ${round} transition-all duration-500 ease-out ${
+            loaded ? 'opacity-100 blur-0 scale-100' : 'opacity-0 blur-md scale-[1.04]'
+          }`}
+        />
+      )}
     </div>
   )
 }
@@ -97,6 +118,10 @@ type ProjectCardProps = {
   basePath?: string
   /** Resource type used by the card's share button. Defaults to 'project'. */
   shareResourceType?: ShareResourceType
+  /** Square corners instead of the default rounded ones. */
+  squareCorners?: boolean
+  /** Height of the picture area. Defaults to h-[200px]. */
+  mediaHeightClass?: string
 }
 
 const Tip: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
@@ -108,7 +133,10 @@ const Tip: React.FC<{ label: string; children: React.ReactNode }> = ({ label, ch
   </div>
 )
 
-export default function ProjectCard({ project, onOpen, onDuplicate, onDelete, onRename, isAdmin = false, isSelected = false, onSelect, index = 0, basePath = '/projects', shareResourceType = 'project' }: ProjectCardProps) {
+export default function ProjectCard({ project, onOpen, onDuplicate, onDelete, onRename, isAdmin = false, isSelected = false, onSelect, index = 0, basePath = '/projects', shareResourceType = 'project', squareCorners = false, mediaHeightClass = 'h-[200px]' }: ProjectCardProps) {
+  // One switch for every corner on the card, so the picture, its shimmer and
+  // the hover overlay never disagree about their shape.
+  const round = squareCorners ? 'rounded-none' : 'rounded-xl'
   const [isHovered, setIsHovered] = React.useState(false)
   const [activeIndex, setActiveIndex] = React.useState(0)
   const [menuOpen, setMenuOpen] = React.useState(false)
@@ -145,17 +173,17 @@ export default function ProjectCard({ project, onOpen, onDuplicate, onDelete, on
   return (
     <div
       style={{ animationDelay: `${delayMs}ms` }}
-      className={`animate-card-enter bg-muted p-2 rounded-xl transition-shadow duration-300 cursor-pointer hover:shadow-lg ${isSelected ? 'ring-2 ring-primary' : ''}`}
+      className={`animate-card-enter bg-muted p-2 ${round} transition-shadow duration-300 cursor-pointer hover:shadow-lg ${isSelected ? 'ring-2 ring-primary' : ''}`}
       onClick={() => onOpen(project)}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => { setIsHovered(false); setMenuOpen(false) }}
     >
       {/* ── Thumbnail area — fixed height ── */}
-      <div className="relative h-[200px] rounded-2xl">
+      <div className={`relative ${mediaHeightClass} ${squareCorners ? 'rounded-none' : 'rounded-2xl'}`}>
 
         {/* Hover overlay */}
         {isHovered && (
-          <div className="absolute inset-0 z-10 backdrop-blur-sm bg-black/50 flex flex-col rounded-xl">
+          <div className={`absolute inset-0 z-10 backdrop-blur-sm bg-black/50 flex flex-col ${round}`}>
 
             {/* Top bar */}
             <div className="flex items-center justify-between px-2 pt-2">
@@ -267,6 +295,7 @@ export default function ProjectCard({ project, onOpen, onDuplicate, onDelete, on
                   alt={`${project.title} — slide ${i + 1}`}
                   placeholderClass={project.color}
                   eager={i === 0 && index < 4}
+                  round={round}
                 />
               </div>
             ))}
@@ -288,7 +317,7 @@ export default function ProjectCard({ project, onOpen, onDuplicate, onDelete, on
           </>
         ) : (
           /* Placeholder — colored card preview */
-          <div className={`absolute inset-0 ${project.color} flex items-center justify-center rounded-xl`}>
+          <div className={`absolute inset-0 ${project.color} flex items-center justify-center ${round}`}>
             <div className="w-3/4 h-3/4 bg-white/40 rounded-lg shadow-md transform -rotate-3 p-3 space-y-2">
               <div className="h-2 w-3/4 bg-foreground/10 rounded-full" />
               <div className="h-2 w-1/2 bg-foreground/10 rounded-full" />

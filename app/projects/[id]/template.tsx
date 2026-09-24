@@ -1,5 +1,6 @@
 'use client';
 
+import type { PinAnchor } from '@/lib/website/anchor-schema';
 import React from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
@@ -39,6 +40,8 @@ export interface ProjectPin {
 	drawingData?: Shape | Shape[];
 	attachments?: (AttachmentRecord & { signedUrl: string })[];
 	replyCount?: number;
+	/** Website reviews: the element the pin is attached to. */
+	anchor?: PinAnchor | null;
 }
 
 export interface ProjectImageData {

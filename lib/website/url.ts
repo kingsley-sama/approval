@@ -154,3 +154,39 @@ export function parseUrlList(input: string): string[] {
     .map((s) => s.trim())
     .filter(Boolean);
 }
+
+/** Query parameters that never change what a page shows. */
+const TRACKING_PARAMS = /^(utm_[a-z]+|gclid|fbclid|msclkid|mc_cid|mc_eid|_ga|_gl|__rvt)$/i;
+
+/**
+ * The identity of a page for matching purposes: `http://www.site.de/about/`,
+ * `https://site.de/about#team` and `https://site.de/about?utm_source=x` are
+ * all the same page. Used wherever a URL in the frame is matched to a page of
+ * the review, so the workspace, the share view and page registration agree.
+ */
+export function pageKey(input: string): string {
+  try {
+    const u = new URL(input);
+    const host = u.hostname.toLowerCase().replace(/^www\./, '');
+    const path = u.pathname.replace(/\/+$/, '') || '/';
+    const params = Array.from(u.searchParams.entries())
+      .filter(([k]) => !TRACKING_PARAMS.test(k))
+      .sort(([a], [b]) => a.localeCompare(b));
+    const qs = params.length ? `?${new URLSearchParams(params).toString()}` : '';
+    return `${host}${path}${qs}`;
+  } catch {
+    return input.trim();
+  }
+}
+
+export function samePage(a: string | null | undefined, b: string | null | undefined): boolean {
+  if (!a || !b) return false;
+  return pageKey(a) === pageKey(b);
+}
+
+/** The page of the review a URL belongs to, if any. */
+export function matchPage<T extends { sourceUrl?: string | null }>(url: string | null | undefined, pages: T[]): T | undefined {
+  if (!url) return undefined;
+  const key = pageKey(url);
+  return pages.find((p) => p.sourceUrl && pageKey(p.sourceUrl) === key);
+}

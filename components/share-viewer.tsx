@@ -31,6 +31,8 @@ import { useConfirm } from '@/components/confirm-dialog';
 import type { ShareLink } from '@/app/actions/share-links';
 import type { Shape } from '@/types/drawing';
 import type { AttachmentRecord } from '@/app/actions/storage';
+import type { PinAnchor } from '@/lib/website/anchor-schema';
+import { samePage } from '@/lib/website/url';
 import {
   uploadShareCommentAttachments,
   deleteShareCommentAttachment,
@@ -50,6 +52,8 @@ interface Pin {
   status: 'active' | 'resolved';
   drawingData?: Shape | Shape[];
   attachments?: (AttachmentRecord & { signedUrl: string })[];
+  /** Website reviews: the element the pin is attached to. */
+  anchor?: PinAnchor | null;
 }
 
 interface ThreadData {
@@ -94,6 +98,7 @@ function dbCommentToPin(
     status: c.status === 'resolved' ? 'resolved' : 'active',
     drawingData: c.drawing_data ?? undefined,
     attachments: attachmentsByComment?.[c.id] ?? [],
+    anchor: c.anchor ?? null,
   };
 }
 
@@ -135,7 +140,7 @@ export default function ShareViewer({ shareLink, resourceData, token, website }:
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [modalPosition, setModalPosition] = useState({ x: 0, y: 0 });
-  const [pendingPinPos, setPendingPinPos] = useState<{ x: number; y: number } | null>(null);
+  const [pendingPinPos, setPendingPinPos] = useState<{ x: number; y: number; anchor?: PinAnchor } | null>(null);
   const [pendingShapes, setPendingShapes] = useState<Shape[]>([]);
   const [selectedPin, setSelectedPin] = useState<string | null>(null);
   const [isNewPin, setIsNewPin] = useState(false);
@@ -185,7 +190,7 @@ export default function ShareViewer({ shareLink, resourceData, token, website }:
   // position: the supplier and the project owner quote these numbers to each
   // other, so both views must show the same immutable number for a comment.
   const currentThread = threads[currentIndex];
-  const pins = currentThread?.pins || [];
+  const threadPins = currentThread?.pins || [];
 
   // ── website reviews: which page the frame is showing ────────────────────
   // A guest may follow links off the reviewed page, so the address is its own
@@ -199,16 +204,32 @@ export default function ShareViewer({ shareLink, resourceData, token, website }:
     if (next) setLiveUrl(next);
   }, [website, currentThread?.sourceUrl]);
 
-  const sameAddress = (a: string, b: string) => {
-    try {
-      const ua = new URL(a), ub = new URL(b);
-      return ua.origin === ub.origin && ua.pathname.replace(/\/$/, '') === ub.pathname.replace(/\/$/, '');
-    } catch { return a === b; }
-  };
+  // Same notion of "the same page" as the workspace (lib/website/url).
   const liveThreadIndex = website && liveUrl
-    ? threads.findIndex(t => t.sourceUrl && sameAddress(t.sourceUrl, liveUrl))
+    ? threads.findIndex(t => samePage(t.sourceUrl, liveUrl))
     : -1;
   const isTrackedPage = liveThreadIndex !== -1;
+
+  // Pins belong to the page in the frame. On a page that is not part of the
+  // review there are none — the previous page's must not stay up over it.
+  const pins = useMemo(
+    () => (website && liveUrl && !isTrackedPage ? [] : threadPins),
+    [website, liveUrl, isTrackedPage, threadPins],
+  );
+
+  /** The frame moved: whatever was being written belongs to the old page. */
+  const liveUrlRef = useRef(liveUrl);
+  liveUrlRef.current = liveUrl;
+  const handleFrameUrlChange = useCallback((next: string) => {
+    if (!samePage(liveUrlRef.current, next)) {
+      setShowModal(false);
+      setIsNewPin(false);
+      setSelectedPin(null);
+      setPendingPinPos(null);
+      setPendingShapes([]);
+    }
+    setLiveUrl(next);
+  }, []);
 
   // Following a link to another page of the review moves the whole screen —
   // sidebar, pin numbering and all — onto that page's thread.
@@ -237,9 +258,9 @@ export default function ShareViewer({ shareLink, resourceData, token, website }:
     return Array.isArray(pin.drawingData) ? pin.drawingData : [pin.drawingData];
   })();
 
-  const handleImageClick = (x: number, y: number) => {
+  const handleImageClick = (x: number, y: number, anchor?: PinAnchor) => {
     if (!canComment || !nameConfirmed) return;
-    setPendingPinPos({ x, y });
+    setPendingPinPos({ x, y, anchor });
     setModalPosition({ x, y });
     setSelectedPin(null);
     setIsNewPin(true);
@@ -325,10 +346,10 @@ export default function ShareViewer({ shareLink, resourceData, token, website }:
       });
   }, [pendingShapes.length, threads, currentIndex, isOwnSavedDrawing, selectedPin, token, guestName, confirm, toast]);
 
-  const handleShapeComplete = (shape: Shape, center: { x: number; y: number }) => {
+  const handleShapeComplete = (shape: Shape, center: { x: number; y: number }, anchor?: PinAnchor) => {
     if (!canComment || !nameConfirmed) return;
     setPendingShapes(prev => [...prev, shape]);
-    setPendingPinPos(prev => prev ?? center);
+    setPendingPinPos(prev => prev ?? { ...center, anchor });
     setModalPosition(prev => (showModal ? prev : center));
     if (!showModal) {
       setSelectedPin(null);
@@ -548,6 +569,7 @@ export default function ShareViewer({ shareLink, resourceData, token, website }:
       timestamp: new Date().toLocaleDateString(),
       status: 'active',
       drawingData: pendingShapes.length > 0 ? pendingShapes : undefined,
+      anchor: pendingPinPos.anchor ?? null,
     };
     setThreads(prev =>
       prev.map((t, i) => i === currentIndex ? { ...t, pins: [...t.pins, optimisticPin] } : t),
@@ -573,6 +595,7 @@ export default function ShareViewer({ shareLink, resourceData, token, website }:
           xPosition: savedPos.x,
           yPosition: savedPos.y,
           drawingData: savedShapes.length > 0 ? savedShapes : null,
+          anchor: savedPos.anchor,
         }),
       });
       const result = await res.json();
@@ -910,20 +933,22 @@ export default function ShareViewer({ shareLink, resourceData, token, website }:
             projectId={website.projectId}
             token={token}
             url={liveUrl || website.siteUrl}
-            onUrlChange={setLiveUrl}
+            onUrlChange={handleFrameUrlChange}
             pins={visiblePins.map((p): LivePin => ({
               id: p.id,
               number: p.number,
               x: p.x,
               y: p.y,
               resolved: p.status === 'resolved',
+              anchor: p.anchor,
             }))}
             selectedPinId={selectedPin}
-            onSelectPin={(pinId) => {
+            onSelectPin={(pinId, at) => {
               setSelectedPin(pinId);
               const pin = pins.find(p => p.id === pinId);
               if (pin) {
-                setModalPosition({ x: pin.x, y: pin.y });
+                // An anchored pin is drawn where its element is now.
+                setModalPosition(at ?? { x: pin.x, y: pin.y });
                 setIsNewPin(false);
                 setShowModal(true);
               }
@@ -1016,6 +1041,7 @@ export default function ShareViewer({ shareLink, resourceData, token, website }:
             projectId=""
             readOnly
             variant={website ? 'website' : 'image'}
+            shareToken={token}
           />
         )}
       </div>

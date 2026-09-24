@@ -40,14 +40,22 @@ type WebsiteProject = Project & {
 }
 
 function mapRow(p: WebsiteProjectListItem, globalIndex: number): WebsiteProject {
-  const previewSource = p.first_image || p.markup_url || ''
-  const imagePreview =
-    previewSource && getMediaKind(previewSource) === 'image' ? previewSource : '/placeholder.svg'
+  // A review created before this carries '/placeholder.svg' as its image,
+  // which is not a picture of anything — it must not stand in for the site.
+  const previewSource = [p.first_image, p.markup_url].find(
+    (src): src is string => Boolean(src) && src !== '/placeholder.svg',
+  )
+  const uploaded =
+    previewSource && getMediaKind(previewSource) === 'image'
+      ? getOptimizedImageUrl(previewSource, IMAGE_SIZES.DASHBOARD_THUMB)
+      : null
 
   return {
     id: p.id,
     title: p.project_name,
-    image: getOptimizedImageUrl(imagePreview, IMAGE_SIZES.DASHBOARD_THUMB),
+    // A review holds no uploaded image, so the card shows the site's landing
+    // page — rendered once on the server and served from Storage after that.
+    image: uploaded ?? (p.site_url ? `/api/websites/thumbnail/project/${p.id}` : '/placeholder.svg'),
     updatedAt: p.updated_at ? formatDistanceToNow(new Date(p.updated_at)) + ' ago' : 'Just now',
     updatedAtTs: p.updated_at ? new Date(p.updated_at).getTime() : Date.now(),
     isNew: false,
@@ -420,6 +428,8 @@ export default function WebsitesDashboard({
                     index={i}
                     basePath="/websites"
                     shareResourceType="website_project"
+                    squareCorners
+                    mediaHeightClass="h-[280px]"
                   />
                   {project.siteUrl && (
                     <p

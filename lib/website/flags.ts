@@ -3,7 +3,7 @@
  *
  * Both implementations stay live while they are compared:
  *
- *   proxy    — /api/websites/proxy fetches and rewrites the site on every
+ *   proxy    — /api/websites/p/… fetches and rewrites the site on every
  *              view. Always current, breaks in site-specific ways, and the
  *              thing a comment points at can change underneath it.
  *   snapshot — the page is captured once with a real browser and annotated

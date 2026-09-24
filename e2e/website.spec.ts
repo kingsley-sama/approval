@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 
 /**
  * End-to-end coverage for the website review tool's guest-facing surface.
@@ -24,6 +24,10 @@ const SITE_URL = process.env.E2E_WEBSITE_URL;
 const SNAPSHOT_ID = process.env.E2E_SNAPSHOT_ID;
 
 const configured = Boolean(PROJECT_ID && TOKEN && SITE_URL);
+
+/** An address that is certainly not part of the review under test. */
+const outsideUrl = () =>
+  new URL(SITE_URL!).hostname.replace(/^www\./, '') === 'example.com' ? 'https://example.org/' : 'https://example.com/';
 
 test.describe('website review — proxy viewer', () => {
   test.skip(!configured, 'set E2E_WEBSITE_PROJECT_ID / TOKEN / URL');
@@ -95,7 +99,7 @@ test.describe('website review — proxy viewer', () => {
 
   test('refuses a URL outside the reviewed site', async ({ page }) => {
     const res = await page.goto(
-      `/api/websites/proxy?projectId=${PROJECT_ID}&token=${TOKEN}&url=${encodeURIComponent('https://example.com/')}`
+      `/api/websites/proxy?projectId=${PROJECT_ID}&token=${TOKEN}&url=${encodeURIComponent(outsideUrl())}`
     );
     expect(res?.status()).toBe(403);
   });
@@ -193,6 +197,19 @@ test.describe('website review — shared with a guest', () => {
   test.skip(!TOKEN || !SITE_URL, 'set E2E_WEBSITE_TOKEN / E2E_WEBSITE_URL');
 
   /**
+   * A comment-level link asks the guest for a name before showing anything,
+   * so the review itself is only reachable past that prompt.
+   */
+  async function openShare(page: Page) {
+    await page.goto(`/share/${TOKEN}`);
+    const name = page.getByPlaceholder('Your name');
+    if (await name.isVisible({ timeout: 5_000 }).catch(() => false)) {
+      await name.fill('Playwright');
+      await page.getByRole('button', { name: 'Continue' }).click();
+    }
+  }
+
+  /**
    * The regression this guards: a website review's pages carry no screenshot,
    * and the share page used to drop every image-less thread on the way out.
    * A client opening the link got "No images in this project" — the whole
@@ -200,7 +217,7 @@ test.describe('website review — shared with a guest', () => {
    * team. It must serve the live page instead.
    */
   test('opens the live site rather than an empty project', async ({ page }) => {
-    await page.goto(`/share/${TOKEN}`);
+    await openShare(page);
 
     await expect(page.getByText('No images in this project')).toHaveCount(0);
 
@@ -209,18 +226,18 @@ test.describe('website review — shared with a guest', () => {
     // Served through our own proxy, carrying the share token — that is what
     // authorises a guest with no session.
     const src = await frame.getAttribute('src');
-    expect(src).toContain('/api/websites/proxy');
-    expect(src).toContain(`token=${TOKEN}`);
+    expect(src).toContain(`/api/websites/p/${PROJECT_ID}/`);
+    expect(src).toContain(`__rvt=${TOKEN}`);
   });
 
   test('lists the reviewed pages, not images', async ({ page }) => {
-    await page.goto(`/share/${TOKEN}`);
+    await openShare(page);
     await expect(page.getByText('PAGES', { exact: true })).toBeVisible();
     await expect(page.getByText('IMAGES', { exact: true })).toHaveCount(0);
   });
 
   test('the framed page actually renders for the guest', async ({ page }) => {
-    await page.goto(`/share/${TOKEN}`);
+    await openShare(page);
     const frame = page.frameLocator('iframe[title="Website under review"]');
     await expect(frame.locator('body')).not.toBeEmpty();
   });
@@ -236,9 +253,26 @@ test.describe('website review — shared with a guest', () => {
    * screen instead of next to the pin. These assertions are the contract that
    * kept it there.
    */
+  /**
+   * Both assertions below describe a document taller than the frame. A review
+   * pointed at a short page (example.com in a bare checkout) cannot show it,
+   * so they say so rather than failing for the wrong reason.
+   */
+  async function skipIfPageFitsInFrame(page: Page) {
+    const taller = await page.evaluate(() => {
+      const f = document.querySelector('iframe[title="Website under review"]') as HTMLIFrameElement | null;
+      const d = f?.contentDocument;
+      if (!f || !d?.documentElement) return false;
+      return d.documentElement.scrollHeight > f.getBoundingClientRect().height + 50;
+    });
+    test.skip(!taller, 'E2E_WEBSITE_URL is shorter than the frame; nothing to scroll');
+  }
+
   test('publishes the anchor the comment box measures', async ({ page }) => {
-    await page.goto(`/share/${TOKEN}`);
+    await openShare(page);
     await page.waitForSelector('iframe[title="Website under review"]');
+    await page.waitForTimeout(2_000);
+    await skipIfPageFitsInFrame(page);
 
     const anchor = page.locator('[data-annotation-image-container]');
     await expect(anchor).toHaveCount(1);
@@ -266,7 +300,10 @@ test.describe('website review — shared with a guest', () => {
   });
 
   test('the anchor follows the framed page as it scrolls', async ({ page }) => {
-    await page.goto(`/share/${TOKEN}`);
+    await openShare(page);
+    await page.waitForSelector('iframe[title="Website under review"]');
+    await page.waitForTimeout(2_000);
+    await skipIfPageFitsInFrame(page);
     await page.waitForSelector('[data-annotation-image-container]');
 
     const topBefore = async () =>

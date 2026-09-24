@@ -62,7 +62,9 @@ export default defineConfig({
         actionTimeout: 30_000,
       },
       timeout: 150_000,
-      testMatch: /website\.spec\.ts/,
+      // website.spec needs a live review (env); website-proxy and
+      // website-viewer run on fixtures and need nothing.
+      testMatch: /website(-proxy|-viewer)?\.spec\.ts/,
     },
   ],
   webServer: {

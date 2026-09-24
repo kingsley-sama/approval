@@ -9,6 +9,7 @@ import { captureSite } from '@/lib/website/snapshot/capture';
 import { storeSnapshot } from '@/lib/website/snapshot/store';
 import { captureAvailable } from '@/lib/website/flags';
 import { refreshProjectCounts } from '@/lib/website/project-counts';
+import { clearThumbnail } from '@/lib/website/thumbnail';
 
 /**
  * POST /api/websites/snapshot — capture a page into a durable copy.
@@ -199,6 +200,9 @@ export async function POST(request: NextRequest) {
         updated_at: new Date().toISOString(),
       })
       .eq('id', threadId);
+
+    // The sidebar tile should show this copy; the next request re-renders it.
+    await clearThumbnail(threadId).catch(() => {});
 
     await refreshProjectCounts(body.projectId);
 

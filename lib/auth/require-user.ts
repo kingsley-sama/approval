@@ -33,7 +33,7 @@ export async function requireProjectAccess(projectId: string) {
  *
  * Admins see every review; a member sees one only once an admin has given it
  * to them (or they opened a share link for it while signed in). This mirrors
- * the check in /api/websites/proxy so the page and the frame inside it agree —
+ * the check in the website proxy so the page and the frame inside it agree —
  * they used to disagree, which produced a workspace that rendered fully and
  * then refused to load the site inside it.
  */

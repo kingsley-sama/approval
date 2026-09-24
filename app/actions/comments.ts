@@ -12,6 +12,7 @@ import {
 } from '@/lib/validation/schemas';
 import { revalidatePath } from 'next/cache';
 import { nanoid } from 'nanoid';
+import { parsePinAnchor, type PinAnchor } from '@/lib/website/anchor-schema';
 import { allocateCommentNumberForThread } from '@/lib/comment-numbering';
 import type { AttachmentRecord } from './storage';
 
@@ -32,6 +33,8 @@ export interface DbComment {
   parent_comment_id?: string | null;
   drawing_id?: string | null;
   drawing_data?: any; // null = plain pin; non-null = drawing annotation
+  /** Website reviews: the element the pin is attached to. */
+  anchor?: PinAnchor | null;
   attachments?: (AttachmentRecord & { signedUrl: string })[];
   reply_count?: number;
 }
@@ -221,8 +224,10 @@ export async function createComment(
   x: number,
   y: number,
   drawingData?: any,
+  anchor?: PinAnchor,
 ): Promise<CreateCommentResult> {
   await requireUser();
+  const safeAnchor = parsePinAnchor(anchor);
 
   const safeX = clampPercent(x);
   const safeY = clampPercent(y);
@@ -276,6 +281,7 @@ export async function createComment(
     display_number: nextNumber,
     x_position: safeX,
     y_position: safeY,
+    ...(safeAnchor ? { anchor: safeAnchor } : {}),
     status: 'active',
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
@@ -389,6 +395,7 @@ export async function updateCommentPosition(
   y: number,
   projectId?: string,
   drawingData?: any,
+  anchor?: PinAnchor | null,
 ): Promise<{ success: boolean; error?: string }> {
   await requireUser();
 
@@ -411,6 +418,10 @@ export async function updateCommentPosition(
   };
   if (drawingData !== undefined) {
     update.drawing_data = drawingData;
+  }
+  // A dragged website pin is re-attached to whatever it was dropped on.
+  if (anchor !== undefined) {
+    update.anchor = parsePinAnchor(anchor);
   }
 
   const { error } = await supabase

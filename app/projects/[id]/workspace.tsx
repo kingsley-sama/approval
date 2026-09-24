@@ -16,6 +16,8 @@ import { ProjectTopNav, ProjectShell, ProjectImageData, ProjectPin, type Workspa
 import LiveViewer, { type LivePin } from '@/components/website/live-viewer';
 import AddPagesModal from '@/components/website/add-pages-modal';
 import { ensureWebsitePage } from '@/app/actions/website-captures';
+import type { PinAnchor } from '@/lib/website/anchor-schema';
+import { matchPage, samePage } from '@/lib/website/url';
 import type { Shape } from '@/types/drawing';
 import { useDocumentTitle } from '@/hooks/use-document-title';
 import { compressImageFile } from '@/lib/image-compression';
@@ -47,10 +49,11 @@ function dbCommentToPin(c: DbComment): Pin {
     drawingData: c.drawing_data ?? undefined,
     attachments: c.attachments ?? [],
     replyCount: c.reply_count ?? 0,
+    anchor: c.anchor ?? null,
   };
 }
 
-function pendingToPin(p: { localId: string; pinNumber: number; x: number; y: number; content: string; userName: string; createdAt: string; drawingData?: any }): Pin {
+function pendingToPin(p: { localId: string; pinNumber: number; x: number; y: number; content: string; userName: string; createdAt: string; drawingData?: any; anchor?: PinAnchor }): Pin {
   return {
     id: p.localId,
     number: p.pinNumber,
@@ -62,6 +65,7 @@ function pendingToPin(p: { localId: string; pinNumber: number; x: number; y: num
     status: 'active',
     isPending: true,
     drawingData: p.drawingData,
+    anchor: p.anchor ?? null,
   };
 }
 
@@ -110,7 +114,7 @@ export default function ProjectWorkspace({
   const [hoveredPin, setHoveredPin] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isNewPin, setIsNewPin] = useState(false);
-  const [pendingPinPos, setPendingPinPos] = useState<{ x: number; y: number } | null>(null);
+  const [pendingPinPos, setPendingPinPos] = useState<{ x: number; y: number; anchor?: PinAnchor } | null>(null);
   // Shapes drawn by the user, awaiting comment confirmation before being committed.
   // Multiple shapes can accumulate per pending comment (e.g. user marks several spots).
   const [pendingShapes, setPendingShapes] = useState<Shape[]>([]);
@@ -322,7 +326,7 @@ export default function ProjectWorkspace({
   // added mid-session, a page registered by commenting on it — left the
   // viewer's "n of m" counter pointing at a different page than the sidebar.
   const currentImageIndex = Math.max(0, imagesState.findIndex(img => img.id === currentImageId));
-  const pins = currentImage?.pins || [];
+  const pagePins = currentImage?.pins || [];
 
   // ── website reviews: live browsing ──────────────────────────────────────
   // The reviewer can wander the whole site, so the URL in the frame is its own
@@ -346,15 +350,34 @@ export default function ProjectWorkspace({
     setLiveUrl(page.sourceUrl);
   }, [isWebsite, currentImage?.id, currentImage?.sourceUrl]);
 
+  // One notion of "the same page" everywhere (trailing slash, www, tracking
+  // parameters), shared with the share view and page registration.
   const threadForUrl = useCallback(
-    (target: string) => imagesState.find(img => img.sourceUrl === target),
+    (target: string) => matchPage(target, imagesState),
     [imagesState],
   );
 
   const isTrackedPage = Boolean(liveUrl && threadForUrl(liveUrl));
 
+  // Pins belong to the page in the frame, not to whichever page the sidebar
+  // last selected: after following a link to a page the review does not have
+  // yet, the previous page's pins (and its comment list) must not stay up.
+  const pins = useMemo(
+    () => (isWebsite && liveUrl && !isTrackedPage ? [] : pagePins),
+    [isWebsite, liveUrl, isTrackedPage, pagePins],
+  );
+
   /** Follow the frame: if the new URL is a page of the review, select it. */
   const handleLiveUrlChange = useCallback((next: string) => {
+    // Moving to another page ends whatever was in progress on this one: an
+    // open comment box would otherwise float over a page it does not belong to.
+    if (!samePage(next, liveUrl)) {
+      setShowModal(false);
+      setIsNewPin(false);
+      setSelectedPin(null);
+      setPendingPinPos(null);
+      setPendingShapes([]);
+    }
     setLiveUrl(next);
     const match = threadForUrl(next);
     if (match) {
@@ -366,7 +389,7 @@ export default function ProjectWorkspace({
         setSelectedPin(null);
       }
     }
-  }, [threadForUrl, currentImageId]);
+  }, [threadForUrl, currentImageId, liveUrl]);
 
   /**
    * After the Add pages dialog lands: re-read the workspace, then move to the
@@ -389,8 +412,8 @@ export default function ProjectWorkspace({
     if (!liveUrl) return;
     setIsAddingPage(true);
     const result = await ensureWebsitePage(projectId, liveUrl);
-    setIsAddingPage(false);
     if (!result.success) {
+      setIsAddingPage(false);
       toast({
         title: 'Could not add this page',
         description: result.error ?? 'The page could not be added to the review.',
@@ -398,8 +421,12 @@ export default function ProjectWorkspace({
       });
       return;
     }
+    // The page is only really added once the sidebar shows it, which is a
+    // second round-trip; keep the button busy until then rather than going
+    // idle in front of a list that has not caught up.
     await refreshWorkspaceRef.current();
     if (result.threadId) setCurrentImageId(result.threadId);
+    setIsAddingPage(false);
   }, [liveUrl, projectId, toast]);
 
   // refreshWorkspace is re-created every render, so anything that captures it
@@ -434,9 +461,9 @@ export default function ProjectWorkspace({
   /** Called by ImageViewer when the user finishes drawing a shape.
    *  First shape opens the modal at its centre; subsequent shapes append
    *  to the same pending comment. */
-  const handleShapeComplete = useCallback((shape: Shape, center: { x: number; y: number }) => {
+  const handleShapeComplete = useCallback((shape: Shape, center: { x: number; y: number }, anchor?: PinAnchor) => {
     setPendingShapes(prev => [...prev, shape]);
-    setPendingPinPos(prev => prev ?? center);
+    setPendingPinPos(prev => prev ?? { ...center, anchor });
     setModalPosition(prev => (showModal ? prev : center));
     if (!showModal) {
       setSelectedPin(null);
@@ -513,10 +540,10 @@ export default function ProjectWorkspace({
     });
   }, [pendingShapes.length, imagesState, currentImageId, projectId, selectedPin, confirm, toast]);
 
-  const handleImageClick = useCallback((x: number, y: number) => {
+  const handleImageClick = useCallback((x: number, y: number, anchor?: PinAnchor) => {
     // Store position and open modal — no placeholder pin yet
     // The real pin is only created in the DB on submit
-    setPendingPinPos({ x, y });
+    setPendingPinPos({ x, y, anchor });
     setModalPosition({ x, y });
     setSelectedPin(null);
     setIsNewPin(true);
@@ -561,7 +588,7 @@ export default function ProjectWorkspace({
 
     // 1. Enqueue locally — instant, no network wait
     const drawingPayload = pendingShapes.length > 0 ? pendingShapes : undefined;
-    const queued = enqueue(targetImageId, text, currentUserName, pendingPinPos.x, pendingPinPos.y, pinNumber, drawingPayload);
+    const queued = enqueue(targetImageId, text, currentUserName, pendingPinPos.x, pendingPinPos.y, pinNumber, drawingPayload, pendingPinPos.anchor);
     // Store any attachment files keyed by localId — uploaded after the comment syncs
     if (attachmentFiles.length > 0) {
       pendingAttachments.current.set(queued.localId, attachmentFiles);
@@ -833,7 +860,7 @@ export default function ProjectWorkspace({
     }
   }, [pins, handleImageClick]);
 
-  const handlePinReposition = useCallback(async (pinId: string, x: number, y: number) => {
+  const handlePinReposition = useCallback(async (pinId: string, x: number, y: number, anchor?: PinAnchor) => {
     // Local optimistic comments are not in the DB yet.
     if (pinId.startsWith('local_') || !currentImageId) return;
 
@@ -842,6 +869,7 @@ export default function ProjectWorkspace({
     if (!pinBeforeUpdate) return;
 
     const previousPosition = { x: pinBeforeUpdate.x, y: pinBeforeUpdate.y };
+    const previousAnchor = pinBeforeUpdate.anchor ?? null;
 
     // Only the pin marker moves — its drawing marks stay anchored where they were
     // placed. A pin is often dragged aside precisely to reveal the marks beneath
@@ -852,7 +880,7 @@ export default function ProjectWorkspace({
             ...img,
             pins: img.pins.map(pin =>
               pin.id === pinId
-                ? { ...pin, x, y }
+                ? { ...pin, x, y, ...(anchor !== undefined ? { anchor } : {}) }
                 : pin
             ),
           }
@@ -863,7 +891,7 @@ export default function ProjectWorkspace({
       setModalPosition({ x, y });
     }
 
-    const result = await updateCommentPosition(pinId, x, y, projectId);
+    const result = await updateCommentPosition(pinId, x, y, projectId, undefined, anchor);
     if (!result.success) {
       setImagesState(prev => prev.map(img =>
         img.id === currentImageId
@@ -871,7 +899,7 @@ export default function ProjectWorkspace({
               ...img,
               pins: img.pins.map(pin =>
                 pin.id === pinId
-                  ? { ...pin, x: previousPosition.x, y: previousPosition.y }
+                  ? { ...pin, x: previousPosition.x, y: previousPosition.y, anchor: previousAnchor }
                   : pin
               ),
             }
@@ -1011,11 +1039,16 @@ export default function ProjectWorkspace({
               x: p.x,
               y: p.y,
               resolved: p.status === 'resolved',
+              anchor: p.anchor,
             }))}
             selectedPinId={selectedPin}
-            onSelectPin={(pinId) => {
+            onSelectPin={(pinId, at) => {
               const pin = pins.find(p => p.id === pinId);
-              if (pin) handlePinClick(pin.x, pin.y, pinId);
+              if (!pin) return;
+              handlePinClick(pin.x, pin.y, pinId);
+              // An anchored pin is drawn where its element is now, which is
+              // not its stored percentage; open the comment box there.
+              if (at) setModalPosition(at);
             }}
             onPlacePin={handleImageClick}
             onPinReposition={handlePinReposition}

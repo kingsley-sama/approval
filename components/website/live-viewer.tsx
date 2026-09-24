@@ -1,16 +1,20 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeft, ArrowRight, RotateCw, ExternalLink, Lock, Loader2,
   MousePointer2, MessageSquarePlus, Monitor, Tablet, Smartphone, Plus,
-  Maximize2, Minimize2, ChevronLeft, ChevronRight,
+  Maximize2, Minimize2, ChevronLeft, ChevronRight, ImageOff, X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { IconTooltip } from '@/components/ui/icon-tooltip';
 import DrawingToolbar, { DRAWING_COLOR, STROKE_WIDTH } from '@/components/drawing-toolbar';
 import { denormalizeShape, normalizeShape } from '@/lib/drawing';
 import { COMMENT_PIN_CURSOR, DRAWING_PENCIL_CURSOR } from '@/lib/annotation/cursors';
+import { buildAnchor, fanOut, resolveAnchor, type ResolvedPoint } from '@/lib/website/anchor';
+import type { PinAnchor, PinDevice } from '@/lib/website/anchor-schema';
+import { fromProxyPath, toProxyPath, TOKEN_PARAM } from '@/lib/website/proxy-path';
+import { samePage } from '@/lib/website/url';
 import type { DrawingTool, Shape } from '@/types/drawing';
 
 /**
@@ -25,13 +29,15 @@ import type { DrawingTool, Shape } from '@/types/drawing';
  * Pins and markup live in an overlay injected *inside* the framed document
  * rather than floating above it in the parent. That is what makes them scroll
  * with the content and stay attached through layout changes, and it is only
- * possible because the proxy and the snapshot both serve the page same-origin.
+ * possible because the proxy serves the page same-origin.
  *
- * Geometry matches the image tool exactly so the two are interchangeable:
- * shapes are stored normalised 0..1 against the document box, and a shape's
- * anchor is reported as a percentage — the same contract ImageViewer uses, so
- * the same comments, the same PDF export and the same drawing data work for
- * both without translation.
+ * Where a pin sits is decided by its anchor (lib/website/anchor.ts): the
+ * element it was dropped on and the point within it, so it stays put while the
+ * page loads, at other screen widths and after the content above it changes.
+ * Pins without one (older comments) fall back to their stored percentage.
+ * Drawings keep the image tool's contract — shapes normalised 0..1 against the
+ * document box, anchor reported as a percentage — so the same comments, PDF
+ * export and drawing data work for both.
  */
 
 export type LiveMode = 'browse' | 'comment';
@@ -39,10 +45,12 @@ export type LiveMode = 'browse' | 'comment';
 export interface LivePin {
   id: string;
   number: number;
-  /** Percentage of the full scrollable document, not the viewport. */
+  /** Percentage of the full scrollable document — the fallback position. */
   x: number;
   y: number;
   resolved: boolean;
+  /** The element the pin is attached to, when it was placed on a website. */
+  anchor?: PinAnchor | null;
 }
 
 interface LiveViewerProps {
@@ -53,17 +61,18 @@ interface LiveViewerProps {
 
   pins: LivePin[];
   selectedPinId: string | null;
-  onSelectPin: (pinId: string) => void;
-  onPlacePin: (xPct: number, yPct: number) => void;
-  /** Drag a pin to a new spot, as on an image. */
-  onPinReposition?: (pinId: string, xPct: number, yPct: number) => void | Promise<void>;
+  /** `at` is where the pin is drawn right now, as a document percentage. */
+  onSelectPin: (pinId: string, at?: { x: number; y: number }) => void;
+  onPlacePin: (xPct: number, yPct: number, anchor?: PinAnchor) => void;
+  /** Drag a pin to a new spot, as on an image. It is re-anchored where it lands. */
+  onPinReposition?: (pinId: string, xPct: number, yPct: number, anchor?: PinAnchor) => void | Promise<void>;
   hoveredPin?: string | null;
   onPinHover?: (pinId: string | null) => void;
 
   /** Markup for the selected/hovered comment, and the strokes not yet saved. */
   drawnShapes?: Shape[];
   pendingShapes?: Shape[];
-  onShapeComplete?: (shape: Shape, center: { x: number; y: number }) => void;
+  onShapeComplete?: (shape: Shape, center: { x: number; y: number }, anchor?: PinAnchor) => void;
   /** Erase one not-yet-saved shape by id. Enables the eraser tool. */
   onEraseShape?: (shapeId: string) => void;
   onUndoShape?: () => void;
@@ -94,6 +103,12 @@ const LAYER_ID = '__revision_layer__';
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const ACCENT = '#ff6137';
 const RESOLVED = '#649256';
+const DEVICE_BADGE: Record<PinDevice, string> = { desktop: 'D', tablet: 'T', mobile: 'M' };
+
+/** How long to wait for a page's layout to stop moving before placing pins. */
+const SETTLE_MAX_MS = 4000;
+const SETTLE_STEP_MS = 150;
+const SETTLE_STABLE_STEPS = 3;
 
 export default function LiveViewer({
   projectId, token, url, onUrlChange,
@@ -107,60 +122,122 @@ export default function LiveViewer({
   const anchorRef = useRef<HTMLDivElement>(null);
   const [mode, setMode] = useState<LiveMode>('browse');
   const [tool, setTool] = useState<DrawingTool | null>(null);
-  const [device, setDevice] = useState<(typeof DEVICES)[number]['label']>('desktop');
+  const [device, setDevice] = useState<PinDevice>('desktop');
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [history, setHistory] = useState<string[]>([url]);
-  const [historyIndex, setHistoryIndex] = useState(0);
+  /** Back/forward stack, kept as one value so moving through it is atomic. */
+  const [hist, setHist] = useState<{ list: string[]; index: number }>({ list: [url], index: 0 });
   /** What is in the address box while it is being edited. */
   const [draftUrl, setDraftUrl] = useState(url);
+  /**
+   * The address the frame was pointed at. It is separate from `url` because
+   * the frame can move on its own — a redirect, a client-side route change —
+   * and reporting that upward must not reload the frame it came from.
+   */
+  const [frameUrl, setFrameUrl] = useState(url);
+  const [reloadNonce, setReloadNonce] = useState(0);
+  /** Layout has stopped moving, so pins can be placed without jumping. */
+  const [settled, setSettled] = useState(false);
+  const [brokenImages, setBrokenImages] = useState(0);
+  const [brokenDismissed, setBrokenDismissed] = useState(false);
 
+  /** The address the framed page last reported (shim → postMessage). */
+  const reportedUrlRef = useRef<string | null>(null);
+
+  const history = hist.list;
+  const historyIndex = hist.index;
+
+  // ── following the page we are asked to show ─────────────────────────────
   useEffect(() => {
     setDraftUrl(url);
+    setHist((h) => (h.list[h.index] === url ? h : { list: [...h.list.slice(0, h.index + 1), url], index: h.index + 1 }));
+    // Already on screen: the frame navigated there itself and told us.
+    if (samePage(url, reportedUrlRef.current)) return;
+    setFrameUrl(url);
   }, [url]);
 
-  const proxySrc = `/api/websites/proxy?projectId=${encodeURIComponent(projectId)}&url=${encodeURIComponent(
-    url
-  )}${token ? `&token=${encodeURIComponent(token)}` : ''}`;
+  // A new document is coming: nothing of the old one's pins may linger.
+  useEffect(() => {
+    reportedUrlRef.current = null;
+    setIsLoading(true);
+    setLoadError(null);
+    setSettled(false);
+    setBrokenImages(0);
+    setBrokenDismissed(false);
+  }, [frameUrl, reloadNonce]);
+
+  const proxySrc = useMemo(() => {
+    try {
+      const u = new URL(frameUrl);
+      u.hash = '';
+      const path = toProxyPath(u, projectId);
+      return token ? `${path}${path.includes('?') ? '&' : '?'}${TOKEN_PARAM}=${encodeURIComponent(token)}` : path;
+    } catch {
+      return '';
+    }
+  }, [frameUrl, projectId, token]);
 
   // Listeners are attached to the framed document once per load, so everything
   // they need is read through a ref rather than captured at attach time.
   const s = useRef({
-    mode, tool, pins, selectedPinId, hoveredPin, drawnShapes, pendingShapes,
+    url, mode, tool, pins, selectedPinId, hoveredPin, drawnShapes, pendingShapes, settled, device,
     onPlacePin, onSelectPin, onPinHover, onPinReposition, onShapeComplete, onEraseShape, onUrlChange,
     canComment, canDraw,
   });
   s.current = {
-    mode, tool, pins, selectedPinId, hoveredPin, drawnShapes, pendingShapes,
+    url, mode, tool, pins, selectedPinId, hoveredPin, drawnShapes, pendingShapes, settled, device,
     onPlacePin, onSelectPin, onPinHover, onPinReposition, onShapeComplete, onEraseShape, onUrlChange,
     canComment, canDraw,
   };
 
   const doc = () => frameRef.current?.contentDocument ?? null;
 
+  /**
+   * The document's size, measured with our overlay taken out. The overlay is
+   * as large as the document, so leaving it in made the measurement feed on
+   * itself: the page could grow but never shrink back, and every pin placed
+   * as a share of that height drifted.
+   */
   const docBox = useCallback(() => {
     const d = doc();
     if (!d?.documentElement) return { w: 0, h: 0 };
-    return {
+    const layer = d.getElementById(LAYER_ID) as HTMLElement | null;
+    const prev = layer?.style.display ?? '';
+    if (layer) layer.style.display = 'none';
+    const box = {
       w: Math.max(d.documentElement.scrollWidth, d.body?.scrollWidth ?? 0),
       h: Math.max(d.documentElement.scrollHeight, d.body?.scrollHeight ?? 0),
     };
+    if (layer) layer.style.display = prev;
+    return box;
   }, []);
 
-  // ── navigation ──────────────────────────────────────────────────────────
-  const navigate = useCallback((next: string, fromHistory = false) => {
-    if (!fromHistory) {
-      setHistory((prev) => [...prev.slice(0, historyIndex + 1), next]);
-      setHistoryIndex((i) => i + 1);
-    }
-    setIsLoading(true);
-    setLoadError(null);
-    s.current.onUrlChange(next);
-  }, [historyIndex]);
+  // Read through a ref: the pin and document listeners are created once per
+  // load and would otherwise keep the address from that moment.
+  const frameUrlRef = useRef(frameUrl);
+  frameUrlRef.current = frameUrl;
 
-  const goBack = () => { if (historyIndex > 0) { const i = historyIndex - 1; setHistoryIndex(i); navigate(history[i], true); } };
-  const goForward = () => { if (historyIndex < history.length - 1) { const i = historyIndex + 1; setHistoryIndex(i); navigate(history[i], true); } };
-  const reload = () => { setIsLoading(true); setLoadError(null); const f = frameRef.current; if (f) f.src = `${proxySrc}&_=${Date.now()}`; };
+  /** The page on show, as the site knows it. */
+  const currentPageUrl = () => reportedUrlRef.current ?? frameUrlRef.current;
+
+  // ── navigation ──────────────────────────────────────────────────────────
+  const navigate = useCallback((next: string) => {
+    s.current.onUrlChange(next);
+  }, []);
+
+  const goBack = () => {
+    if (hist.index === 0) return;
+    const i = hist.index - 1;
+    setHist({ ...hist, index: i });
+    navigate(hist.list[i]);
+  };
+  const goForward = () => {
+    if (hist.index >= hist.list.length - 1) return;
+    const i = hist.index + 1;
+    setHist({ ...hist, index: i });
+    navigate(hist.list[i]);
+  };
+  const reload = () => setReloadNonce((n) => n + 1);
 
   // ── overlay: shapes and pins, drawn in document coordinates ─────────────
   const buildShapeNode = (d: Document, shape: Shape, w: number, h: number): SVGElement | null => {
@@ -237,11 +314,11 @@ export default function LiveViewer({
    * special-casing on its side — the website and the image feed it the same
    * contract.
    */
-  const syncAnchor = useCallback(() => {
+  const syncAnchor = useCallback((box?: { w: number; h: number }) => {
     const el = anchorRef.current;
     if (!el) return;
     const d = doc();
-    const { w, h } = docBox();
+    const { w, h } = box ?? docBox();
     if (!d?.documentElement || !w || !h) {
       el.style.display = 'none';
       return;
@@ -254,59 +331,309 @@ export default function LiveViewer({
     el.style.height = `${h}px`;
   }, [docBox]);
 
-  const paint = useCallback(() => {
-    syncAnchor();
-    const d = doc();
-    if (!d?.documentElement) return;
-    const { w, h } = docBox();
-    if (!w || !h) return;
+  /** Element lookups for anchors, reused between scroll frames. */
+  const elCache = useRef(new Map<string, Element | null>());
+  /** The last measured document box; scrolling does not change it. */
+  const boxRef = useRef({ w: 0, h: 0 });
+  /** Pin elements by id, updated in place rather than rebuilt. */
+  const pinNodes = useRef(new Map<string, HTMLDivElement>());
+  /** Where each pin truly belongs (before fanning out), by id. */
+  const truePos = useRef(new Map<string, ResolvedPoint>());
+  /** Where each pin is drawn, in document coordinates, by id. */
+  const shownPos = useRef(new Map<string, { x: number; y: number }>());
+  const draggingId = useRef<string | null>(null);
+  const suppressClick = useRef(false);
 
-    let layer = d.getElementById(LAYER_ID);
+  /** The overlay's parts, created once per document. */
+  const ensureLayer = (d: Document) => {
+    let layer = d.getElementById(LAYER_ID) as HTMLDivElement | null;
     if (!layer) {
       layer = d.createElement('div');
       layer.id = LAYER_ID;
+      // Zero-sized so it cannot stretch the page; everything in it overflows.
+      layer.setAttribute(
+        'style',
+        'position:absolute;top:0;left:0;width:0;height:0;overflow:visible;pointer-events:none;z-index:2147483000;'
+      );
+      const style = d.createElement('style');
+      style.textContent =
+        '@keyframes rv-pulse{0%{box-shadow:0 0 0 0 rgba(255,97,55,.55)}100%{box-shadow:0 0 0 18px rgba(255,97,55,0)}}' +
+        `#${LAYER_ID} .rv-pulse{animation:rv-pulse 1s ease-out 2}`;
+      const shapes = d.createElementNS(SVG_NS, 'svg');
+      shapes.setAttribute('data-rv-shapes', '');
+      const links = d.createElementNS(SVG_NS, 'svg');
+      links.setAttribute('data-rv-links', '');
+      links.setAttribute('style', 'position:absolute;left:0;top:0;pointer-events:none;overflow:visible');
+      const pinsBox = d.createElement('div');
+      pinsBox.setAttribute('data-rv-pins', '');
+      pinsBox.setAttribute('style', 'position:absolute;left:0;top:0;width:0;height:0;overflow:visible');
+      // Pins attached to a fixed header or banner live here, in viewport
+      // coordinates, so they stay with it instead of scrolling away.
+      const fixedBox = d.createElement('div');
+      fixedBox.setAttribute('data-rv-fixed', '');
+      fixedBox.setAttribute('style', 'position:fixed;left:0;top:0;width:0;height:0;overflow:visible');
+      layer.append(style, shapes, links, pinsBox, fixedBox);
       d.documentElement.appendChild(layer);
+      pinNodes.current.clear();
     }
-    layer.setAttribute(
-      'style',
-      `position:absolute;top:0;left:0;width:${w}px;height:${h}px;pointer-events:none;z-index:2147483000;overflow:visible;`
-    );
-    layer.innerHTML = '';
+    return {
+      layer,
+      shapes: layer.querySelector('[data-rv-shapes]') as SVGSVGElement,
+      links: layer.querySelector('[data-rv-links]') as SVGSVGElement,
+      pinsBox: layer.querySelector('[data-rv-pins]') as HTMLDivElement,
+      fixedBox: layer.querySelector('[data-rv-fixed]') as HTMLDivElement,
+    };
+  };
 
-    // markup
-    const svg = d.createElementNS(SVG_NS, 'svg');
+  /** A pin's current position as a percentage of the document, for the modal. */
+  const pinPercent = (pinId: string) => {
+    const pos = shownPos.current.get(pinId);
+    const { w, h } = boxRef.current;
+    if (!pos || !w || !h) return undefined;
+    return { x: Math.max(0, Math.min(100, (pos.x / w) * 100)), y: Math.max(0, Math.min(100, (pos.y / h) * 100)) };
+  };
+
+  const selectPin = (pinId: string) => s.current.onSelectPin(pinId, pinPercent(pinId));
+
+  const anchorContext = (box: { w: number; h: number }) => ({
+    docWidth: box.w,
+    docHeight: box.h,
+    device: s.current.device,
+    pageUrl: currentPageUrl(),
+    overlayId: LAYER_ID,
+  });
+
+  /** Drag to reposition, exactly as on an image — then re-anchor on drop. */
+  const startDrag = (d: Document, pinId: string, el: HTMLDivElement, e: MouseEvent) => {
+    if (!s.current.onPinReposition) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const view = d.defaultView!;
+    const startX = e.clientX, startY = e.clientY;
+    const inFixed = el.parentElement?.hasAttribute('data-rv-fixed') ?? false;
+    let moved = false;
+
+    const onMove = (me: MouseEvent) => {
+      if (!moved && Math.hypot(me.clientX - startX, me.clientY - startY) < 4) return;
+      moved = true;
+      draggingId.current = pinId;
+      el.style.cursor = 'grabbing';
+      // Dragging towards an edge brings more of the page into view.
+      if (me.clientY < 40) view.scrollBy(0, -14);
+      else if (me.clientY > view.innerHeight - 40) view.scrollBy(0, 14);
+      el.style.left = `${me.clientX + (inFixed ? 0 : view.scrollX)}px`;
+      el.style.top = `${me.clientY + (inFixed ? 0 : view.scrollY)}px`;
+    };
+    const onUp = (ue: MouseEvent) => {
+      d.removeEventListener('mousemove', onMove, true);
+      d.removeEventListener('mouseup', onUp, true);
+      el.style.cursor = 'grab';
+      if (!moved) { selectPin(pinId); suppressClick.current = true; setTimeout(() => { suppressClick.current = false; }, 0); return; }
+      const box = docBox();
+      boxRef.current = box;
+      const px = ue.clientX + view.scrollX;
+      const py = ue.clientY + view.scrollY;
+      // Out of the way while measuring what it was dropped on.
+      el.style.visibility = 'hidden';
+      const anchor: PinAnchor = buildAnchor(d, px, py, anchorContext(box));
+      el.style.visibility = '';
+      // The drawing stays where it was made; only the pin moves.
+      const before = s.current.pins.find((p) => p.id === pinId)?.anchor;
+      const frame = before?.shapes ?? (
+        before?.pageX != null && before.pageY != null && before.docWidth && before.docHeight
+          ? {
+              selector: before.selector, xPct: before.xPct, yPct: before.yPct, fixed: before.fixed,
+              pageX: before.pageX, pageY: before.pageY, docWidth: before.docWidth, docHeight: before.docHeight,
+            }
+          : undefined
+      );
+      if (frame) anchor.shapes = frame;
+      suppressClick.current = true;
+      setTimeout(() => { suppressClick.current = false; draggingId.current = null; }, 0);
+      s.current.onPinReposition?.(
+        pinId,
+        Math.max(0, Math.min(100, (px / box.w) * 100)),
+        Math.max(0, Math.min(100, (py / box.h) * 100)),
+        anchor,
+      );
+    };
+    d.addEventListener('mousemove', onMove, true);
+    d.addEventListener('mouseup', onUp, true);
+  };
+
+  const pinNode = (d: Document, pinId: string) => {
+    let el = pinNodes.current.get(pinId);
+    if (el && el.isConnected && el.ownerDocument === d) return el;
+    el = d.createElement('div');
+    el.setAttribute('data-rv-pin', pinId);
+    el.addEventListener('mouseenter', () => s.current.onPinHover?.(pinId));
+    el.addEventListener('mouseleave', () => s.current.onPinHover?.(null));
+    el.addEventListener('mousedown', (ev) => startDrag(d, pinId, el!, ev as MouseEvent));
+    el.addEventListener('click', (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      if (suppressClick.current) return;
+      if (!s.current.onPinReposition) selectPin(pinId);
+    });
+    pinNodes.current.set(pinId, el);
+    return el;
+  };
+
+  /**
+   * Places the pins. Cheap enough to run on every scroll frame: elements are
+   * looked up once, nodes are reused, and only positions and styles change.
+   * Pins stay hidden until the page has settled, so they never visibly jump
+   * while images and fonts arrive.
+   */
+  const layoutPins = useCallback(() => {
+    const d = doc();
+    if (!d?.documentElement) return;
+    const { pinsBox, fixedBox, links } = ensureLayer(d);
+    const { w, h } = boxRef.current;
+    const { mode: m, pins: list, selectedPinId: sel, hoveredPin: hov, settled: ready, device: dev } = s.current;
+
+    const visible = m === 'comment' && ready && w > 0 && h > 0 ? list : [];
+    const keep = new Set(visible.map((p) => p.id));
+    pinNodes.current.forEach((node, id) => {
+      if (!keep.has(id)) { node.remove(); pinNodes.current.delete(id); }
+    });
+    links.replaceChildren();
+    truePos.current.clear();
+    shownPos.current.clear();
+    if (!visible.length) return;
+
+    for (const pin of visible) {
+      truePos.current.set(pin.id, resolveAnchor(d, pin.anchor, { x: pin.x, y: pin.y }, { w, h }, elCache.current));
+    }
+
+    // Nearby pins fan out so every number stays clickable; a hairline and a
+    // dot keep showing where each one really points.
+    const offsets = fanOut(
+      visible
+        .filter((p) => !truePos.current.get(p.id)!.fixed)
+        .map((p) => ({ id: p.id, x: truePos.current.get(p.id)!.x, y: truePos.current.get(p.id)!.y })),
+    );
+
+    const view = d.defaultView;
+    for (const pin of visible) {
+      const at = truePos.current.get(pin.id)!;
+      const off = offsets.get(pin.id);
+      const x = at.x + (off?.dx ?? 0);
+      const y = at.y + (off?.dy ?? 0);
+      shownPos.current.set(pin.id, at.fixed ? { x: x + (view?.scrollX ?? 0), y: y + (view?.scrollY ?? 0) } : { x, y });
+
+      const el = pinNode(d, pin.id);
+      const parent = at.fixed ? fixedBox : pinsBox;
+      if (el.parentElement !== parent) parent.appendChild(el);
+      if (draggingId.current === pin.id) continue;
+
+      const selected = pin.id === sel;
+      const hovered = pin.id === hov;
+      const pinDevice = pin.anchor?.device;
+      const otherDevice = !!pinDevice && pinDevice !== dev;
+      // Selected above hovered above open above resolved; newer above older.
+      const tier = selected ? 4 : hovered ? 3 : pin.resolved ? 1 : 2;
+      el.setAttribute(
+        'style',
+        [
+          'position:absolute',
+          `left:${x}px`,
+          `top:${y}px`,
+          'transform:translate(-50%,-50%)',
+          'box-sizing:border-box;width:28px;height:28px;border-radius:9999px',
+          `background:${pin.resolved ? RESOLVED : ACCENT}`,
+          `border:2px solid ${selected || hovered ? '#0c3133' : '#ffffff'}`,
+          `box-shadow:0 1px 4px rgba(0,0,0,.35)${selected ? ',0 0 0 4px rgba(255,97,55,.25)' : ''}`,
+          'color:#fff;font:600 12px/24px system-ui,sans-serif;text-align:center',
+          'pointer-events:auto;user-select:none',
+          `z-index:${tier * 10000 + pin.number}`,
+          `opacity:${otherDevice && !selected && !hovered ? 0.45 : 1}`,
+          s.current.onPinReposition ? 'cursor:grab' : 'cursor:pointer',
+        ].join(';')
+      );
+      el.title = otherDevice ? `Placed in ${pinDevice} view` : '';
+      el.textContent = String(pin.number);
+      if (otherDevice) {
+        const badge = d.createElement('span');
+        badge.textContent = DEVICE_BADGE[pinDevice!];
+        badge.setAttribute(
+          'style',
+          'position:absolute;right:-7px;bottom:-7px;min-width:15px;height:15px;padding:0 3px;box-sizing:border-box;border-radius:8px;' +
+            'background:#0c3133;border:1.5px solid #fff;color:#fff;font:700 8px/12px system-ui,sans-serif;text-align:center;pointer-events:none'
+        );
+        el.appendChild(badge);
+      }
+
+      if (off) {
+        const line = d.createElementNS(SVG_NS, 'line');
+        [['x1', at.x], ['y1', at.y], ['x2', x], ['y2', y]].forEach(([k, v]) => line.setAttribute(k as string, String(v)));
+        line.setAttribute('stroke', '#0c3133');
+        line.setAttribute('stroke-width', '1');
+        line.setAttribute('stroke-opacity', '0.6');
+        const dot = d.createElementNS(SVG_NS, 'circle');
+        dot.setAttribute('cx', String(at.x));
+        dot.setAttribute('cy', String(at.y));
+        dot.setAttribute('r', '3');
+        dot.setAttribute('fill', pin.resolved ? RESOLVED : ACCENT);
+        dot.setAttribute('stroke', '#fff');
+        dot.setAttribute('stroke-width', '1');
+        links.append(line, dot);
+      }
+    }
+  }, []);
+
+  /** Shapes: rebuilt when they change, which is rare next to scrolling. */
+  const paintShapes = useCallback(() => {
+    const d = doc();
+    if (!d?.documentElement) return;
+    const { shapes: svg } = ensureLayer(d);
+    const { w, h } = boxRef.current;
+    svg.replaceChildren();
     svg.setAttribute('width', String(w));
     svg.setAttribute('height', String(h));
     svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+
     const commenting = s.current.mode === 'comment';
     const erasing = commenting && s.current.tool === 'eraser';
-    const drawing = commenting && !!s.current.tool && !erasing;
 
     // In comment mode the overlay swallows every pointer event before the page
     // sees it. Without this the site underneath stays live while you annotate:
     // buttons depress, menus open, and a mis-aimed pin navigates you away.
     // Blocking `click` alone was not enough — mousedown/pointerdown reached the
     // page first, so widgets reacted before the click was ever cancelled.
-    const cursor = commenting
-      ? s.current.tool
-        ? DRAWING_PENCIL_CURSOR
-        : COMMENT_PIN_CURSOR
-      : '';
+    const cursor = commenting ? (s.current.tool ? DRAWING_PENCIL_CURSOR : COMMENT_PIN_CURSOR) : '';
     svg.setAttribute(
       'style',
-      `position:absolute;inset:0;pointer-events:${commenting ? 'auto' : 'none'};${
-        cursor ? `cursor:${cursor};` : ''
-      }`
+      `position:absolute;left:0;top:0;pointer-events:${commenting ? 'auto' : 'none'};${cursor ? `cursor:${cursor};` : ''}`
     );
-    layer.appendChild(svg);
 
     // "Browse the site normally" means exactly that: no pins and no markup
     // laid over the page. Annotations belong to comment mode.
-    if (!commenting) return;
+    if (!commenting || !w || !h) return;
 
-    for (const shape of s.current.drawnShapes) {
-      const node = buildShapeNode(d, shape, w, h);
-      if (node) svg.appendChild(node);
+    // A saved drawing was normalised against the page as it was when drawn.
+    // Draw it at that size, then move it by however far its pin's element has
+    // moved since, so the markup travels with what it marks.
+    if (s.current.settled && s.current.drawnShapes.length) {
+      const activeId = s.current.selectedPinId ?? s.current.hoveredPin;
+      const owner = s.current.pins.find((p) => p.id === activeId);
+      // The drawing's own frame when the pin has been dragged off it.
+      const a = owner?.anchor?.shapes ?? owner?.anchor;
+      const at = owner?.anchor?.shapes
+        ? resolveAnchor(d, owner.anchor.shapes, { x: owner.x, y: owner.y }, { w, h }, elCache.current)
+        : owner ? truePos.current.get(owner.id) : undefined;
+      const group = d.createElementNS(SVG_NS, 'g');
+      let sw = w, sh = h;
+      if (a?.docWidth && a.docHeight && a.pageX != null && a.pageY != null && at && !at.fixed) {
+        sw = a.docWidth;
+        sh = a.docHeight;
+        group.setAttribute('transform', `translate(${at.x - a.pageX} ${at.y - a.pageY})`);
+      }
+      for (const shape of s.current.drawnShapes) {
+        const node = buildShapeNode(d, shape, sw, sh);
+        if (node) group.appendChild(node);
+      }
+      svg.appendChild(group);
     }
 
     // Only strokes not yet attached to a comment can be erased. A saved
@@ -317,9 +644,6 @@ export default function LiveViewer({
       if (!node) continue;
       if (erasing && s.current.onEraseShape) {
         node.setAttribute('style', 'pointer-events:auto;cursor:pointer');
-        // A thin stroke is a small target, so widen the hit area without
-        // changing what is painted.
-        node.setAttribute('stroke-linecap', 'round');
         node.addEventListener('click', (ev) => {
           ev.preventDefault();
           ev.stopPropagation();
@@ -328,80 +652,23 @@ export default function LiveViewer({
       }
       svg.appendChild(node);
     }
+  }, []);
 
-    // pins
-    for (const pin of s.current.pins) {
-      const el = d.createElement('div');
-      const selected = pin.id === s.current.selectedPinId;
-      const hovered = pin.id === s.current.hoveredPin;
-      el.setAttribute(
-        'style',
-        [
-          'position:absolute',
-          `left:${(pin.x / 100) * w}px`,
-          `top:${(pin.y / 100) * h}px`,
-          'transform:translate(-50%,-50%)',
-          'width:28px;height:28px;border-radius:9999px',
-          `background:${pin.resolved ? RESOLVED : ACCENT}`,
-          `border:2px solid ${selected || hovered ? '#0c3133' : '#ffffff'}`,
-          `box-shadow:0 1px 4px rgba(0,0,0,.35)${selected ? ',0 0 0 4px rgba(255,97,55,.25)' : ''}`,
-          'color:#fff;font:600 12px/24px system-ui,sans-serif;text-align:center',
-          'pointer-events:auto;user-select:none',
-          s.current.onPinReposition ? 'cursor:grab' : 'cursor:pointer',
-        ].join(';')
-      );
-      el.textContent = String(pin.number);
-      el.setAttribute('data-rv-pin', pin.id);
-      el.addEventListener('mouseenter', () => s.current.onPinHover?.(pin.id));
-      el.addEventListener('mouseleave', () => s.current.onPinHover?.(null));
+  /** Full repaint: measure, then pins (shapes read their positions), then shapes. */
+  const paint = useCallback(() => {
+    const d = doc();
+    if (!d?.documentElement) return;
+    const box = docBox();
+    boxRef.current = box;
+    syncAnchor(box);
+    layoutPins();
+    paintShapes();
+  }, [docBox, syncAnchor, layoutPins, paintShapes]);
 
-      // Drag to reposition, exactly as on an image. A small threshold keeps a
-      // click from being read as a zero-length drag.
-      let dragging = false;
-      el.addEventListener('mousedown', (ev) => {
-        const e = ev as MouseEvent;
-        if (!s.current.onPinReposition) return;
-        e.preventDefault();
-        e.stopPropagation();
-        const startX = e.clientX, startY = e.clientY;
-        let moved = false;
-
-        const onMove = (me: MouseEvent) => {
-          if (!moved && Math.hypot(me.clientX - startX, me.clientY - startY) < 4) return;
-          moved = true;
-          dragging = true;
-          el.style.cursor = 'grabbing';
-          const view = d.defaultView!;
-          el.style.left = `${me.clientX + view.scrollX}px`;
-          el.style.top = `${me.clientY + view.scrollY}px`;
-        };
-        const onUp = (ue: MouseEvent) => {
-          d.removeEventListener('mousemove', onMove, true);
-          d.removeEventListener('mouseup', onUp, true);
-          el.style.cursor = 'grab';
-          if (!moved) { s.current.onSelectPin(pin.id); return; }
-          const view = d.defaultView!;
-          const nx = ((ue.clientX + view.scrollX) / w) * 100;
-          const ny = ((ue.clientY + view.scrollY) / h) * 100;
-          s.current.onPinReposition?.(pin.id, Math.max(0, Math.min(100, nx)), Math.max(0, Math.min(100, ny)));
-          setTimeout(() => { dragging = false; }, 0);
-        };
-        d.addEventListener('mousemove', onMove, true);
-        d.addEventListener('mouseup', onUp, true);
-      });
-
-      el.addEventListener('click', (ev) => {
-        ev.preventDefault();
-        ev.stopPropagation();
-        if (!dragging) s.current.onSelectPin(pin.id);
-      });
-
-      layer.appendChild(el);
-    }
-  }, [docBox, syncAnchor]);
-
+  /** Coalesces bursts (mutations, resizes) into one repaint per frame. */
   const ticking = useRef(false);
-  const schedule = useCallback(() => {
+  const schedule = useCallback((full = true) => {
+    if (full) elCache.current.clear();
     if (ticking.current) return;
     ticking.current = true;
     const done = () => { ticking.current = false; paint(); };
@@ -410,10 +677,69 @@ export default function LiveViewer({
     setTimeout(() => { if (ticking.current) { try { cancelAnimationFrame(raf); } catch {} done(); } }, 100);
   }, [paint]);
 
+  /**
+   * Scrolling moves nothing in document space, so it only re-syncs the modal
+   * anchor and whatever is attached to fixed or sticky elements.
+   */
+  const scrollTick = useRef(false);
+  const onScroll = useCallback(() => {
+    if (scrollTick.current) return;
+    scrollTick.current = true;
+    requestAnimationFrame(() => {
+      scrollTick.current = false;
+      syncAnchor(boxRef.current);
+      const hasPinned = Array.from(truePos.current.values()).some((p) => p.fixed) ||
+        s.current.pins.some((p) => p.anchor?.fixed);
+      if (hasPinned || elCache.current.size) layoutPins();
+    });
+  }, [syncAnchor, layoutPins]);
+
+  // ── settling: wait for the layout to stop moving before placing pins ────
+  const settleRun = useRef(0);
+  const settle = useCallback(() => {
+    const run = ++settleRun.current;
+    setSettled(false);
+    const d = doc();
+    if (!d?.defaultView) return;
+    const started = Date.now();
+    const fonts = (d as Document & { fonts?: FontFaceSet }).fonts;
+    const fontsReady = fonts?.ready
+      ? Promise.race([fonts.ready, new Promise((r) => setTimeout(r, 2000))])
+      : Promise.resolve();
+    let last = -1;
+    let stable = 0;
+    fontsReady.then(() => {
+      const tick = () => {
+        if (settleRun.current !== run) return;
+        const { h } = docBox();
+        stable = h === last ? stable + 1 : 0;
+        last = h;
+        if (stable >= SETTLE_STABLE_STEPS || Date.now() - started > SETTLE_MAX_MS) {
+          setSettled(true);
+          return;
+        }
+        setTimeout(tick, SETTLE_STEP_MS);
+      };
+      tick();
+    });
+  }, [docBox]);
+
+  // ── images that did not load, so a broken page is not a silent one ──────
+  const countBroken = useCallback(() => {
+    const d = doc();
+    if (!d) return;
+    const broken = Array.from(d.images).filter((img) => {
+      const src = (img.getAttribute('src') || '').trim();
+      return src && !src.startsWith('data:') && img.complete && img.naturalWidth === 0;
+    });
+    setBrokenImages(broken.length);
+  }, []);
+
   // ── drawing on the framed document ──────────────────────────────────────
   const attachDrawing = useCallback((d: Document) => {
     let active: Shape | null = null;
     let startX = 0, startY = 0;
+    let startAnchor: PinAnchor | undefined;
 
     const point = (e: MouseEvent) => {
       const view = d.defaultView!;
@@ -432,6 +758,9 @@ export default function LiveViewer({
 
       const p = point(e);
       startX = p.x; startY = p.y;
+      const box = docBox();
+      boxRef.current = box;
+      startAnchor = buildAnchor(d, p.x, p.y, anchorContext(box));
       const base = { id: `s_${Date.now()}`, color: DRAWING_COLOR, strokeWidth: STROKE_WIDTH, createdAt: new Date().toISOString() };
       active =
         t === 'pen' ? ({ ...base, type: 'pen', points: [p.x, p.y] } as Shape)
@@ -452,9 +781,8 @@ export default function LiveViewer({
       } else active.points = [startX, startY, p.x, p.y];
 
       // Preview without disturbing the saved sets.
-      const { w, h } = docBox();
-      const layer = d.getElementById(LAYER_ID);
-      const svg = layer?.querySelector('svg');
+      const { w, h } = boxRef.current;
+      const svg = d.querySelector(`#${LAYER_ID} [data-rv-shapes]`);
       if (svg && w && h) {
         svg.querySelectorAll('[data-preview]').forEach((n) => n.remove());
         const node = buildShapeNode(d, normalizeShape({ ...active } as Shape, w, h), w, h);
@@ -464,7 +792,7 @@ export default function LiveViewer({
 
     const onUp = () => {
       if (!active) return;
-      const { w, h } = docBox();
+      const { w, h } = boxRef.current;
       const shape = active;
       active = null;
       if (!w || !h) return;
@@ -484,7 +812,7 @@ export default function LiveViewer({
       s.current.onShapeComplete?.(normalized, {
         x: Math.max(0, Math.min(100, (ax / w) * 100)),
         y: Math.max(0, Math.min(100, (ay / h) * 100)),
-      });
+      }, startAnchor);
       schedule();
     };
 
@@ -493,20 +821,37 @@ export default function LiveViewer({
     d.addEventListener('mouseup', onUp, true);
   }, [docBox, schedule]);
 
+  /** A proxied link or form address → the site address it stands for. */
+  const siteAddress = (raw: string): URL | null => {
+    const parsed = fromProxyPath(raw);
+    if (parsed) return parsed.target;
+    try {
+      const u = new URL(raw, currentPageUrl());
+      if (u.origin === window.location.origin) return new URL(u.pathname + u.search + u.hash, new URL(currentPageUrl()).origin);
+      return u;
+    } catch {
+      return null;
+    }
+  };
+
+  const sameSite = (a: URL, b: string) => {
+    try {
+      const x = a.hostname.toLowerCase().replace(/^www\./, '');
+      const y = new URL(b).hostname.toLowerCase().replace(/^www\./, '');
+      return x === y || x.endsWith(`.${y}`);
+    } catch {
+      return false;
+    }
+  };
+
   // ── frame wiring ────────────────────────────────────────────────────────
   const handleLoad = useCallback(() => {
     setIsLoading(false);
     const d = doc();
     if (!d) { setLoadError('This page could not be opened inside the review.'); return; }
-
-    try {
-      const declared = d.querySelector('base')?.getAttribute('href');
-      if (declared && declared !== url) s.current.onUrlChange(declared);
-    } catch { /* ignore */ }
-
-    const resolve = (raw: string): URL | null => {
-      try { return new URL(raw, d.querySelector('base')?.getAttribute('href') ?? url); } catch { return null; }
-    };
+    // A new document: nothing cached from the last one still points anywhere.
+    elCache.current.clear();
+    pinNodes.current.clear();
 
     d.addEventListener('click', (ev) => {
       const e = ev as MouseEvent;
@@ -524,25 +869,35 @@ export default function LiveViewer({
         if (target?.closest?.('[data-rv-pin]')) return;
         e.preventDefault();
         e.stopPropagation();
-        const { w, h } = docBox();
-        if (!w || !h) return;
+        const box = docBox();
+        boxRef.current = box;
+        if (!box.w || !box.h) return;
         const view = d.defaultView!;
+        const px = e.clientX + view.scrollX;
+        const py = e.clientY + view.scrollY;
         s.current.onPlacePin(
-          Math.max(0, Math.min(100, ((e.clientX + view.scrollX) / w) * 100)),
-          Math.max(0, Math.min(100, ((e.clientY + view.scrollY) / h) * 100))
+          Math.max(0, Math.min(100, (px / box.w) * 100)),
+          Math.max(0, Math.min(100, (py / box.h) * 100)),
+          buildAnchor(d, px, py, anchorContext(box)),
         );
         return;
       }
 
-      const anchor = (e.target as HTMLElement | null)?.closest?.('a[href]') as HTMLAnchorElement | null;
-      if (!anchor) return;
-      const href = anchor.getAttribute('href') ?? '';
-      if (!href || href.startsWith('#') || href.startsWith('javascript:')) return;
-      const target = resolve(href);
+      const link = (e.target as HTMLElement | null)?.closest?.('a[href]') as HTMLAnchorElement | null;
+      if (!link) return;
+      const raw = link.getAttribute('href') ?? '';
+      if (!raw || raw.startsWith('#') || /^javascript:/i.test(raw)) return;
+      const target = siteAddress(link.href);
       if (!target || (target.protocol !== 'http:' && target.protocol !== 'https:')) return;
+      // Same page, different fragment: let the page scroll itself.
+      if (target.hash && samePage(target.toString(), currentPageUrl())) return;
       e.preventDefault();
       e.stopPropagation();
-      if (anchor.target === '_blank') { window.open(target.toString(), '_blank', 'noopener'); return; }
+      // Another site cannot open in the review; it opens beside it.
+      if (link.target === '_blank' || !sameSite(target, currentPageUrl())) {
+        window.open(target.toString(), '_blank', 'noopener');
+        return;
+      }
       navigate(target.toString());
     }, true);
 
@@ -550,10 +905,10 @@ export default function LiveViewer({
       const form = ev.target as HTMLFormElement | null;
       if (!form) return;
       const method = (form.getAttribute('method') ?? 'get').toLowerCase();
-      const target = resolve(form.getAttribute('action') ?? '');
-      if (!target) return;
+      const target = siteAddress(form.action || currentPageUrl());
       ev.preventDefault();
       ev.stopPropagation();
+      if (!target) return;
       if (method === 'get') {
         for (const [k, v] of new FormData(form).entries()) if (typeof v === 'string') target.searchParams.set(k, v);
         navigate(target.toString());
@@ -564,27 +919,76 @@ export default function LiveViewer({
 
     attachDrawing(d);
     paint();
+    settle();
 
     const view = d.defaultView;
-    view?.addEventListener('scroll', schedule, true);
-    view?.addEventListener('resize', schedule);
+    view?.addEventListener('scroll', onScroll, true);
+    view?.addEventListener('resize', () => schedule());
+    let brokenTimer: number | undefined;
+    d.addEventListener('error', (ev) => {
+      if ((ev.target as Element | null)?.tagName !== 'IMG') return;
+      if (brokenTimer) view?.clearTimeout(brokenTimer);
+      brokenTimer = view?.setTimeout(countBroken, 600);
+    }, true);
     try {
       if (view?.ResizeObserver) {
-        const ro = new view.ResizeObserver(schedule);
+        const ro = new view.ResizeObserver(() => schedule());
         ro.observe(d.documentElement);
         if (d.body) ro.observe(d.body);
       }
       if (view?.MutationObserver && d.body) {
         let t: number | undefined;
-        const mo = new view.MutationObserver(() => { if (t) view.clearTimeout(t); t = view.setTimeout(schedule, 150); });
+        const mo = new view.MutationObserver(() => { if (t) view.clearTimeout(t); t = view.setTimeout(() => schedule(), 150); });
         mo.observe(d.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class', 'hidden'] });
       }
     } catch { /* observers are a nicety, not a requirement */ }
-    view?.setTimeout(paint, 1200);
-    view?.setTimeout(paint, 3500);
-  }, [attachDrawing, docBox, navigate, paint, schedule, url]);
+  }, [attachDrawing, countBroken, docBox, navigate, onScroll, paint, schedule, settle]);
 
-  useEffect(() => { paint(); }, [pins, selectedPinId, hoveredPin, drawnShapes, pendingShapes, tool, mode, paint]);
+  // ── the page reports where it really is (redirects, client-side routes) ─
+  useEffect(() => {
+    const onMessage = (e: MessageEvent) => {
+      if (!frameRef.current || e.source !== frameRef.current.contentWindow) return;
+      const data = e.data as { __rv?: string; url?: unknown } | null;
+      if (!data || data.__rv !== 'url' || typeof data.url !== 'string') return;
+      const previous = reportedUrlRef.current;
+      reportedUrlRef.current = data.url;
+      if (!samePage(data.url, s.current.url)) s.current.onUrlChange(data.url);
+      // A client-side route swapped the content under the pins: place them again.
+      if (previous && !samePage(previous, data.url)) {
+        elCache.current.clear();
+        settle();
+      }
+    };
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, [settle]);
+
+  useEffect(() => {
+    if (settled) countBroken();
+  }, [settled, countBroken]);
+
+  useEffect(() => { layoutPins(); paintShapes(); }, [pins, selectedPinId, hoveredPin, settled, device, mode, layoutPins, paintShapes]);
+  useEffect(() => { paintShapes(); }, [drawnShapes, pendingShapes, tool, paintShapes]);
+
+  // Selecting a comment brings its pin into view — from the sidebar the pin
+  // may be a long way down the page — and pulses it so the eye finds it.
+  useEffect(() => {
+    if (!settled || !selectedPinId || mode !== 'comment') return;
+    const d = doc();
+    const view = d?.defaultView;
+    const pos = shownPos.current.get(selectedPinId);
+    if (!view || !pos) return;
+    const top = view.scrollY;
+    if (pos.y < top + 60 || pos.y > top + view.innerHeight - 60) {
+      view.scrollTo({ top: Math.max(0, pos.y - view.innerHeight / 2), behavior: 'smooth' });
+    }
+    const node = pinNodes.current.get(selectedPinId);
+    if (node) {
+      node.classList.remove('rv-pulse');
+      void node.offsetWidth;
+      node.classList.add('rv-pulse');
+    }
+  }, [selectedPinId, settled, mode]);
 
   // A page the review has not seen before is no longer a dead end: commenting
   // on one registers it (workspace's handleAddComment), so the reviewer can
@@ -598,7 +1002,6 @@ export default function LiveViewer({
     // rest of the viewport when the document is shorter than the frame.
     d.documentElement.style.cursor =
       mode === 'comment' ? (tool ? DRAWING_PENCIL_CURSOR : COMMENT_PIN_CURSOR) : '';
-
   }, [mode, tool, isLoading]);
 
   // Leaving comment mode must also drop the tool, or the next click draws.
@@ -629,6 +1032,7 @@ export default function LiveViewer({
 
   const deviceWidth = DEVICES.find((x) => x.label === device)?.width ?? 0;
   const isSecure = url.startsWith('https://');
+  const pinsPending = mode === 'comment' && !isLoading && !settled && pins.length > 0;
 
   /**
    * Typing an address is the other half of "browse the site freely" — links
@@ -645,9 +1049,7 @@ export default function LiveViewer({
     try {
       const next = new URL(candidate);
       if (next.protocol !== 'http:' && next.protocol !== 'https:') return null;
-      const a = next.hostname.toLowerCase().replace(/^www\./, '');
-      const b = new URL(url).hostname.toLowerCase().replace(/^www\./, '');
-      if (a !== b && !a.endsWith(`.${b}`)) return null;
+      if (!sameSite(next, url)) return null;
       return next.toString();
     } catch {
       return null;
@@ -724,23 +1126,6 @@ export default function LiveViewer({
             ))}
           </div>
 
-          {canComment && (
-            <div className="flex items-center rounded-full border border-border/60 overflow-hidden shrink-0">
-              <IconTooltip label="Browse the site normally">
-                <button type="button" onClick={() => setModeSafely('browse')} aria-pressed={mode === 'browse'}
-                  className={`h-7 px-2.5 flex items-center gap-1 text-xs transition-colors ${mode === 'browse' ? 'bg-accent/10 text-accent' : 'text-muted-foreground hover:text-foreground'}`}>
-                  <MousePointer2 className="h-3.5 w-3.5" />Browse
-                </button>
-              </IconTooltip>
-              <IconTooltip label={isTrackedPage ? 'Click the page to comment, or pick a drawing tool' : 'Comment here — this page joins the review automatically'}>
-                <button type="button" onClick={() => setModeSafely('comment')} aria-pressed={mode === 'comment'}
-                  className={`h-7 px-2.5 flex items-center gap-1 text-xs transition-colors ${mode === 'comment' ? 'bg-accent/10 text-accent' : 'text-muted-foreground hover:text-foreground'}`}>
-                  <MessageSquarePlus className="h-3.5 w-3.5" />Comment
-                </button>
-              </IconTooltip>
-            </div>
-          )}
-
           {onToggleFullscreen && (
             <IconTooltip label="Fullscreen">
               <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onToggleFullscreen} aria-label="Fullscreen"><Maximize2 className="h-3.5 w-3.5" /></Button>
@@ -761,27 +1146,54 @@ export default function LiveViewer({
         switches the mode itself, so the toolbar is the way in rather than a
         reward for having already found the way in.
       */}
-      {!isFullscreen && canComment && canDraw && (
-        <div className="px-3 py-1.5 border-b border-border/50 bg-background shrink-0 flex items-center gap-3">
-          <DrawingToolbar
-            activeTool={tool}
-            onToolSelect={pickTool}
-            onUndo={onUndoShape}
-            canUndo={canUndo}
-            showEraser={!!onEraseShape}
-          />
-          {mode === 'comment' ? (
-            <span className="text-[11px] text-muted-foreground">
+      {/*
+        Mode and drawing tools share one centred bar, laid out and styled like
+        the image workspace's toolbar, and it stays up in fullscreen there too.
+      */}
+      {canComment && (
+        <div className={`relative px-4 py-2 border-b shrink-0 z-30 flex items-center justify-center gap-4 ${isFullscreen ? 'bg-zinc-900 border-zinc-700' : 'bg-background border-border/50'}`}>
+          <div className="flex items-center gap-0.5 bg-white/90 backdrop-blur-sm border border-gray-200 rounded-lg shadow-sm px-1 py-1">
+            <IconTooltip label="Browse the site normally">
+              <button type="button" onClick={() => setModeSafely('browse')} aria-pressed={mode === 'browse'}
+                className={`px-2.5 py-2 rounded-md flex items-center gap-1.5 text-xs font-medium transition-all ${mode === 'browse' ? 'bg-accent text-accent-foreground shadow-inner' : 'text-gray-500 hover:bg-gray-100 hover:text-gray-800'}`}>
+                <MousePointer2 className="h-4 w-4" />Browse
+              </button>
+            </IconTooltip>
+            <IconTooltip label={isTrackedPage ? 'Click the page to comment, or pick a drawing tool' : 'Comment here — this page joins the review automatically'}>
+              <button type="button" onClick={() => setModeSafely('comment')} aria-pressed={mode === 'comment'}
+                className={`px-2.5 py-2 rounded-md flex items-center gap-1.5 text-xs font-medium transition-all ${mode === 'comment' ? 'bg-accent text-accent-foreground shadow-inner' : 'text-gray-500 hover:bg-gray-100 hover:text-gray-800'}`}>
+                <MessageSquarePlus className="h-4 w-4" />Comment
+              </button>
+            </IconTooltip>
+          </div>
+
+          {/* Picking a tool switches to comment mode itself, so the palette is
+              always on show rather than a reward for finding the toggle. */}
+          {canDraw && (
+            <div className={`pl-4 border-l ${isFullscreen ? 'border-zinc-600' : 'border-border/50'}`}>
+              <DrawingToolbar
+                activeTool={tool}
+                onToolSelect={pickTool}
+                onUndo={onUndoShape}
+                canUndo={canUndo}
+                showEraser={!!onEraseShape}
+              />
+            </div>
+          )}
+
+          {/* Out of the flow so it never pushes the controls off centre. */}
+          {mode === 'comment' && !isFullscreen && (
+            <span className="absolute right-4 top-1/2 -translate-y-1/2 max-w-56 text-right text-[11px] leading-tight text-muted-foreground hidden 2xl:block">
               {tool ? 'Drag on the page to mark it up.' : 'Click the page to drop a comment pin.'}
               {!isTrackedPage && ' This page joins the review when you save.'}
             </span>
-          ) : null}
+          )}
         </div>
       )}
 
       {isFullscreen && onToggleFullscreen && (
         <button onClick={onToggleFullscreen} aria-label="Exit fullscreen"
-          className="absolute top-3 right-3 z-20 h-8 w-8 flex items-center justify-center rounded-md bg-black/60 text-white hover:bg-black/80">
+          className="absolute top-2 right-3 z-40 h-8 w-8 flex items-center justify-center rounded-md bg-black/60 text-white hover:bg-black/80">
           <Minimize2 className="h-4 w-4" />
         </button>
       )}
@@ -800,7 +1212,7 @@ export default function LiveViewer({
             <>
               <iframe
                 ref={frameRef}
-                key={proxySrc}
+                key={`${proxySrc}#${reloadNonce}`}
                 src={proxySrc}
                 onLoad={handleLoad}
                 title="Website under review"
@@ -817,6 +1229,28 @@ export default function LiveViewer({
                 className="absolute pointer-events-none"
                 style={{ display: 'none' }}
               />
+              {isLoading && proxySrc && (
+                <div className="absolute inset-0 flex items-center justify-center bg-white/70 pointer-events-none">
+                  <span className="flex items-center gap-2 rounded-full bg-background/95 border border-border/60 shadow-sm px-3 py-1.5 text-xs text-muted-foreground">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />Loading page…
+                  </span>
+                </div>
+              )}
+              {pinsPending && (
+                <div className="absolute top-3 left-1/2 -translate-x-1/2 pointer-events-none">
+                  <span className="flex items-center gap-2 rounded-full bg-background/95 border border-border/60 shadow-sm px-3 py-1 text-[11px] text-muted-foreground">
+                    <Loader2 className="h-3 w-3 animate-spin" />Placing pins…
+                  </span>
+                </div>
+              )}
+              {brokenImages > 0 && !brokenDismissed && !isLoading && (
+                <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-2 rounded-full bg-background/95 border border-border/60 shadow-sm pl-3 pr-1.5 py-1 text-[11px] text-muted-foreground">
+                  <ImageOff className="h-3.5 w-3.5 shrink-0" />
+                  <span>{brokenImages} {brokenImages === 1 ? 'image' : 'images'} couldn&rsquo;t load</span>
+                  <button type="button" onClick={reload} className="font-medium text-accent hover:underline">Retry</button>
+                  <button type="button" onClick={() => setBrokenDismissed(true)} aria-label="Dismiss" className="p-0.5 rounded hover:bg-muted"><X className="h-3 w-3" /></button>
+                </div>
+              )}
             </>
           )}
         </div>

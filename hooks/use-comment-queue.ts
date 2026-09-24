@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useRef } from 'react';
 import { createComment, DbComment } from '@/app/actions/comments';
+import type { PinAnchor } from '@/lib/website/anchor-schema';
 
 const QUEUE_KEY = 'annot8_comment_queue';
 const MAX_RETRIES = 3;
@@ -17,6 +18,8 @@ export interface PendingComment {
   createdAt: string;
   retries: number;
   drawingData?: any; // optional shape JSON for drawing annotations
+  /** Website reviews: the element the pin is attached to (lib/website/anchor). */
+  anchor?: PinAnchor;
 }
 
 // ─── localStorage helpers ─────────────────────────────────────────────────────
@@ -53,6 +56,7 @@ export function useCommentQueue() {
     y: number,
     pinNumber: number,
     drawingData?: any,
+    anchor?: PinAnchor,
   ): PendingComment => {
     const localId = `local_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     const item: PendingComment = {
@@ -66,6 +70,7 @@ export function useCommentQueue() {
       createdAt: new Date().toISOString(),
       retries: 0,
       drawingData,
+      anchor,
     };
     const q = readQueue();
     q.push(item);
@@ -115,6 +120,7 @@ export function useCommentQueue() {
           item.x,
           item.y,
           item.drawingData,
+          item.anchor,
         );
         if (result.success && result.comment) {
           onSynced(item.localId, result.comment);
