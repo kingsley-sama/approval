@@ -9,7 +9,15 @@ const nextConfig: NextConfig = {
   // sharp ships a platform-specific native binary. Keeping it external stops
   // the server build from trying to bundle the .node file, so the traced
   // output ships the real package (and its @img/* binary) instead.
-  serverExternalPackages: ['sharp'],
+  // playwright-core and @sparticuz/chromium likewise: the latter unpacks its
+  // compressed Chromium from its own bin/ at runtime, which only exists when
+  // the package ships as-is rather than bundled.
+  serverExternalPackages: ['sharp', 'playwright-core', '@sparticuz/chromium'],
+  // Nothing imports bin/ directly, so tracing would leave it out. Only the
+  // routes that start a browser need it.
+  outputFileTracingIncludes: {
+    '/api/websites/**': ['./node_modules/@sparticuz/chromium/bin/**'],
+  },
   experimental: {
     serverActions: {
       bodySizeLimit: '10mb',

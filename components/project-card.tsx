@@ -37,6 +37,7 @@ function BlurImage({
   round?: string
 }) {
   const [loaded, setLoaded] = React.useState(false)
+  const [failed, setFailed] = React.useState(false)
   const ownThumbnail = src.startsWith('/api/')
 
   return (
@@ -48,8 +49,11 @@ function BlurImage({
         } ${placeholderClass}`}
         aria-hidden
       >
-        {/* Moving shimmer streak */}
-        <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-transparent via-white/30 to-transparent" />
+        {/* Moving shimmer streak — stopped once the image has failed, so a
+            page that could not be rendered does not look forever "loading". */}
+        {!failed && (
+          <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-transparent via-white/30 to-transparent" />
+        )}
       </div>
 
       {/* Real image — fades + unblurs in */}
@@ -65,6 +69,7 @@ function BlurImage({
           loading={eager ? 'eager' : 'lazy'}
           decoding="async"
           onLoad={() => setLoaded(true)}
+          onError={() => setFailed(true)}
           className={`absolute inset-0 w-full h-full object-cover ${round} transition-all duration-500 ease-out ${
             loaded ? 'opacity-100 blur-0 scale-100' : 'opacity-0 blur-md scale-[1.04]'
           }`}

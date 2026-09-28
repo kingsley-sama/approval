@@ -1,4 +1,5 @@
 import type { Browser, BrowserContext } from 'playwright-core';
+import { launchChromium } from '@/lib/website/browser';
 
 /**
  * Server-side capture of a website into a durable, annotatable copy.
@@ -177,17 +178,11 @@ const SCROLL_THROUGH = `(async () => {
 export async function captureSite(options: CaptureOptions): Promise<CaptureResult> {
   const opts = { ...DEFAULTS, ...options };
 
-  // Imported lazily so a deployment without the browser binary only fails when
-  // a capture is actually requested, not at module load.
-  const { chromium } = await import('playwright-core');
-
   let browser: Browser | null = null;
   let context: BrowserContext | null = null;
 
   try {
-    browser = await chromium.launch({
-      args: ['--no-sandbox', '--disable-dev-shm-usage'],
-    });
+    browser = await launchChromium();
     context = await browser.newContext({
       viewport: { width: opts.viewportWidth, height: 900 },
       deviceScaleFactor: 1,

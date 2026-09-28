@@ -245,8 +245,13 @@ export default function LiveViewer({
     const stroke = g.color || DRAWING_COLOR;
     const width = g.strokeWidth || STROKE_WIDTH;
 
+    // Paint goes inline as well as in attributes: this SVG lives inside the
+    // client's page, and a site rule as ordinary as `path { fill: currentColor }`
+    // outranks a presentation attribute and would repaint the markup.
+    const PAINT = ['stroke', 'stroke-width', 'fill', 'fill-opacity', 'stroke-linecap', 'stroke-linejoin'];
     const set = (el: SVGElement, attrs: Record<string, string | number>) => {
       Object.entries(attrs).forEach(([k, v]) => el.setAttribute(k, String(v)));
+      el.setAttribute('style', PAINT.filter((k) => k in attrs).map((k) => `${k}:${attrs[k]}!important`).join(';'));
       return el;
     };
 
@@ -602,9 +607,16 @@ export default function LiveViewer({
     // Blocking `click` alone was not enough — mousedown/pointerdown reached the
     // page first, so widgets reacted before the click was ever cancelled.
     const cursor = commenting ? (s.current.tool ? DRAWING_PENCIL_CURSOR : COMMENT_PIN_CURSOR) : '';
+    // Size goes inline and !important: the width/height attributes lose to any
+    // site rule, and one as common as `svg { max-width: 100% }` collapsed the
+    // overlay to 0×0 inside its zero-sized layer — so there was nothing to
+    // draw on, and the markup was clipped away with it.
     svg.setAttribute(
       'style',
-      `position:absolute;left:0;top:0;pointer-events:${commenting ? 'auto' : 'none'};${cursor ? `cursor:${cursor};` : ''}`
+      `position:absolute!important;left:0!important;top:0!important;display:block!important;` +
+      `width:${w}px!important;height:${h}px!important;min-width:0!important;min-height:0!important;` +
+      `max-width:none!important;max-height:none!important;overflow:visible!important;` +
+      `pointer-events:${commenting ? 'auto' : 'none'}!important;${cursor ? `cursor:${cursor}!important;` : ''}`
     );
 
     // "Browse the site normally" means exactly that: no pins and no markup
@@ -643,7 +655,7 @@ export default function LiveViewer({
       const node = buildShapeNode(d, shape, w, h);
       if (!node) continue;
       if (erasing && s.current.onEraseShape) {
-        node.setAttribute('style', 'pointer-events:auto;cursor:pointer');
+        node.setAttribute('style', `${node.getAttribute('style') ?? ''};pointer-events:auto!important;cursor:pointer!important`);
         node.addEventListener('click', (ev) => {
           ev.preventDefault();
           ev.stopPropagation();
@@ -751,8 +763,9 @@ export default function LiveViewer({
       const t = s.current.tool;
       if (s.current.mode !== 'comment' || !t || t === 'eraser' || !s.current.canDraw) return;
       const target = e.target as Element | null;
-      // Only the markup layer starts a stroke; a pin must stay clickable.
-      if (!target || target.namespaceURI !== SVG_NS) return;
+      // Anything but a pin starts a stroke, so a site element stacked above the
+      // overlay cannot swallow the gesture; a pin must stay clickable.
+      if (target?.closest?.('[data-rv-pin]')) return;
       e.preventDefault();
       e.stopPropagation();
 

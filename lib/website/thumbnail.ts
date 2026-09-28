@@ -3,6 +3,7 @@ import sharp from 'sharp';
 import { supabaseAdmin } from '@/lib/supabase';
 import { DEFAULT_CAPTURE_SETTINGS } from '@/lib/website/viewports';
 import { readStored } from '@/lib/website/snapshot/store';
+import { launchChromium } from '@/lib/website/browser';
 
 /**
  * Sidebar thumbnails for website pages: the page as it first appears in a
@@ -61,11 +62,7 @@ const waiting: Array<() => void> = [];
 
 async function getBrowser(): Promise<Browser> {
   if (!browserPromise) {
-    // Imported lazily, as in snapshot capture, so a deployment without the
-    // browser binary only fails when a render is actually needed.
-    browserPromise = import('playwright-core').then(({ chromium }) =>
-      chromium.launch({ args: ['--no-sandbox', '--disable-dev-shm-usage'] })
-    );
+    browserPromise = launchChromium();
     browserPromise.catch(() => { browserPromise = null; });
   }
   return browserPromise;
