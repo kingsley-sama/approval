@@ -1,5 +1,11 @@
 import { createHash } from 'crypto';
-import { supabaseAdmin } from '@/lib/supabase';
+import {
+  bucketOf,
+  downloadRef,
+  publicUrlForRef,
+  toStorageRef,
+  type StorageBackend,
+} from '@/lib/storage/backends';
 import type { CaptureResult, CapturedAsset } from '@/lib/website/snapshot/capture';
 
 /**
@@ -13,8 +19,6 @@ import type { CaptureResult, CapturedAsset } from '@/lib/website/snapshot/captur
  * webfonts — the one asset class that is CORS-checked — load correctly and the
  * CDN does the work.
  */
-
-const BUCKET = process.env.NEXT_PUBLIC_SUPABASE_BUCKET_NAME || 'screenshots';
 
 const EXT_BY_TYPE: Record<string, string> = {
   'image/jpeg': 'jpg',
@@ -47,12 +51,13 @@ function assetName(asset: CapturedAsset): string {
   return `${hash}.${extFor(asset.contentType, asset.url)}`;
 }
 
-function publicUrlFor(path: string): string {
-  return supabaseAdmin.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
-}
-
-async function upload(path: string, body: Buffer, contentType: string): Promise<boolean> {
-  const { error } = await supabaseAdmin.storage.from(BUCKET).upload(
+async function upload(
+  backend: StorageBackend,
+  path: string,
+  body: Buffer,
+  contentType: string
+): Promise<boolean> {
+  const { error } = await bucketOf(backend).upload(
     path,
     new Blob([new Uint8Array(body)], { type: contentType }),
     { contentType, cacheControl: '31536000', upsert: true }
@@ -83,6 +88,7 @@ function applyUrlMap(text: string, map: Map<string, string>): string {
 }
 
 export interface StoredSnapshot {
+  /** Storage refs (see lib/storage/backends.ts), not bare paths. */
   htmlPath: string;
   screenshotPath: string;
   assetCount: number;
@@ -91,9 +97,12 @@ export interface StoredSnapshot {
 
 export async function storeSnapshot(
   snapshotId: string,
-  capture: CaptureResult
+  capture: CaptureResult,
+  backend: StorageBackend
 ): Promise<StoredSnapshot> {
   const base = `snapshots/${snapshotId}`;
+  const publicUrlFor = (path: string) =>
+    bucketOf(backend).getPublicUrl(path).data.publicUrl;
   const urlMap = new Map<string, string>();
   let bytesStored = 0;
   let assetCount = 0;
@@ -117,7 +126,7 @@ export async function storeSnapshot(
       while (cursor < binaries.length) {
         const asset = binaries[cursor++];
         const path = `${base}/assets/${assetName(asset)}`;
-        if (!(await upload(path, asset.body, asset.contentType))) continue;
+        if (!(await upload(backend, path, asset.body, asset.contentType))) continue;
         urlMap.set(asset.url, publicUrlFor(path));
         bytesStored += asset.body.length;
         assetCount++;
@@ -130,7 +139,7 @@ export async function storeSnapshot(
     const css = applyUrlMap(asset.body.toString('utf8'), urlMap);
     const body = Buffer.from(css, 'utf8');
     const path = `${base}/assets/${assetName(asset)}`;
-    if (!(await upload(path, body, 'text/css'))) continue;
+    if (!(await upload(backend, path, body, 'text/css'))) continue;
     urlMap.set(asset.url, publicUrlFor(path));
     bytesStored += body.length;
     assetCount++;
@@ -140,26 +149,26 @@ export async function storeSnapshot(
   const html = applyUrlMap(capture.html, urlMap);
   const htmlPath = `${base}/index.html`;
   const htmlBody = Buffer.from(html, 'utf8');
-  await upload(htmlPath, htmlBody, 'text/html; charset=utf-8');
+  await upload(backend, htmlPath, htmlBody, 'text/html; charset=utf-8');
   bytesStored += htmlBody.length;
 
   const screenshotPath = `${base}/page.jpg`;
-  await upload(screenshotPath, capture.screenshot, 'image/jpeg');
+  await upload(backend, screenshotPath, capture.screenshot, 'image/jpeg');
   bytesStored += capture.screenshot.length;
 
-  return { htmlPath, screenshotPath, assetCount, bytesStored };
+  return {
+    htmlPath: toStorageRef(backend, htmlPath),
+    screenshotPath: toStorageRef(backend, screenshotPath),
+    assetCount,
+    bytesStored,
+  };
 }
 
 /** Reads a stored object back — used to serve the HTML and to crop screenshots. */
-export async function readStored(path: string): Promise<Buffer | null> {
-  const { data, error } = await supabaseAdmin.storage.from(BUCKET).download(path);
-  if (error || !data) {
-    console.error('[snapshot] download failed', path, error);
-    return null;
-  }
-  return Buffer.from(await data.arrayBuffer());
+export async function readStored(ref: string): Promise<Buffer | null> {
+  return downloadRef(ref);
 }
 
-export function storagePublicUrl(path: string): string {
-  return publicUrlFor(path);
+export function storagePublicUrl(ref: string): string {
+  return publicUrlForRef(ref);
 }

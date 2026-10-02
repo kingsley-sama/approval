@@ -1,7 +1,6 @@
 import { supabaseAdmin } from '@/lib/supabase';
 import { compressImageBuffer } from '@/lib/api/compress-image';
-
-const BUCKET = process.env.NEXT_PUBLIC_SUPABASE_BUCKET_NAME || 'screenshots';
+import { bucketOf, projectStorage } from '@/lib/storage/backends';
 
 const ALLOWED_IMAGE_TYPES = new Set([
   'image/jpeg',
@@ -223,18 +222,15 @@ async function uploadAndCreateThread(
   // returns a bare "Bad Request" (e.g. a transient 400 or a key collision);
   // a second attempt with a new timestamped key clears those.
   const body = toUploadBody(buffer, contentType);
+  const bucket = bucketOf(await projectStorage('markup_projects', projectId));
   let path = storagePath(projectId, fileName);
   let uploadError = (
-    await supabaseAdmin.storage
-      .from(BUCKET)
-      .upload(path, body, { contentType, cacheControl: '31536000', upsert: true })
+    await bucket.upload(path, body, { contentType, cacheControl: '31536000', upsert: true })
   ).error;
   if (uploadError) {
     path = storagePath(projectId, fileName);
     uploadError = (
-      await supabaseAdmin.storage
-        .from(BUCKET)
-        .upload(path, body, { contentType, cacheControl: '31536000', upsert: true })
+      await bucket.upload(path, body, { contentType, cacheControl: '31536000', upsert: true })
     ).error;
   }
   if (uploadError) {
@@ -244,7 +240,7 @@ async function uploadAndCreateThread(
     );
   }
 
-  const publicUrl = supabaseAdmin.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
+  const publicUrl = bucket.getPublicUrl(path).data.publicUrl;
 
   const { data: thread, error: threadError } = await supabaseAdmin
     .from('markup_threads')
@@ -261,7 +257,7 @@ async function uploadAndCreateThread(
     .single();
   if (threadError) {
     // Don't leave an orphaned file behind
-    await supabaseAdmin.storage.from(BUCKET).remove([path]).catch(() => {});
+    await bucket.remove([path]).catch(() => {});
     throw new Error(`Thread creation failed: ${threadError.message}`);
   }
 

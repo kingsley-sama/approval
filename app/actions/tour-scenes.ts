@@ -1,6 +1,7 @@
 'use server';
 
 import { supabaseAdmin } from '@/lib/supabase';
+import { bucketOf, projectStorage, publicUrlForRef, toStorageRef } from '@/lib/storage/backends';
 import { requireUser } from '@/lib/auth/require-user';
 import {
   SignedUploadUrlSchema,
@@ -10,8 +11,6 @@ import {
 } from '@/lib/validation/schemas';
 import { revalidatePath } from 'next/cache';
 import type { TourSceneRecord } from './tour-projects';
-
-const BUCKET = process.env.NEXT_PUBLIC_SUPABASE_BUCKET_NAME || 'screenshots';
 
 function tourStoragePath(projectId: string, fileName: string): string {
   const timestamp = Date.now();
@@ -37,15 +36,14 @@ export async function getTourSceneUploadUrl(
     const parsed = SignedUploadUrlSchema.safeParse({ fileName });
     if (!parsed.success) return { success: false, error: 'Invalid file name' };
 
-    const storagePath = tourStoragePath(projectId, fileName);
-    const { data, error } = await supabaseAdmin.storage
-      .from(BUCKET)
-      .createSignedUploadUrl(storagePath);
+    const backend = await projectStorage('tour_projects', projectId);
+    const path = tourStoragePath(projectId, fileName);
+    const { data, error } = await bucketOf(backend).createSignedUploadUrl(path);
 
     if (error || !data?.signedUrl) {
       return { success: false, error: error?.message || 'Could not create signed URL' };
     }
-    return { success: true, signedUrl: data.signedUrl, storagePath };
+    return { success: true, signedUrl: data.signedUrl, storagePath: toStorageRef(backend, path) };
   } catch (err: any) {
     return { success: false, error: err.message || 'Failed to generate upload URL' };
   }
@@ -71,8 +69,7 @@ export async function registerTourScene(
     return { success: false, error: 'Invalid input: ' + parsed.error.issues[0]?.message };
   }
 
-  const { data: pub } = supabaseAdmin.storage.from(BUCKET).getPublicUrl(storagePath);
-  const publicUrl = pub?.publicUrl;
+  const publicUrl = publicUrlForRef(storagePath);
   if (!publicUrl) return { success: false, error: 'Could not resolve public URL' };
 
   // Scene name defaults to the file name without extension ("Wohnzimmer.jpg" → "Wohnzimmer").

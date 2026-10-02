@@ -100,6 +100,7 @@ export type Database = {
           kind: string
           markup_url: string | null
           project_name: string
+          storage_backend: string
           raw_payload: Json | null
           scraped_data_id: number | null
           site_url: string | null
@@ -115,6 +116,7 @@ export type Database = {
           kind?: string
           markup_url?: string | null
           project_name: string
+          storage_backend?: string
           raw_payload?: Json | null
           scraped_data_id?: number | null
           site_url?: string | null
@@ -130,6 +132,7 @@ export type Database = {
           kind?: string
           markup_url?: string | null
           project_name?: string
+          storage_backend?: string
           raw_payload?: Json | null
           scraped_data_id?: number | null
           site_url?: string | null
@@ -656,6 +659,7 @@ export type Database = {
         Row: {
           id: string
           project_name: string
+          storage_backend: string
           preview_url: string | null
           raw_payload: Json | null
           total_images: number | null
@@ -665,6 +669,7 @@ export type Database = {
         Insert: {
           id?: string
           project_name: string
+          storage_backend?: string
           preview_url?: string | null
           raw_payload?: Json | null
           total_images?: number | null
@@ -674,6 +679,7 @@ export type Database = {
         Update: {
           id?: string
           project_name?: string
+          storage_backend?: string
           preview_url?: string | null
           raw_payload?: Json | null
           total_images?: number | null
@@ -815,6 +821,7 @@ export type Database = {
         Row: {
           id: string
           project_name: string
+          storage_backend: string
           description: string | null
           preview_url: string | null
           start_scene_id: string | null
@@ -825,6 +832,7 @@ export type Database = {
         Insert: {
           id?: string
           project_name: string
+          storage_backend?: string
           description?: string | null
           preview_url?: string | null
           start_scene_id?: string | null
@@ -835,6 +843,7 @@ export type Database = {
         Update: {
           id?: string
           project_name?: string
+          storage_backend?: string
           description?: string | null
           preview_url?: string | null
           start_scene_id?: string | null

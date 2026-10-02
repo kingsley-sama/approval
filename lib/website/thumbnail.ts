@@ -1,6 +1,6 @@
 import type { Browser } from 'playwright-core';
 import sharp from 'sharp';
-import { supabaseAdmin } from '@/lib/supabase';
+import { bucketOf, type StorageBackend } from '@/lib/storage/backends';
 import { DEFAULT_CAPTURE_SETTINGS } from '@/lib/website/viewports';
 import { readStored } from '@/lib/website/snapshot/store';
 import { launchChromium } from '@/lib/website/browser';
@@ -17,9 +17,10 @@ import { launchChromium } from '@/lib/website/browser';
  * A review can list dozens of pages and the sidebar asks for all of them at
  * once, so renders share one browser and run a couple at a time rather than
  * launching a Chromium per tile.
+ *
+ * Thumbnails are a cache, so they simply live in whichever Supabase account
+ * the project writes to; callers pass that backend in.
  */
-
-const BUCKET = process.env.NEXT_PUBLIC_SUPABASE_BUCKET_NAME || 'screenshots';
 
 // Taller than a screen on purpose. The dashboard card is a tall rectangle, and
 // a 16:10 shot dropped into it survives only as a narrow strip through the
@@ -37,20 +38,19 @@ export function thumbnailPath(threadId: string): string {
   return `thumbnails/${threadId}.jpg`;
 }
 
-export function thumbnailPublicUrl(threadId: string): string {
-  return supabaseAdmin.storage.from(BUCKET).getPublicUrl(thumbnailPath(threadId)).data.publicUrl;
+export function thumbnailPublicUrl(backend: StorageBackend, threadId: string): string {
+  return bucketOf(backend).getPublicUrl(thumbnailPath(threadId)).data.publicUrl;
 }
 
-export async function hasStoredThumbnail(threadId: string): Promise<boolean> {
-  const { data } = await supabaseAdmin.storage
-    .from(BUCKET)
+export async function hasStoredThumbnail(backend: StorageBackend, threadId: string): Promise<boolean> {
+  const { data } = await bucketOf(backend)
     .list('thumbnails', { search: `${threadId}.jpg`, limit: 1 });
   return Boolean(data?.some(f => f.name === `${threadId}.jpg`));
 }
 
 /** Drops a stored thumbnail so the next request renders a fresh one. */
-export async function clearThumbnail(threadId: string): Promise<void> {
-  await supabaseAdmin.storage.from(BUCKET).remove([thumbnailPath(threadId)]);
+export async function clearThumbnail(backend: StorageBackend, threadId: string): Promise<void> {
+  await bucketOf(backend).remove([thumbnailPath(threadId)]);
 }
 
 // ── shared browser ─────────────────────────────────────────────────────────
@@ -131,6 +131,7 @@ async function renderPage(url: string, hideSelectors: string[]): Promise<Buffer>
 const inFlight = new Map<string, Promise<boolean>>();
 
 interface ThumbnailSource {
+  backend: StorageBackend;
   threadId: string;
   url: string;
   /** Storage path of the page's current snapshot screenshot, when it has one. */
@@ -160,7 +161,7 @@ export function ensureThumbnail(source: ThumbnailSource): Promise<boolean> {
         .jpeg({ quality: 78 })
         .toBuffer();
 
-      const { error } = await supabaseAdmin.storage.from(BUCKET).upload(
+      const { error } = await bucketOf(source.backend).upload(
         thumbnailPath(source.threadId),
         new Blob([new Uint8Array(thumb)], { type: 'image/jpeg' }),
         { contentType: 'image/jpeg', cacheControl: '86400', upsert: true }
@@ -183,6 +184,11 @@ export function ensureThumbnail(source: ThumbnailSource): Promise<boolean> {
 }
 
 /** The stored thumbnail's bytes, for serving inline. */
-export async function readThumbnail(key: string): Promise<Buffer | null> {
-  return readStored(thumbnailPath(key));
+export async function readThumbnail(backend: StorageBackend, key: string): Promise<Buffer | null> {
+  const { data, error } = await bucketOf(backend).download(thumbnailPath(key));
+  if (error || !data) {
+    console.error('[thumbnail] download failed', key, error);
+    return null;
+  }
+  return Buffer.from(await data.arrayBuffer());
 }

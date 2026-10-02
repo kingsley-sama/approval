@@ -10,6 +10,7 @@ import { storeSnapshot } from '@/lib/website/snapshot/store';
 import { captureAvailable } from '@/lib/website/flags';
 import { refreshProjectCounts } from '@/lib/website/project-counts';
 import { clearThumbnail } from '@/lib/website/thumbnail';
+import { projectStorage } from '@/lib/storage/backends';
 
 /**
  * POST /api/websites/snapshot — capture a page into a durable copy.
@@ -173,7 +174,8 @@ export async function POST(request: NextRequest) {
       waitMs: defaults.waitMs,
     });
 
-    const stored = await storeSnapshot(snapshot.id, result);
+    const backend = await projectStorage('markup_projects', body.projectId);
+    const stored = await storeSnapshot(snapshot.id, result, backend);
 
     await supabaseAdmin
       .from('website_snapshots')
@@ -202,7 +204,7 @@ export async function POST(request: NextRequest) {
       .eq('id', threadId);
 
     // The sidebar tile should show this copy; the next request re-renders it.
-    await clearThumbnail(threadId).catch(() => {});
+    await clearThumbnail(backend, threadId).catch(() => {});
 
     await refreshProjectCounts(body.projectId);
 

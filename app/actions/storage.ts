@@ -1,6 +1,15 @@
 'use server';
 
 import { supabaseAdmin } from '@/lib/supabase';
+import {
+  bucketOf,
+  projectStorage,
+  publicUrlForRef,
+  removeStored,
+  resolveStorageRef,
+  signedUrlForRef,
+  toStorageRef,
+} from '@/lib/storage/backends';
 import { requireUser } from '@/lib/auth/require-user';
 import { CUSTOMER_ATTACHMENT_DELETE_ERROR } from '@/lib/attachment-permissions';
 import {
@@ -11,12 +20,6 @@ import {
 import { SignedUploadUrlSchema, RegisterUploadSchema } from '@/lib/validation/schemas';
 import { createThread } from './threads';
 import { nanoid } from 'nanoid';
-
-// ─── constants ────────────────────────────────────────────────────────────────
-
-const BUCKET = process.env.NEXT_PUBLIC_SUPABASE_BUCKET_NAME || 'screenshots';
-
-
 
 // ─── path helpers ─────────────────────────────────────────────────────────────
 
@@ -107,17 +110,16 @@ export async function getSignedUploadUrl(
       return { success: false, error: 'Invalid file name' };
     }
 
-    const storagePath = renderStoragePath(projectId, fileName);
+    const backend = await projectStorage('markup_projects', projectId);
+    const path = renderStoragePath(projectId, fileName);
 
-    const { data, error } = await supabaseAdmin.storage
-      .from(BUCKET)
-      .createSignedUploadUrl(storagePath);
+    const { data, error } = await bucketOf(backend).createSignedUploadUrl(path);
 
     if (error || !data?.signedUrl) {
       return { success: false, error: error?.message || 'Could not create signed URL' };
     }
 
-    return { success: true, signedUrl: data.signedUrl, storagePath };
+    return { success: true, signedUrl: data.signedUrl, storagePath: toStorageRef(backend, path) };
   } catch (err: any) {
     return { success: false, error: err.message || 'Failed to generate upload URL' };
   }
@@ -139,14 +141,13 @@ export async function registerUploadedFile(
       return { success: false, error: 'Invalid input: ' + parsed.error.issues[0]?.message };
     }
 
-    const publicUrl = supabaseAdmin.storage
-      .from(BUCKET)
-      .getPublicUrl(storagePath).data.publicUrl;
+    const publicUrl = publicUrlForRef(storagePath);
 
     const result = await createThread(projectId, {
       path: publicUrl,
       name: fileName,
-      filename: storagePath,
+      // image_filename doubles as a display-name fallback, so keep it a plain path.
+      filename: resolveStorageRef(storagePath).path,
     });
 
     if (!result.success) {
@@ -184,17 +185,16 @@ export async function getAttachmentUploadUrl(
       return { success: false, error: `File exceeds the ${formatMaxSize(mimeType)} limit` };
     }
 
-    const storagePath = attachmentStoragePath(projectId, fileName);
+    const backend = await projectStorage('markup_projects', projectId);
+    const path = attachmentStoragePath(projectId, fileName);
 
-    const { data, error } = await supabaseAdmin.storage
-      .from(BUCKET)
-      .createSignedUploadUrl(storagePath);
+    const { data, error } = await bucketOf(backend).createSignedUploadUrl(path);
 
     if (error || !data?.signedUrl) {
       return { success: false, error: error?.message || 'Could not create signed URL' };
     }
 
-    return { success: true, signedUrl: data.signedUrl, storagePath };
+    return { success: true, signedUrl: data.signedUrl, storagePath: toStorageRef(backend, path) };
   } catch (err: any) {
     return { success: false, error: err.message || 'Failed to generate attachment upload URL' };
   }
@@ -256,15 +256,13 @@ export async function getAttachmentSignedUrl(
   try {
     await requireUser();
 
-    const { data, error } = await supabaseAdmin.storage
-      .from(BUCKET)
-      .createSignedUrl(storagePath, 60 * 60); // 1 hour
+    const signedUrl = await signedUrlForRef(storagePath, 60 * 60); // 1 hour
 
-    if (error || !data?.signedUrl) {
-      return { success: false, error: error?.message || 'Could not create signed URL' };
+    if (!signedUrl) {
+      return { success: false, error: 'Could not create signed URL' };
     }
 
-    return { success: true, url: data.signedUrl };
+    return { success: true, url: signedUrl };
   } catch (err: any) {
     return { success: false, error: err.message || 'Failed to create signed URL' };
   }
@@ -320,10 +318,8 @@ export async function getAttachmentsForComments(
 
     const withUrls = await Promise.all(
       (data as AttachmentRecord[]).map(async (row) => {
-        const { data: urlData } = await supabaseAdmin.storage
-          .from(BUCKET)
-          .createSignedUrl(row.storage_path, 3600);
-        return { ...row, signedUrl: urlData?.signedUrl ?? '' };
+        const signedUrl = await signedUrlForRef(row.storage_path, 3600);
+        return { ...row, signedUrl: signedUrl ?? '' };
       }),
     );
 
@@ -367,7 +363,7 @@ export async function deleteAttachment(
     }
 
     // Delete from storage
-    await supabaseAdmin.storage.from(BUCKET).remove([existing.storage_path]);
+    await removeStored([existing.storage_path]);
 
     // Delete DB row
     const { error } = await supabaseAdmin

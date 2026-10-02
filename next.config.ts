@@ -1,6 +1,12 @@
 import type { NextConfig } from "next";
 import path from "node:path";
 
+// The separate Supabase account that new projects store files in (see
+// lib/storage/backends.ts). Its public URLs need to pass next/image too.
+const secondaryStorageHost = process.env.STORAGE_SECONDARY_SUPABASE_URL
+  ? new URL(process.env.STORAGE_SECONDARY_SUPABASE_URL).hostname
+  : null;
+
 const nextConfig: NextConfig = {
   turbopack: {
     root: path.resolve(__dirname),
@@ -46,6 +52,9 @@ const nextConfig: NextConfig = {
         port: '',
         pathname: '/storage/v1/**',
       },
+      ...(secondaryStorageHost
+        ? [{ protocol: 'https' as const, hostname: secondaryStorageHost, port: '', pathname: '/storage/v1/**' }]
+        : []),
     ],
     deviceSizes: [640, 750, 828, 1080, 1200, 1920],
     imageSizes: [128, 256, 384],

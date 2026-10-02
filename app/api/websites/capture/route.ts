@@ -6,6 +6,7 @@ import { compressImageBuffer } from '@/lib/api/compress-image';
 import { captureCallbackSecret } from '@/lib/website/capture';
 import { normalizeUrl, assertSafeUrl, urlToSlug } from '@/lib/website/url';
 import { refreshProjectCounts } from '@/lib/website/project-counts';
+import { bucketOf, projectStorage } from '@/lib/storage/backends';
 
 /**
  * Callback the capture worker POSTs to when a screenshot is done (or failed).
@@ -21,7 +22,6 @@ import { refreshProjectCounts } from '@/lib/website/project-counts';
 export const runtime = 'nodejs';
 export const maxDuration = 120;
 
-const BUCKET = process.env.NEXT_PUBLIC_SUPABASE_BUCKET_NAME || 'screenshots';
 const MAX_CAPTURE_BYTES = 60 * 1024 * 1024;
 
 const BodySchema = z.object({
@@ -166,8 +166,8 @@ export async function POST(request: NextRequest) {
   const compressed = await compressImageBuffer(buffer, contentType, baseName, { fit: 'width' });
   const path = `${thread.project_id}/${compressed.fileName}`;
 
-  const { error: uploadError } = await supabaseAdmin.storage
-    .from(BUCKET)
+  const bucket = bucketOf(await projectStorage('markup_projects', thread.project_id));
+  const { error: uploadError } = await bucket
     .upload(path, new Blob([new Uint8Array(compressed.buffer)], { type: compressed.contentType }), {
       contentType: compressed.contentType,
       cacheControl: '31536000',
@@ -180,7 +180,7 @@ export async function POST(request: NextRequest) {
     return fail(502, message);
   }
 
-  const publicUrl = supabaseAdmin.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
+  const publicUrl = bucket.getPublicUrl(path).data.publicUrl;
 
   const update: Record<string, unknown> = {
     image_path: publicUrl,
@@ -197,7 +197,7 @@ export async function POST(request: NextRequest) {
     .eq('id', threadId);
 
   if (threadError) {
-    await supabaseAdmin.storage.from(BUCKET).remove([path]).catch(() => {});
+    await bucket.remove([path]).catch(() => {});
     const message = `Could not attach the capture: ${threadError.message}`;
     await markFailed(threadId, jobId, message);
     return fail(500, message);

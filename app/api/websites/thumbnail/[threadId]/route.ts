@@ -6,6 +6,7 @@ import { normalizeUrl, assertSafeUrl } from '@/lib/website/url';
 import { isSameSite } from '@/lib/website/proxy-html';
 import { captureAvailable } from '@/lib/website/flags';
 import { ensureThumbnail, hasStoredThumbnail, thumbnailPublicUrl } from '@/lib/website/thumbnail';
+import { projectStorage } from '@/lib/storage/backends';
 
 /**
  * GET /api/websites/thumbnail/:threadId[?token=…] — a website page's sidebar
@@ -59,13 +60,14 @@ export async function GET(request: NextRequest, context: { params: Promise<{ thr
   if (!authorised) authorised = await hasWebsiteProjectAccess(project.id);
   if (!authorised) return fail(403, 'You do not have access to this review.');
 
+  const backend = await projectStorage('markup_projects', project.id);
   const stored = () =>
-    NextResponse.redirect(thumbnailPublicUrl(thread.id), {
+    NextResponse.redirect(thumbnailPublicUrl(backend, thread.id), {
       status: 307,
       headers: { 'Cache-Control': 'private, max-age=3600' },
     });
 
-  if (await hasStoredThumbnail(thread.id)) return stored();
+  if (await hasStoredThumbnail(backend, thread.id)) return stored();
 
   // ── target ──────────────────────────────────────────────────────────────
   let target: URL;
@@ -92,6 +94,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ thr
 
   const hideSelectors = (project.capture_defaults as { hideSelectors?: string[] } | null)?.hideSelectors;
   const ok = await ensureThumbnail({
+    backend,
     threadId: thread.id,
     url: target.toString(),
     snapshotScreenshotPath,

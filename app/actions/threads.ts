@@ -1,7 +1,7 @@
 'use server';
 
 import { createClient } from '@/lib/supabase/server';
-import { supabaseAdmin } from '@/lib/supabase';
+import { removeStored } from '@/lib/storage/backends';
 import { requireUser } from '@/lib/auth/require-user';
 import { CreateThreadSchema } from '@/lib/validation/schemas';
 import { revalidatePath, unstable_noStore as noStore } from 'next/cache';
@@ -137,26 +137,6 @@ export async function createThread(projectId: string, fileData: { path: string; 
 }
 
 /**
- * Convert a Supabase public storage URL back into a bucket-relative object path.
- * `markup_threads.image_path` stores the full public URL, but the storage API
- * deletes by path. Returns null for anything that isn't a public URL for the
- * given bucket (external URLs, placeholders), so callers skip the file delete
- * rather than guessing.
- */
-function storagePathFromPublicUrl(url: string, bucket: string): string | null {
-  const marker = `/storage/v1/object/public/${bucket}/`;
-  const idx = url.indexOf(marker);
-  if (idx === -1) return null;
-  const raw = url.slice(idx + marker.length).split('?')[0].split('#')[0];
-  if (!raw) return null;
-  try {
-    return decodeURIComponent(raw);
-  } catch {
-    return raw;
-  }
-}
-
-/**
  * Delete a single image (thread) from a project, leaving the rest of the
  * revision intact.
  *
@@ -239,16 +219,13 @@ export async function deleteThread(threadId: string, projectId: string) {
 
     // Storage cleanup is best-effort: the row is already gone, and a failed file
     // delete leaves an unreferenced object rather than a broken revision.
-    const bucket = process.env.NEXT_PUBLIC_SUPABASE_BUCKET_NAME || 'screenshots';
+    // The image and its attachments can sit in different Supabase accounts
+    // (a duplicated project keeps the source's files), so removeStored routes
+    // each entry by its own URL or ref and skips external URLs.
     const filesToRemove = [...attachmentPaths];
-    if (imagePath && !imageIsShared) {
-      const objectPath = storagePathFromPublicUrl(imagePath, bucket);
-      if (objectPath) filesToRemove.push(objectPath);
-    }
+    if (imagePath && !imageIsShared) filesToRemove.push(imagePath);
     if (filesToRemove.length > 0) {
-      const { error: storageErr } = await supabaseAdmin.storage
-        .from(bucket)
-        .remove(filesToRemove);
+      const { error: storageErr } = await removeStored(filesToRemove);
       if (storageErr) {
         console.error('Thread deleted but storage cleanup failed:', storageErr);
       }

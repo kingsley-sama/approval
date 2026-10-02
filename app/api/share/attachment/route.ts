@@ -26,11 +26,15 @@ import {
   maxBytesForAttachment,
   formatMaxSize,
 } from '@/lib/attachment-types';
+import {
+  bucketOf,
+  projectStorage,
+  removeStored,
+  signedUrlForRef,
+  toStorageRef,
+} from '@/lib/storage/backends';
 import { nanoid } from 'nanoid';
 import { z } from 'zod';
-
-const BUCKET = process.env.NEXT_PUBLIC_SUPABASE_BUCKET_NAME || 'screenshots';
-
 
 function attachmentStoragePath(projectId: string, fileName: string): string {
   const uid = nanoid(10);
@@ -205,10 +209,9 @@ export async function POST(request: NextRequest) {
     }
 
     if (parsed.step === 'sign') {
-      const storagePath = attachmentStoragePath(ctx.projectId, parsed.fileName);
-      const { data, error: signErr } = await supabase.storage
-        .from(BUCKET)
-        .createSignedUploadUrl(storagePath);
+      const backend = await projectStorage('markup_projects', ctx.projectId);
+      const path = attachmentStoragePath(ctx.projectId, parsed.fileName);
+      const { data, error: signErr } = await bucketOf(backend).createSignedUploadUrl(path);
 
       if (signErr || !data?.signedUrl) {
         return NextResponse.json(
@@ -216,7 +219,11 @@ export async function POST(request: NextRequest) {
           { status: 500 },
         );
       }
-      return NextResponse.json({ success: true, signedUrl: data.signedUrl, storagePath });
+      return NextResponse.json({
+        success: true,
+        signedUrl: data.signedUrl,
+        storagePath: toStorageRef(backend, path),
+      });
     }
 
     // step === 'register'
@@ -244,13 +251,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { data: urlData } = await supabase.storage
-      .from(BUCKET)
-      .createSignedUrl(parsed.storagePath, 3600);
+    const signedUrl = await signedUrlForRef(parsed.storagePath, 3600);
 
     return NextResponse.json({
       success: true,
-      attachment: { ...inserted, signedUrl: urlData?.signedUrl ?? '' },
+      attachment: { ...inserted, signedUrl: signedUrl ?? '' },
     });
   } catch (err) {
     if (err instanceof z.ZodError) {
@@ -326,7 +331,7 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    await supabase.storage.from(BUCKET).remove([(attachment as any).storage_path]);
+    await removeStored([(attachment as any).storage_path]);
 
     const { error: delErr } = await supabase
       .from('comment_attachments')

@@ -4,6 +4,7 @@ import { normalizeUrl, assertSafeUrl } from '@/lib/website/url';
 import { captureAvailable } from '@/lib/website/flags';
 import { canOpenWebsiteProject } from '@/lib/website/proxy-session';
 import { ensureThumbnail, hasStoredThumbnail, readThumbnail } from '@/lib/website/thumbnail';
+import { projectStorage } from '@/lib/storage/backends';
 
 /**
  * GET /api/websites/thumbnail/project/:projectId[?token=…] — the picture on a
@@ -61,8 +62,9 @@ export async function GET(request: NextRequest, context: { params: Promise<{ pro
   const key = thread?.id ?? `project-${projectId}`;
   const source = thread?.source_url ?? project.site_url;
 
+  const backend = await projectStorage('markup_projects', projectId);
   const serve = async () => {
-    const body = await readThumbnail(key);
+    const body = await readThumbnail(backend, key);
     if (!body) return fail(502, 'The thumbnail could not be read.');
     return new NextResponse(new Uint8Array(body), {
       headers: {
@@ -72,7 +74,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ pro
     });
   };
 
-  if (await hasStoredThumbnail(key)) return serve();
+  if (await hasStoredThumbnail(backend, key)) return serve();
 
   let target: URL;
   try {
@@ -96,6 +98,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ pro
   }
 
   const ok = await ensureThumbnail({
+    backend,
     threadId: key,
     url: target.toString(),
     snapshotScreenshotPath,

@@ -24,6 +24,11 @@ AUTH_SECRET=                  # Secret for JWT signing (jose HS256)
 POSTGRES_URL=                 # PostgreSQL connection string for Drizzle ORM
 MARKUP_API_KEYS=              # Comma-separated bearer tokens for the /api/v1 automation API (optional)
 NEXT_PUBLIC_APP_URL=          # Public app origin used in API-generated URLs (production: https://revision.exposeprofi.de)
+
+# Optional second Supabase account for file storage (new projects upload here; see "Storage")
+STORAGE_SECONDARY_SUPABASE_URL=
+STORAGE_SECONDARY_SERVICE_ROLE_KEY=
+STORAGE_SECONDARY_BUCKET_NAME=screenshots
 ```
 
 The production deployment lives at **https://revision.exposeprofi.de**.
@@ -104,7 +109,9 @@ Comments are enqueued to `localStorage` (`annot8_comment_queue`) before the serv
 
 ### Storage
 
-`StorageService` class in `lib/supabase.ts` wraps Supabase Storage. Files are stored in a bucket (default: `screenshots`) under the path `{projectName}/{fileName}`. Use `storageServiceAdmin` (service role key) for server-side operations; `storageService` (anon key) for client-side.
+Files can live in two Supabase accounts, routed by `lib/storage/backends.ts`: `default` (the database's own account) and `secondary` (a storage-only account configured by the `STORAGE_SECONDARY_*` env vars). The `storage_backend` column on `markup_projects` / `panorama_projects` / `tour_projects` (migration `023_storage_backends.sql`) picks where a project's *new* uploads go: existing projects stay on `default`, new ones get `secondary`. Reads and deletes never go through the project, because duplication copies file references across projects. Each stored reference names its own account instead: public URLs by host, bare storage paths by a `secondary:` prefix (`toStorageRef` / `resolveStorageRef`). All server-side storage access should go through this module rather than `supabaseAdmin.storage`.
+
+The legacy `StorageService` class in `lib/supabase.ts` (used only by the `/upload` demo page) wraps Supabase Storage on the default account. Files are stored in a bucket (default: `screenshots`) under the path `{projectName}/{fileName}`. Use `storageServiceAdmin` (service role key) for server-side operations; `storageService` (anon key) for client-side.
 
 ### UI
 

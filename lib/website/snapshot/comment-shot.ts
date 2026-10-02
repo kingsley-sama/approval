@@ -1,5 +1,5 @@
-import { supabaseAdmin } from '@/lib/supabase';
 import { readStored } from '@/lib/website/snapshot/store';
+import { bucketOf, resolveStorageRef, toStorageRef } from '@/lib/storage/backends';
 
 /**
  * The immutable record attached to a comment.
@@ -16,8 +16,6 @@ import { readStored } from '@/lib/website/snapshot/store';
  * of a browser launch.
  */
 
-const BUCKET = process.env.NEXT_PUBLIC_SUPABASE_BUCKET_NAME || 'screenshots';
-
 /** Context around the pin, so the comment is readable without the whole page. */
 const PADDING = 160;
 const MIN_SIZE = 320;
@@ -31,6 +29,7 @@ export interface CommentShotRect {
 }
 
 export interface CommentShotResult {
+  /** Storage ref, in the same account as the snapshot it was cropped from. */
   path: string;
   width: number;
   height: number;
@@ -83,7 +82,8 @@ export async function captureCommentShot(
       .toBuffer();
 
     const path = `comment-shots/${commentId}.jpg`;
-    const { error } = await supabaseAdmin.storage.from(BUCKET).upload(
+    const { backend } = resolveStorageRef(snapshotScreenshotPath);
+    const { error } = await bucketOf(backend).upload(
       path,
       new Blob([new Uint8Array(buffer)], { type: 'image/jpeg' }),
       {
@@ -99,7 +99,11 @@ export async function captureCommentShot(
       return null;
     }
 
-    return { path, width: Math.min(w, meta.width - l), height: Math.min(h, meta.height - t) };
+    return {
+      path: toStorageRef(backend, path),
+      width: Math.min(w, meta.width - l),
+      height: Math.min(h, meta.height - t),
+    };
   } catch (err) {
     console.error('[comment-shot] crop failed', err);
     return null;

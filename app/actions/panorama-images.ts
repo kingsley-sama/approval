@@ -1,13 +1,11 @@
 'use server';
 
 import { createClient } from '@/lib/supabase/server';
-import { supabaseAdmin } from '@/lib/supabase';
+import { bucketOf, projectStorage, publicUrlForRef, toStorageRef } from '@/lib/storage/backends';
 import { requireUser } from '@/lib/auth/require-user';
 import { SignedUploadUrlSchema, RegisterPanoramaImageSchema } from '@/lib/validation/schemas';
 import { revalidatePath, unstable_noStore as noStore } from 'next/cache';
 import { getPanoramaCommentsForImages, type PanoramaComment } from './panorama-comments';
-
-const BUCKET = process.env.NEXT_PUBLIC_SUPABASE_BUCKET_NAME || 'screenshots';
 
 function panoramaStoragePath(projectId: string, fileName: string): string {
   const timestamp = Date.now();
@@ -74,15 +72,14 @@ export async function getPanoramaUploadUrl(
     const parsed = SignedUploadUrlSchema.safeParse({ fileName });
     if (!parsed.success) return { success: false, error: 'Invalid file name' };
 
-    const storagePath = panoramaStoragePath(projectId, fileName);
-    const { data, error } = await supabaseAdmin.storage
-      .from(BUCKET)
-      .createSignedUploadUrl(storagePath);
+    const backend = await projectStorage('panorama_projects', projectId);
+    const path = panoramaStoragePath(projectId, fileName);
+    const { data, error } = await bucketOf(backend).createSignedUploadUrl(path);
 
     if (error || !data?.signedUrl) {
       return { success: false, error: error?.message || 'Could not create signed URL' };
     }
-    return { success: true, signedUrl: data.signedUrl, storagePath };
+    return { success: true, signedUrl: data.signedUrl, storagePath: toStorageRef(backend, path) };
   } catch (err: any) {
     return { success: false, error: err.message || 'Failed to generate upload URL' };
   }
@@ -108,8 +105,7 @@ export async function registerPanoramaImage(
     return { success: false, error: 'Invalid input: ' + parsed.error.issues[0]?.message };
   }
 
-  const { data: pub } = supabaseAdmin.storage.from(BUCKET).getPublicUrl(storagePath);
-  const publicUrl = pub?.publicUrl;
+  const publicUrl = publicUrlForRef(storagePath);
   if (!publicUrl) return { success: false, error: 'Could not resolve public URL' };
 
   const supabase = await createClient();
