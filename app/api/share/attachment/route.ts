@@ -18,6 +18,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { validateShareToken, type ShareLink } from '@/app/actions/share-links';
+import { shareCoversThread } from '@/lib/share-access';
 import { supabaseAdmin as supabase } from '@/lib/supabase';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { CUSTOMER_ATTACHMENT_DELETE_ERROR } from '@/lib/attachment-permissions';
@@ -106,10 +107,7 @@ async function resolveCommentContext(commentId: string): Promise<
 
 /** Checks that the share token grants comment access to the comment's resource. */
 function hasResourceAccess(shareLink: ShareLink, threadId: string, projectId: string): boolean {
-  return (
-    (shareLink.resourceType === 'thread' && shareLink.resourceId === threadId) ||
-    (shareLink.resourceType === 'project' && shareLink.resourceId === projectId)
-  );
+  return shareCoversThread(shareLink, threadId, projectId);
 }
 
 const SignSchema = z.object({

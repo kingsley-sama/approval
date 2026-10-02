@@ -7,6 +7,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { validateShareToken } from '@/app/actions/share-links';
+import { shareCoversThread } from '@/lib/share-access';
 import { supabaseAdmin as supabase } from '@/lib/supabase';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { z } from 'zod';
@@ -72,9 +73,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const hasAccess =
-      (shareLink.resourceType === 'thread' && shareLink.resourceId === thread.id) ||
-      (shareLink.resourceType === 'project' && shareLink.resourceId === thread.project_id);
+    const hasAccess = shareCoversThread(shareLink, thread.id, thread.project_id);
 
     if (!hasAccess) {
       return NextResponse.json(

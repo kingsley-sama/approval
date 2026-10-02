@@ -10,6 +10,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { validateShareToken } from '@/app/actions/share-links';
+import { shareCoversThread } from '@/lib/share-access';
 import { supabaseAdmin as supabase } from '@/lib/supabase';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { nanoid } from 'nanoid';
@@ -83,9 +84,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Thread not found' }, { status: 404 });
     }
 
-    const hasAccess =
-      (shareLink.resourceType === 'thread' && shareLink.resourceId === thread.id) ||
-      (shareLink.resourceType === 'project' && shareLink.resourceId === (thread as any).project_id);
+    const hasAccess = shareCoversThread(shareLink, thread.id, (thread as any).project_id);
 
     if (!hasAccess) {
       return NextResponse.json(

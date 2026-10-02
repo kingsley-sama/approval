@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { validateShareToken } from '@/app/actions/share-links';
+import { isProjectScopedShare } from '@/lib/share-access';
 import { supabaseAdmin as supabase } from '@/lib/supabase';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { sendReviewCompleteEmail } from '@/lib/email';
@@ -41,7 +42,7 @@ export async function POST(request: NextRequest) {
     let projectId: string | null = null;
     let projectName = 'Project';
 
-    if (shareLink.resourceType === 'project') {
+    if (isProjectScopedShare(shareLink.resourceType)) {
       projectId = shareLink.resourceId;
       const { data: project } = await supabase
         .from('markup_projects')
