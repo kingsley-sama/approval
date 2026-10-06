@@ -1,10 +1,44 @@
 'use client';
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { ChevronUp, ChevronDown, GripVertical, FileText, Film, Trash2, Globe } from 'lucide-react';
+import {
+  ChevronUp,
+  ChevronDown,
+  GripVertical,
+  Trash2,
+  ArrowUpDown,
+  ArrowDownAZ,
+  ArrowUpAZ,
+  Clock,
+  LayoutGrid,
+  MoreHorizontal,
+  ChevronsUp,
+  ChevronsDown,
+  Hash,
+} from 'lucide-react';
 import ImageUploader from '@/components/image-uploader';
-import { getMediaKind } from '@/lib/media-type';
 import { IconTooltip } from '@/components/ui/icon-tooltip';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { ThumbnailMedia } from '@/components/annotation/thumbnail-media';
+import ArrangeImagesDialog from '@/components/annotation/arrange-images-dialog';
+import { sortImageIds, moveIdTo, type ImageSortMode } from '@/lib/image-order';
 
 interface ImageData {
   id: string;
@@ -13,6 +47,8 @@ interface ImageData {
   pins: any[];
   /** Website reviews: the live page this entry points at, with no stored image. */
   sourceUrl?: string | null;
+  /** When the image was uploaded — used by the "Upload order" sort. */
+  createdAt?: string | null;
 }
 
 interface ThumbnailsSidebarProps {
@@ -36,84 +72,6 @@ interface ThumbnailsSidebarProps {
   variant?: 'image' | 'website';
   /** Share token, so guests on a share link can load page thumbnails. */
   shareToken?: string;
-}
-
-/**
- * Thumbnail image, served straight from Supabase Storage.
- *
- * These deliberately bypass the Next.js image optimizer: at 128px the transform
- * buys very little, and routing 20+ multi-MB renders through `/_next/image`
- * made whole batches of tiles fail to render (the optimizer rejects or times out
- * under that load, and a failed entry stays failed). A plain lazy <img> always
- * paints, and the browser reuses these bytes for the full-size viewer.
- *
- * The retry covers a just-uploaded file that hasn't propagated through the
- * storage CDN yet: rather than leave a blank tile, retry a few times with a
- * cache-busting suffix so the image fills in on its own.
- */
-function ThumbnailImage({ url, alt }: { url: string; alt: string }) {
-  const [attempt, setAttempt] = useState(0);
-  const base = url || '/placeholder.svg';
-  const src = attempt > 0 ? `${base}${base.includes('?') ? '&' : '?'}retry=${attempt}` : base;
-  return (
-    // eslint-disable-next-line @next/next/no-img-element -- optimizer bypassed on purpose, see above
-    <img
-      src={src}
-      alt={alt}
-      width={128}
-      height={128}
-      loading="lazy"
-      decoding="async"
-      className="w-full h-full object-cover"
-      onError={() => {
-        if (attempt < 3) {
-          const delay = 800 * (attempt + 1);
-          setTimeout(() => setAttempt(a => a + 1), delay);
-        }
-      }}
-    />
-  );
-}
-
-/**
- * A website page's tile: a rendering of the page as it first appears, made on
- * the server the first time it is asked for (which can take a few seconds).
- * The globe tile shows until it arrives, and stays if the page can't be
- * rendered.
- */
-function PageThumbnail({ threadId, alt, shareToken }: { threadId: string; alt: string; shareToken?: string }) {
-  const [state, setState] = useState<'loading' | 'ready' | 'failed'>('loading');
-  const src = `/api/websites/thumbnail/${threadId}${shareToken ? `?token=${encodeURIComponent(shareToken)}` : ''}`;
-  return (
-    <>
-      {state !== 'ready' && <MediaPlaceholder kind="page" />}
-      {state !== 'failed' && (
-        // eslint-disable-next-line @next/next/no-img-element -- served from Storage via redirect, see ThumbnailImage
-        <img
-          src={src}
-          alt={alt}
-          loading="lazy"
-          decoding="async"
-          className={`w-full h-full object-cover object-left-top ${state === 'ready' ? '' : 'absolute inset-0 opacity-0'}`}
-          onLoad={() => setState('ready')}
-          onError={() => setState('failed')}
-        />
-      )}
-    </>
-  );
-}
-
-/**
- * PDFs, videos, and website pages without a thumbnail get a labelled icon tile.
- */
-function MediaPlaceholder({ kind }: { kind: 'pdf' | 'video' | 'page' }) {
-  const Icon = kind === 'pdf' ? FileText : kind === 'video' ? Film : Globe;
-  return (
-    <div className="w-full h-full flex flex-col items-center justify-center gap-1 bg-gray-100 text-gray-500">
-      <Icon className="h-6 w-6" />
-      <span className="text-[9px] font-semibold uppercase tracking-wide">{kind}</span>
-    </div>
-  );
 }
 
 export default function ThumbnailsSidebar({
@@ -189,15 +147,29 @@ export default function ThumbnailsSidebar({
   }, [orderedImages]);
 
   const moveWithin = (dragging: string, target: string) => {
-    setOrder(prev => {
-      const from = prev.indexOf(dragging);
-      const to = prev.indexOf(target);
-      if (from === -1 || to === -1 || from === to) return prev;
-      const next = [...prev];
-      next.splice(from, 1);
-      next.splice(to, 0, dragging);
-      return next;
-    });
+    setOrder(prev => moveIdTo(prev, dragging, prev.indexOf(target)));
+  };
+
+  /** Show a new order immediately and persist it (sort, menu moves, arrange). */
+  const applyOrder = (next: string[]) => {
+    if (next.join('|') === order.join('|')) return;
+    setOrder(next);
+    onReorderImages?.(next);
+  };
+
+  const currentIds = orderedImages.map(img => img.id);
+  const applySort = (mode: ImageSortMode) => applyOrder(sortImageIds(orderedImages, mode));
+  const moveTo = (id: string, position: number) => applyOrder(moveIdTo(currentIds, id, position));
+
+  const [arrangeOpen, setArrangeOpen] = useState(false);
+  // "Move to position…" — the image being moved and the typed 1-based position.
+  const [positionTarget, setPositionTarget] = useState<{ id: string; name: string } | null>(null);
+  const [positionInput, setPositionInput] = useState('');
+  const submitPosition = () => {
+    const n = Number.parseInt(positionInput, 10);
+    if (!positionTarget || !Number.isFinite(n)) return;
+    moveTo(positionTarget.id, n - 1);
+    setPositionTarget(null);
   };
 
   const commitOrder = () => {
@@ -217,22 +189,53 @@ export default function ThumbnailsSidebar({
 
   return (
     <div className="w-32 border-l border-border bg-white flex flex-col overflow-hidden">
-      <div className="p-2 border-b border-border flex justify-between items-center">
+      <div className="p-2 border-b border-border flex justify-between items-center gap-1">
         <span className="text-xs font-semibold text-gray-500">{isWebsite ? 'PAGES' : 'IMAGES'}</span>
-        {!readOnly && !isWebsite && (
-          <ImageUploader projectId={projectId} onUploadComplete={onUploadComplete} />
-        )}
+        <div className="flex items-center gap-1">
+          {reorderable && images.length > 1 && (
+            <DropdownMenu>
+              <IconTooltip label={`Sort or arrange ${noun}s`}>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 rounded-full"
+                    aria-label={`Sort or arrange ${noun}s`}
+                  >
+                    <ArrowUpDown className="h-3.5 w-3.5" />
+                  </Button>
+                </DropdownMenuTrigger>
+              </IconTooltip>
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuLabel className="text-xs text-gray-500">Sort {noun}s by</DropdownMenuLabel>
+                <DropdownMenuItem onSelect={() => applySort('name-asc')}>
+                  <ArrowDownAZ /> Name (A → Z)
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => applySort('name-desc')}>
+                  <ArrowUpAZ /> Name (Z → A)
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => applySort('uploaded')}>
+                  <Clock /> Upload order
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onSelect={() => setArrangeOpen(true)}>
+                  <LayoutGrid /> Arrange {noun}s…
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+          {!readOnly && !isWebsite && (
+            <ImageUploader projectId={projectId} onUploadComplete={onUploadComplete} />
+          )}
+        </div>
       </div>
       <div
         ref={listRef}
         className="flex-1 overflow-y-auto"
         onDragOver={reorderable ? (e) => { e.preventDefault(); autoScroll(e.clientY); } : undefined}
       >
-        {orderedImages.map((img) => {
+        {orderedImages.map((img, position) => {
           const openCount = img.pins.filter(p => p.status !== 'resolved').length;
-          // A website review's page has a source URL but no stored image.
-          const kind: 'image' | 'pdf' | 'video' | 'page' =
-            !img.url && img.sourceUrl ? 'page' : getMediaKind(img.url, img.name);
           const isDragging = draggedId === img.id;
           return (
           <div
@@ -273,11 +276,13 @@ export default function ThumbnailsSidebar({
                 currentImageId === img.id ? 'ring-2 ring-inset ring-blue-600' : ''
               }`}
             >
-              {kind === 'image'
-                ? <ThumbnailImage url={img.url} alt={img.name} />
-                : kind === 'page'
-                  ? <PageThumbnail threadId={img.id} alt={img.name} shareToken={shareToken} />
-                  : <MediaPlaceholder kind={kind} />}
+              <ThumbnailMedia
+                id={img.id}
+                name={img.name}
+                url={img.url}
+                sourceUrl={img.sourceUrl}
+                shareToken={shareToken}
+              />
               {reorderable && (
                 <span
                   className="absolute top-1 left-1 p-0.5 rounded bg-black/40 text-white opacity-0 group-hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing"
@@ -295,6 +300,51 @@ export default function ThumbnailsSidebar({
                 >
                   {openCount}
                 </span>
+              )}
+              {reorderable && orderedImages.length > 1 && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      aria-label={`Move ${img.name}`}
+                      title={`Move ${noun}`}
+                      className="absolute bottom-1 left-1 p-1 rounded bg-black/40 text-white opacity-0 group-hover:opacity-100 hover:bg-black/60 focus-visible:opacity-100 data-[state=open]:opacity-100 transition-all"
+                      // Opening the menu must not also select the tile underneath.
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <MoreHorizontal size={12} />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" side="left" className="w-44" onClick={(e) => e.stopPropagation()}>
+                    <DropdownMenuItem disabled={position === 0} onSelect={() => moveTo(img.id, 0)}>
+                      <ChevronsUp /> Move to top
+                    </DropdownMenuItem>
+                    <DropdownMenuItem disabled={position === 0} onSelect={() => moveTo(img.id, position - 1)}>
+                      <ChevronUp /> Move up
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      disabled={position === orderedImages.length - 1}
+                      onSelect={() => moveTo(img.id, position + 1)}
+                    >
+                      <ChevronDown /> Move down
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      disabled={position === orderedImages.length - 1}
+                      onSelect={() => moveTo(img.id, orderedImages.length - 1)}
+                    >
+                      <ChevronsDown /> Move to bottom
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onSelect={() => {
+                        setPositionInput(String(position + 1));
+                        setPositionTarget({ id: img.id, name: img.name });
+                      }}
+                    >
+                      <Hash /> Move to position…
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               )}
               {deletable && (
                 <button
@@ -318,12 +368,54 @@ export default function ThumbnailsSidebar({
               }`}
               title={img.name}
             >
-              {img.name}
+              <span className="text-gray-400 tabular-nums">{position + 1}.</span> {img.name}
             </div>
           </div>
           );
         })}
       </div>
+
+      {reorderable && (
+        <>
+          <ArrangeImagesDialog
+            open={arrangeOpen}
+            onOpenChange={setArrangeOpen}
+            images={orderedImages}
+            onSave={applyOrder}
+            noun={noun}
+          />
+          <Dialog open={!!positionTarget} onOpenChange={(open) => { if (!open) setPositionTarget(null); }}>
+            <DialogContent className="sm:max-w-sm">
+              <DialogHeader>
+                <DialogTitle>Move to position</DialogTitle>
+                <DialogDescription className="truncate" title={positionTarget?.name}>
+                  {positionTarget?.name}
+                </DialogDescription>
+              </DialogHeader>
+              <form
+                onSubmit={(e) => { e.preventDefault(); submitPosition(); }}
+                className="flex items-center gap-2"
+              >
+                <Input
+                  type="number"
+                  min={1}
+                  max={orderedImages.length}
+                  value={positionInput}
+                  onChange={(e) => setPositionInput(e.target.value)}
+                  autoFocus
+                  aria-label="Position"
+                  className="w-24"
+                />
+                <span className="text-sm text-gray-500">of {orderedImages.length}</span>
+              </form>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setPositionTarget(null)}>Cancel</Button>
+                <Button onClick={submitPosition} disabled={!positionInput}>Move</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </>
+      )}
 
       <div className="border-t border-border p-2 flex items-center justify-between text-xs text-gray-600">
         <span>{currentIndex + 1} of {images.length}</span>

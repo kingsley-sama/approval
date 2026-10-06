@@ -51,6 +51,8 @@ export interface ProjectImageData {
 	pins: ProjectPin[];
 	/** Website reviews only — the page this screenshot was taken from. */
 	sourceUrl?: string | null;
+	/** Upload time, for the sidebar's "Upload order" sort. */
+	createdAt?: string | null;
 	viewport?: string | null;
 	capturedAt?: string | null;
 	captureStatus?: 'pending' | 'ready' | 'failed' | null;

@@ -89,10 +89,14 @@ export async function getProjectThreads(projectId: string) {
   }
 }
 
-export async function createThread(projectId: string, fileData: { path: string; name: string; filename: string }) {
+export async function createThread(
+  projectId: string,
+  fileData: { path: string; name: string; filename: string },
+  imageIndex?: number,
+) {
   await requireUser();
 
-  const parsed = CreateThreadSchema.safeParse({ projectId, fileData });
+  const parsed = CreateThreadSchema.safeParse({ projectId, fileData, imageIndex });
   if (!parsed.success) {
     return { success: false, error: 'Invalid input: ' + parsed.error.issues[0]?.message };
   }
@@ -106,6 +110,9 @@ export async function createThread(projectId: string, fileData: { path: string; 
         image_path: fileData.path,
         thread_name: fileData.name,
         image_filename: fileData.filename,
+        // Set by the uploader from the file's position in the sorted batch, so
+        // the order doesn't depend on which upload happens to finish first.
+        image_index: imageIndex ?? null,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       })
@@ -274,10 +281,66 @@ export async function deleteThread(threadId: string, projectId: string) {
 }
 
 /**
+ * The first free `image_index` in a project. An upload batch reserves its
+ * slots from here so new images always land after the existing ones.
+ */
+export async function getNextImageIndex(projectId: string): Promise<number> {
+  await requireUser();
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from('markup_threads')
+    .select('image_index')
+    .eq('project_id', projectId)
+    .order('image_index', { ascending: false, nullsFirst: false })
+    .limit(1)
+    .maybeSingle();
+  const current = (data as { image_index: number | null } | null)?.image_index;
+  return typeof current === 'number' ? current + 1 : 0;
+}
+
+/** PostgREST's "function not found" — migration 023 hasn't been run yet. */
+function isMissingFunction(error: { code?: string } | null): boolean {
+  return error?.code === 'PGRST202' || error?.code === '42883';
+}
+
+/**
+ * Compact a project's `image_index` values to 0..n-1 without changing the
+ * display order. Uploads reserve sparse slots (PDF pages need room before the
+ * page count is known); this tidies them once the batch is in.
+ */
+export async function normalizeThreadOrder(projectId: string) {
+  await requireUser();
+  const supabase = await createClient();
+
+  const { error } = await supabase.rpc('normalize_thread_order', { p_project_id: projectId });
+  if (!error) {
+    revalidatePath(`/projects/${projectId}`);
+    return { success: true };
+  }
+  if (!isMissingFunction(error)) {
+    console.error('Error normalizing thread order:', error);
+    return { success: false, error: error.message };
+  }
+
+  // Pre-migration fallback: read the current order and write it back densely.
+  const { data: threads, error: readError } = await supabase
+    .from('markup_threads')
+    .select('id')
+    .eq('project_id', projectId)
+    .order('image_index', { ascending: true, nullsFirst: false })
+    .order('created_at', { ascending: true });
+  if (readError) return { success: false, error: readError.message };
+  return reorderThreads(projectId, (threads ?? []).map((t: any) => t.id));
+}
+
+/**
  * Persist a new image (thread) ordering for a project. `orderedThreadIds` is the
  * full list of the project's thread ids in their desired display order; each
  * thread's `image_index` is set to its position so subsequent loads (which order
  * by `image_index`) reflect the new arrangement.
+ *
+ * Written in one statement via the `reorder_threads` function, so a project is
+ * never left half-reordered.
  */
 export async function reorderThreads(projectId: string, orderedThreadIds: string[]) {
   await requireUser();
@@ -288,21 +351,33 @@ export async function reorderThreads(projectId: string, orderedThreadIds: string
 
   const supabase = await createClient();
   try {
-    const now = new Date().toISOString();
-    const results = await Promise.all(
-      orderedThreadIds.map((id, index) =>
-        supabase
-          .from('markup_threads')
-          .update({ image_index: index, updated_at: now })
-          .eq('id', id)
-          .eq('project_id', projectId)
-      )
-    );
+    const { error } = await supabase.rpc('reorder_threads', {
+      p_project_id: projectId,
+      p_thread_ids: orderedThreadIds,
+    });
 
-    const failed = results.find(r => r.error);
-    if (failed?.error) {
-      console.error('Error reordering threads:', failed.error);
-      return { success: false, error: failed.error.message };
+    if (error && !isMissingFunction(error)) {
+      console.error('Error reordering threads:', error);
+      return { success: false, error: error.message };
+    }
+
+    if (error) {
+      // Pre-migration fallback: one update per image, as before.
+      const now = new Date().toISOString();
+      const results = await Promise.all(
+        orderedThreadIds.map((id, index) =>
+          supabase
+            .from('markup_threads')
+            .update({ image_index: index, updated_at: now })
+            .eq('id', id)
+            .eq('project_id', projectId)
+        )
+      );
+      const failed = results.find(r => r.error);
+      if (failed?.error) {
+        console.error('Error reordering threads:', failed.error);
+        return { success: false, error: failed.error.message };
+      }
     }
 
     revalidatePath(`/projects/${projectId}`);

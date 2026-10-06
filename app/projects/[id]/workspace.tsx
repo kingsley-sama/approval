@@ -77,6 +77,7 @@ function workspaceToImages(data: WorkspaceData): ImageData[] {
     url: t.image_path,
     pins: (data.commentsByThread[t.id] ?? []).map(dbCommentToPin),
     sourceUrl: t.source_url ?? null,
+    createdAt: t.created_at ?? null,
     viewport: t.viewport_label ?? null,
     capturedAt: t.captured_at ?? null,
     captureStatus: t.capture_status ?? null,

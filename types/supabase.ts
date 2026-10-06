@@ -1173,6 +1173,15 @@ export type Database = {
         Args: { p_token: string }
         Returns: boolean
       }
+      // Image ordering (migration 023).
+      reorder_threads: {
+        Args: { p_project_id: string; p_thread_ids: string[] }
+        Returns: undefined
+      }
+      normalize_thread_order: {
+        Args: { p_project_id: string }
+        Returns: undefined
+      }
       // Atomic project-wide comment number allocators (migration 016).
       next_comment_display_number: {
         Args: { p_project_id: string }

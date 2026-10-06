@@ -16,6 +16,7 @@ import { getSignedUploadUrl, registerUploadedFile } from '@/app/actions/storage'
 import { xhrUpload, type FileUploadState } from '@/lib/upload';
 import { compressImageWithStats } from '@/lib/image-compression';
 import { isPdfFile, pdfToPageImages, PdfSplitError } from '@/lib/pdf-to-images';
+import { compareFileNames } from '@/lib/image-order';
 
 export type UploadPatch = (update: Partial<FileUploadState>) => void;
 
@@ -31,18 +32,27 @@ export interface UploadOutcome {
 }
 
 /**
- * `createThread` leaves `image_index` null, so threads are ordered by
- * `created_at`. Registering pages one at a time is what keeps page 2 after
- * page 1 — parallel registration would make the order arbitrary.
- *
- * The same reasoning applies across files: two PDFs uploaded at once would
- * interleave their pages. So a batch containing any PDF is processed one file
- * at a time; batches of plain images keep the old concurrency.
+ * Files are uploaded in parallel, so the order they finish in is arbitrary.
+ * Each file is therefore given an explicit `image_index` slot up front, from
+ * its position in the (sorted) batch: `base + fileIndex * SLOT_STRIDE`. A PDF's
+ * pages take consecutive indices inside its file's slot, since the page count
+ * isn't known until it is rendered. Once the batch is in, the caller compacts
+ * the indices with `normalizeThreadOrder`.
  */
-export const DEFAULT_UPLOAD_CONCURRENCY = 3;
+export const UPLOAD_CONCURRENCY = 3;
+export const SLOT_STRIDE = 1000;
 
-export function uploadConcurrencyFor(files: File[]): number {
-  return files.some(isPdfFile) ? 1 : DEFAULT_UPLOAD_CONCURRENCY;
+export function slotFor(base: number, fileIndex: number): number {
+  return base + fileIndex * SLOT_STRIDE;
+}
+
+/**
+ * Puts a selection into folder order. Browsers hand files over in whatever
+ * order the OS picker or drag source produced, which isn't reliably the
+ * folder's; a natural name sort matches how folders are usually viewed.
+ */
+export function sortFilesNaturally<T extends { name: string }>(files: T[]): T[] {
+  return [...files].sort((a, b) => compareFileNames(a.name, b.name));
 }
 
 /** Upload one already-prepared image and register it as a thread. */
@@ -50,6 +60,7 @@ async function storeImage(
   projectId: string,
   file: File,
   displayName: string,
+  imageIndex: number | undefined,
   onProgress: (pct: number) => void
 ): Promise<{ ok: true; publicUrl?: string } | { ok: false; error: string }> {
   const urlResult = await getSignedUploadUrl(projectId, file.name);
@@ -63,7 +74,7 @@ async function storeImage(
     return { ok: false, error: err?.message ?? 'Upload failed' };
   }
 
-  const regResult = await registerUploadedFile(projectId, displayName, urlResult.storagePath);
+  const regResult = await registerUploadedFile(projectId, displayName, urlResult.storagePath, imageIndex);
   if (!regResult.success) {
     return { ok: false, error: regResult.error || 'Failed to save file' };
   }
@@ -75,7 +86,8 @@ async function storeImage(
 async function uploadPdfPages(
   projectId: string,
   rawFile: File,
-  patch: UploadPatch
+  patch: UploadPatch,
+  slot: number | undefined
 ): Promise<UploadOutcome> {
   patch({ status: 'converting', progress: 0, pageProgress: { done: 0, total: 0 } });
 
@@ -98,7 +110,7 @@ async function uploadPdfPages(
     // Fall back to the previous behaviour — store the document whole. It stays
     // viewable, which is better than losing the upload entirely; the caller
     // tells the user it cannot be annotated.
-    const fallback = await storeImage(projectId, rawFile, rawFile.name, (pct) =>
+    const fallback = await storeImage(projectId, rawFile, rawFile.name, slot, (pct) =>
       patch({ status: 'uploading', progress: pct })
     );
 
@@ -120,8 +132,12 @@ async function uploadPdfPages(
       pageProgress: { done: page.pageNumber, total },
     });
 
-    const result = await storeImage(projectId, page.file, page.displayName, (pct) =>
-      patch({ progress: 50 + Math.round(((page.pageNumber - 1 + pct / 100) / total) * 50) })
+    const result = await storeImage(
+      projectId,
+      page.file,
+      page.displayName,
+      slot === undefined ? undefined : slot + page.pageNumber - 1,
+      (pct) => patch({ progress: 50 + Math.round(((page.pageNumber - 1 + pct / 100) / total) * 50) })
     );
 
     if (!result.ok) {
@@ -141,15 +157,17 @@ async function uploadPdfPages(
 
 /**
  * Stores one selected file in a project. Images (and videos) become a single
- * thread; PDFs become one thread per page.
+ * thread; PDFs become one thread per page. `slot` is the file's reserved
+ * `image_index` (see `slotFor`).
  */
 export async function uploadProjectFile(
   projectId: string,
   rawFile: File,
-  patch: UploadPatch
+  patch: UploadPatch,
+  slot?: number
 ): Promise<UploadOutcome> {
   if (isPdfFile(rawFile)) {
-    return uploadPdfPages(projectId, rawFile, patch);
+    return uploadPdfPages(projectId, rawFile, patch, slot);
   }
 
   // Compress in the browser first (best-effort; returns the original on
@@ -157,7 +175,7 @@ export async function uploadProjectFile(
   const { file, originalSize, compressedSize, didCompress } = await compressImageWithStats(rawFile);
   patch({ status: 'uploading', progress: 0, originalSize, compressedSize, didCompress });
 
-  const result = await storeImage(projectId, file, file.name, (pct) => patch({ progress: pct }));
+  const result = await storeImage(projectId, file, file.name, slot, (pct) => patch({ progress: pct }));
   if (!result.ok) {
     patch({ status: 'error', error: result.error });
     return { ok: false };

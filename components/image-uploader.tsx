@@ -6,7 +6,8 @@ import { IconTooltip } from '@/components/ui/icon-tooltip';
 import { Plus, CheckCircle2, XCircle, Loader2, X } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { validateFiles, type FileUploadState } from '@/lib/upload';
-import { uploadProjectFile, uploadConcurrencyFor } from '@/lib/upload-thread';
+import { uploadProjectFile, UPLOAD_CONCURRENCY, slotFor, sortFilesNaturally } from '@/lib/upload-thread';
+import { getNextImageIndex, normalizeThreadOrder } from '@/app/actions/threads';
 import { formatFileSize } from '@/lib/image-compression';
 import { CompressionInfo } from '@/components/compression-info';
 
@@ -30,10 +31,10 @@ export default function ImageUploader({ projectId, onUploadComplete, trigger }: 
   // dialog behaves identically.
   const pdfFallbacks = useRef<string[]>([]);
 
-  const uploadOne = async (rawFile: File, state: FileUploadState): Promise<boolean> => {
+  const uploadOne = async (rawFile: File, state: FileUploadState, slot: number): Promise<boolean> => {
     const outcome = await uploadProjectFile(projectId, rawFile, (update) =>
       patch(state.id, update),
-    );
+    slot);
     if (outcome.pdfFallbackReason) {
       pdfFallbacks.current.push(`${rawFile.name}: ${outcome.pdfFallbackReason}`);
     }
@@ -45,7 +46,10 @@ export default function ImageUploader({ projectId, onUploadComplete, trigger }: 
     const raw = Array.from(e.target.files);
     if (fileInputRef.current) fileInputRef.current.value = '';
 
-    const { accepted: files, rejected } = validateFiles(raw);
+    const { accepted, rejected } = validateFiles(raw);
+    // Folder order (natural name sort), regardless of how the browser
+    // delivered the selection.
+    const files = sortFilesNaturally(accepted);
     if (rejected.length > 0) {
       // One grouped toast rather than one per file: rejecting a large drop
       // otherwise stacks a dozen toasts over the viewer.
@@ -74,23 +78,24 @@ export default function ImageUploader({ projectId, onUploadComplete, trigger }: 
 
     pdfFallbacks.current = [];
 
-    // Plain images upload in parallel; a batch containing a PDF runs one file
-    // at a time so page order survives (threads sort by created_at).
-    const concurrency = uploadConcurrencyFor(files);
-    const queue = files.map((file, i) => ({ file, state: newStates[i] }));
+    // Files upload in parallel; each carries its own image_index slot after
+    // the project's existing images, so finishing order doesn't matter.
+    const base = await getNextImageIndex(projectId);
+    const queue = files.map((file, i) => ({ file, state: newStates[i], slot: slotFor(base, i) }));
     const running: Promise<boolean>[] = [];
     const results: boolean[] = [];
 
-    for (const { file, state } of queue) {
-      const p: Promise<boolean> = uploadOne(file, state).then(ok => {
+    for (const { file, state, slot } of queue) {
+      const p: Promise<boolean> = uploadOne(file, state, slot).then(ok => {
         results.push(ok);
         running.splice(running.indexOf(p), 1);
         return ok;
       });
       running.push(p);
-      if (running.length >= concurrency) await Promise.race(running);
+      if (running.length >= UPLOAD_CONCURRENCY) await Promise.race(running);
     }
     await Promise.allSettled(running);
+    await normalizeThreadOrder(projectId);
 
     const succeeded = results.filter(Boolean).length;
     const failed = results.filter(r => !r).length;

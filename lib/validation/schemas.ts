@@ -35,6 +35,7 @@ export const CreateThreadSchema = z.object({
     name: z.string().min(1).max(300),
     filename: z.string().min(1),
   }),
+  imageIndex: z.number().int().min(0).optional(),
 });
 
 export const CreateProjectSchema = z.object({
@@ -55,6 +56,7 @@ export const RegisterUploadSchema = z.object({
   projectId: z.string().uuid(),
   fileName: z.string().min(1).max(255),
   storagePath: z.string().min(1),
+  imageIndex: z.number().int().min(0).optional(),
 });
 
 // ─── panorama (Pannellum) ──────────────────────────────────────────────────

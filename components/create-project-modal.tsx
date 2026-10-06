@@ -17,7 +17,9 @@ import {
 import { Label } from '@/components/ui/label';
 import { FolderPlus, Upload, X, CheckCircle2, XCircle, Loader2, AlertCircle } from 'lucide-react';
 import { validateFiles, type FileUploadState } from '@/lib/upload';
-import { uploadProjectFile, uploadConcurrencyFor } from '@/lib/upload-thread';
+import { uploadProjectFile, UPLOAD_CONCURRENCY, slotFor } from '@/lib/upload-thread';
+import { compareFileNames } from '@/lib/image-order';
+import { normalizeThreadOrder } from '@/app/actions/threads';
 import { CompressionInfo } from '@/components/compression-info';
 
 interface CreateProjectModalProps {
@@ -53,8 +55,14 @@ export default function CreateProjectModal({ onProjectCreated, trigger }: Create
       setError('');
     }
     if (accepted.length > 0) {
-      setSelectedFiles(prev => [...prev, ...accepted]);
-      setPreviewUrls(prev => [...prev, ...accepted.map(f => URL.createObjectURL(f))]);
+      // Keep the selection in folder order (natural name sort), so the
+      // previews show — and the upload preserves — the order of the folder.
+      const merged = [
+        ...selectedFiles.map((file, i) => ({ file, url: previewUrls[i] })),
+        ...accepted.map(file => ({ file, url: URL.createObjectURL(file) })),
+      ].sort((a, b) => compareFileNames(a.file.name, b.file.name));
+      setSelectedFiles(merged.map(m => m.file));
+      setPreviewUrls(merged.map(m => m.url));
     }
   };
 
@@ -139,33 +147,37 @@ export default function CreateProjectModal({ onProjectCreated, trigger }: Create
         // with the workspace uploader so both behave the same.
         const pdfFallbacks: string[] = [];
 
-        const uploadOne = async (rawFile: File, state: FileUploadState): Promise<string | null> => {
+        const uploadOne = async (rawFile: File, state: FileUploadState, slot: number): Promise<string | null> => {
           const outcome = await uploadProjectFile(projectId, rawFile, (update) =>
             patch(state.id, update),
-          );
+          slot);
           if (outcome.pdfFallbackReason) {
             pdfFallbacks.push(`${rawFile.name}: ${outcome.pdfFallbackReason}`);
           }
           return outcome.ok ? outcome.firstPublicUrl ?? null : null;
         };
 
-        // Plain images upload in parallel; a batch containing a PDF runs one
-        // file at a time so page order survives (threads sort by created_at).
-        const concurrency = uploadConcurrencyFor(selectedFiles);
-        const queue = selectedFiles.map((file, i) => ({ file, state: initialStates[i] }));
+        // Files upload in parallel; each carries its own image_index slot
+        // (from its position in the sorted selection), so finishing order
+        // doesn't affect the project's image order.
+        const queue = selectedFiles.map((file, i) => ({ file, state: initialStates[i], slot: slotFor(0, i) }));
         const running: Promise<string | null>[] = [];
-        let firstPublicUrl: string | null = null;
+        const urlsBySlot: (string | null)[] = [];
 
-        for (const { file, state } of queue) {
-          const p: Promise<string | null> = uploadOne(file, state).then(url => {
-            if (url && !firstPublicUrl) firstPublicUrl = url;
+        for (const [i, { file, state, slot }] of queue.entries()) {
+          const p: Promise<string | null> = uploadOne(file, state, slot).then(url => {
+            urlsBySlot[i] = url;
             running.splice(running.indexOf(p), 1);
             return url;
           });
           running.push(p);
-          if (running.length >= concurrency) await Promise.race(running);
+          if (running.length >= UPLOAD_CONCURRENCY) await Promise.race(running);
         }
         await Promise.allSettled(running);
+        await normalizeThreadOrder(projectId);
+
+        // The cover is the first image in order, not whichever finished first.
+        const firstPublicUrl = urlsBySlot.find(Boolean) ?? null;
 
         // 3. Set thumbnail to first successfully uploaded image
         if (firstPublicUrl) {

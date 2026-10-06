@@ -130,11 +130,12 @@ export async function registerUploadedFile(
   projectId: string,
   fileName: string,
   storagePath: string,
+  imageIndex?: number,
 ): Promise<RegisterThreadResult> {
   try {
     await requireUser();
 
-    const parsed = RegisterUploadSchema.safeParse({ projectId, fileName, storagePath });
+    const parsed = RegisterUploadSchema.safeParse({ projectId, fileName, storagePath, imageIndex });
     if (!parsed.success) {
       return { success: false, error: 'Invalid input: ' + parsed.error.issues[0]?.message };
     }
@@ -147,7 +148,7 @@ export async function registerUploadedFile(
       path: publicUrl,
       name: fileName,
       filename: storagePath,
-    });
+    }, imageIndex);
 
     if (!result.success) {
       return { success: false, error: result.error || 'Thread creation failed' };
