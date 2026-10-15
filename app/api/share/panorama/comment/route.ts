@@ -10,6 +10,7 @@ import { supabaseAdmin as supabase } from '@/lib/supabase';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { z } from 'zod';
 import { nanoid } from 'nanoid';
+import { markCustomerAuthored } from '@/lib/comment-permissions';
 
 function clampPitch(v: number) { return Math.max(-90, Math.min(90, Number.isFinite(v) ? v : 0)); }
 function clampYaw(v: number) { return Math.max(-180, Math.min(180, Number.isFinite(v) ? v : 0)); }
@@ -90,7 +91,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: insertError.message || 'Failed to save comment' }, { status: 500 });
     }
 
-    return NextResponse.json({ success: true, comment: data });
+    await markCustomerAuthored(supabase, 'panorama_comments', (data as any).id);
+    return NextResponse.json({ success: true, comment: { ...(data as any), author_role: 'customer' } });
   } catch (err) {
     if (err instanceof z.ZodError) {
       return NextResponse.json({ success: false, error: 'Invalid input data' }, { status: 400 });

@@ -44,6 +44,7 @@ function commentToPin(c: PanoramaComment): PanoramaPin {
     timestamp: c.created_at ? new Date(c.created_at).toLocaleDateString() : '',
     status: c.status === 'resolved' ? 'resolved' : 'active',
     replyCount: c.reply_count ?? 0,
+    authorRole: (c as any).author_role ?? null,
   };
 }
 
@@ -276,6 +277,7 @@ export default function PanoramaWorkspace({ projectId, initialData, fallbackName
     pins: img.pins.map(p => ({
       id: p.id, number: p.number, content: p.content, author: p.author,
       status: p.status, timestamp: p.timestamp, replyCount: p.replyCount,
+      authorRole: p.authorRole,
     })),
   }));
 

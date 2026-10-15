@@ -14,6 +14,7 @@ import { shareCoversThread } from '@/lib/share-access';
 import { supabaseAdmin as supabase } from '@/lib/supabase';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { nanoid } from 'nanoid';
+import { markCustomerAuthored } from '@/lib/comment-permissions';
 import { z } from 'zod';
 
 function isMissingColumnError(error: any, expectedColumns: string[]): boolean {
@@ -119,6 +120,7 @@ export async function POST(request: NextRequest) {
 
     if (!typedInsert.error && typedInsert.data) {
       const row = typedInsert.data as any;
+      await markCustomerAuthored(supabase, 'markup_comments', row.id);
       return NextResponse.json({
         success: true,
         reply: {
@@ -127,6 +129,7 @@ export async function POST(request: NextRequest) {
           user_name: row.user_name,
           content: row.content,
           created_at: row.created_at ?? now,
+          author_role: 'customer',
         },
       });
     }

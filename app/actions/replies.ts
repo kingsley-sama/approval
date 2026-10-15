@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server';
 import { requireUser } from '@/lib/auth/require-user';
 import { nanoid } from 'nanoid';
 import { getAttachmentsForComments, type AttachmentRecord } from './storage';
+import { isCustomerComment, CUSTOMER_COMMENT_EDIT_ERROR, CUSTOMER_COMMENT_DELETE_ERROR } from '@/lib/comment-permissions';
 
 export interface CommentReply {
   id: string;
@@ -11,6 +12,8 @@ export interface CommentReply {
   user_name: string;
   content: string;
   created_at: string;
+  /** 'customer' when written through a share link (migration 024). */
+  author_role?: string | null;
   attachments?: (AttachmentRecord & { signedUrl: string })[];
 }
 
@@ -34,6 +37,7 @@ function mapCommentRowToReply(row: any): CommentReply {
     user_name: row.user_name,
     content: row.content,
     created_at: row.created_at ?? new Date().toISOString(),
+    author_role: row.author_role ?? null,
   };
 }
 
@@ -42,7 +46,7 @@ export async function getRepliesForComment(commentId: string): Promise<CommentRe
 
   const typedResult = await supabase
     .from('markup_comments')
-    .select('id, parent_comment_id, user_name, content, created_at, type')
+    .select('*')
     .eq('parent_comment_id', commentId)
     .eq('type', 'reply')
     .order('created_at', { ascending: true });
@@ -78,10 +82,10 @@ export async function getRepliesForComment(commentId: string): Promise<CommentRe
 async function findReply(
   supabase: Awaited<ReturnType<typeof createClient>>,
   replyId: string,
-): Promise<{ table: 'markup_comments' | 'comment_replies'; userName: string } | null> {
+): Promise<{ table: 'markup_comments' | 'comment_replies'; userName: string; isCustomer: boolean } | null> {
   const typed = await supabase
     .from('markup_comments')
-    .select('id, user_name, type, parent_comment_id')
+    .select('*')
     .eq('id', replyId)
     .maybeSingle();
 
@@ -90,7 +94,7 @@ async function findReply(
     // Guard against a comment id being passed where a reply id is expected —
     // editing/deleting must never fall through to the parent comment.
     if (row.type === 'reply' || row.parent_comment_id) {
-      return { table: 'markup_comments', userName: row.user_name ?? '' };
+      return { table: 'markup_comments', userName: row.user_name ?? '', isCustomer: isCustomerComment(row) };
     }
     return null;
   }
@@ -102,7 +106,7 @@ async function findReply(
     .maybeSingle();
 
   if (!legacy.error && legacy.data) {
-    return { table: 'comment_replies', userName: (legacy.data as any).user_name ?? '' };
+    return { table: 'comment_replies', userName: (legacy.data as any).user_name ?? '', isCustomer: false };
   }
 
   return null;
@@ -125,6 +129,7 @@ export async function updateReply(
   const supabase = await createClient();
   const existing = await findReply(supabase, replyId);
   if (!existing) return { success: false, error: 'Reply not found' };
+  if (existing.isCustomer) return { success: false, error: CUSTOMER_COMMENT_EDIT_ERROR };
 
   const authorName = existing.userName.trim().toLowerCase();
   const currentName = (user.name || user.email || '').trim().toLowerCase();
@@ -159,6 +164,7 @@ export async function deleteReply(
   const supabase = await createClient();
   const existing = await findReply(supabase, replyId);
   if (!existing) return { success: false, error: 'Reply not found' };
+  if (existing.isCustomer) return { success: false, error: CUSTOMER_COMMENT_DELETE_ERROR };
 
   const authorName = existing.userName.trim().toLowerCase();
   const currentName = (user.name || user.email || '').trim().toLowerCase();

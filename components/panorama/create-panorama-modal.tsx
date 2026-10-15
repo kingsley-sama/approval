@@ -276,7 +276,7 @@ export default function CreatePanoramaModal({ onProjectCreated, trigger }: Creat
                 </ul>
               ) : selectedFiles.length > 0 ? (
                 <div>
-                  <div className="grid grid-cols-4 gap-2 w-full">
+                  <div className="grid grid-cols-4 gap-2 w-full max-h-[40vh] overflow-y-auto p-1">
                     {previewUrls.map((url, i) => (
                       <div key={i} className="relative aspect-square">
                         <img src={url} alt={selectedFiles[i]?.name} className="w-full h-full object-cover rounded" />

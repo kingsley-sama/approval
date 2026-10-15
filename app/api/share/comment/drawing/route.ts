@@ -13,6 +13,7 @@ import { shareCoversThread } from '@/lib/share-access';
 import { supabaseAdmin as supabase } from '@/lib/supabase';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { z } from 'zod';
+import { isCustomerComment, CUSTOMER_COMMENT_EDIT_ERROR } from '@/lib/comment-permissions';
 
 function isMissingColumnError(error: any, expectedColumns: string[]): boolean {
   const message = `${error?.message ?? ''} ${error?.details ?? ''} ${error?.hint ?? ''}`.toLowerCase();
@@ -64,7 +65,7 @@ export async function POST(request: NextRequest) {
 
     const { data: existing, error: fetchErr } = await supabase
       .from('markup_comments')
-      .select('id, user_name, thread_id, drawing_id')
+      .select('*')
       .eq('id', validated.commentId)
       .single();
 
@@ -73,6 +74,11 @@ export async function POST(request: NextRequest) {
         { success: false, error: 'Comment not found' },
         { status: 404 }
       );
+    }
+
+    // Customer comments are frozen once posted — see migration 024.
+    if (isCustomerComment(existing as any)) {
+      return NextResponse.json({ success: false, error: CUSTOMER_COMMENT_EDIT_ERROR }, { status: 403 });
     }
 
     const { data: thread, error: threadErr } = await supabase

@@ -278,7 +278,7 @@ export default function CreateTourModal({ onTourCreated, trigger }: CreateTourMo
                 </ul>
               ) : selectedFiles.length > 0 ? (
                 <div>
-                  <div className="grid grid-cols-4 gap-2 w-full">
+                  <div className="grid grid-cols-4 gap-2 w-full max-h-[40vh] overflow-y-auto p-1">
                     {previewUrls.map((url, i) => (
                       <div key={i} className="relative aspect-square">
                         {/* eslint-disable-next-line @next/next/no-img-element */}

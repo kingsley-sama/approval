@@ -13,6 +13,7 @@ import {
 } from '@/lib/validation/schemas';
 import { revalidatePath } from 'next/cache';
 import { nanoid } from 'nanoid';
+import { isCustomerComment, CUSTOMER_COMMENT_EDIT_ERROR, CUSTOMER_COMMENT_DELETE_ERROR } from '@/lib/comment-permissions';
 
 export interface PanoramaComment {
   id: string;
@@ -311,11 +312,12 @@ export async function updatePanoramaComment(
   const supabase = await createClient();
   const { data: existing, error: fetchErr } = await supabase
     .from('panorama_comments')
-    .select('user_name')
+    .select('*')
     .eq('id', parsed.data.commentId)
     .single();
 
   if (fetchErr || !existing) return { success: false, error: 'Comment not found' };
+  if (isCustomerComment(existing as any)) return { success: false, error: CUSTOMER_COMMENT_EDIT_ERROR };
 
   const authorName = existing.user_name?.trim().toLowerCase() ?? '';
   const currentName = (user.name || user.email || '').trim().toLowerCase();
@@ -352,11 +354,12 @@ export async function deletePanoramaComment(
   const supabase = await createClient();
   const { data: existing, error: fetchErr } = await supabase
     .from('panorama_comments')
-    .select('user_name')
+    .select('*')
     .eq('id', parsed.data.commentId)
     .single();
 
   if (fetchErr || !existing) return { success: false, error: 'Comment not found' };
+  if (isCustomerComment(existing as any)) return { success: false, error: CUSTOMER_COMMENT_DELETE_ERROR };
 
   const authorName = existing.user_name?.trim().toLowerCase() ?? '';
   const currentName = (user.name || user.email || '').trim().toLowerCase();

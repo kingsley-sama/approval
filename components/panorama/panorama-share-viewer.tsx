@@ -8,6 +8,7 @@ import { TruncatedName } from '@/components/ui/truncated-name';
 import { X } from 'lucide-react';
 import type { PanoramaHotspot } from '@/components/panorama/panorama-viewer';
 import PanoramaCommentModal from '@/components/panorama/panorama-comment-modal';
+import CommentBody from '@/components/annotation/comment-body';
 
 const PanoramaViewer = dynamic(() => import('@/components/panorama/panorama-viewer'), {
   ssr: false,
@@ -230,7 +231,7 @@ export default function PanoramaShareViewer({
             </div>
             <div className="p-3 space-y-1">
               <span className="text-xs font-medium text-gray-900">{selected.author}</span>
-              <p className="text-sm text-gray-700 whitespace-pre-wrap break-words">{selected.content}</p>
+              <p className="text-sm text-gray-700 whitespace-pre-wrap break-words"><CommentBody content={selected.content} /></p>
               {selected.status === 'resolved' && (
                 <span className="text-[10px] font-medium text-green-600">Resolved</span>
               )}

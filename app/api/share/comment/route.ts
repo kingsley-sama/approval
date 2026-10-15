@@ -11,6 +11,7 @@ import { supabaseAdmin as supabase } from '@/lib/supabase';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { z } from 'zod';
 import { nanoid } from 'nanoid';
+import { markCustomerAuthored } from '@/lib/comment-permissions';
 import { allocateProjectCommentNumber } from '@/lib/comment-numbering';
 
 function clampPercent(value: number): number {
@@ -175,6 +176,8 @@ export async function POST(request: NextRequest) {
       if (validated.drawingData != null && saved.drawing_data == null) {
         saved.drawing_data = validated.drawingData;
       }
+      await markCustomerAuthored(supabase, 'markup_comments', saved.id);
+      saved.author_role = 'customer';
       return NextResponse.json({ success: true, comment: saved });
     }
 
@@ -215,7 +218,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    return NextResponse.json({ success: true, comment: data });
+    await markCustomerAuthored(supabase, 'markup_comments', (data as any).id);
+    return NextResponse.json({ success: true, comment: { ...(data as any), author_role: 'customer' } });
   } catch (error) {
     console.error('Share comment error:', error);
     

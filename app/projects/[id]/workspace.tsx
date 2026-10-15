@@ -21,6 +21,7 @@ import { matchPage, samePage } from '@/lib/website/url';
 import type { Shape } from '@/types/drawing';
 import { useDocumentTitle } from '@/hooks/use-document-title';
 import { compressImageFile } from '@/lib/image-compression';
+import { isCustomerComment } from '@/lib/comment-permissions';
 
 type Pin = ProjectPin;
 type ImageData = ProjectImageData;
@@ -33,7 +34,8 @@ function pinShapes(drawingData: Pin['drawingData']): Shape[] {
 
 /** A saved (DB-backed) pin that still carries at least one drawing shape. */
 function isSavedDrawingPin(pin: Pin): boolean {
-  return !pin.isPending && !pin.id.startsWith('local_') && pinShapes(pin.drawingData).length > 0;
+  // Customer drawings are locked (migration 024) — never peel them with undo.
+  return !pin.isPending && !pin.id.startsWith('local_') && !isCustomerComment(pin) && pinShapes(pin.drawingData).length > 0;
 }
 
 function dbCommentToPin(c: DbComment): Pin {
@@ -50,6 +52,7 @@ function dbCommentToPin(c: DbComment): Pin {
     attachments: c.attachments ?? [],
     replyCount: c.reply_count ?? 0,
     anchor: c.anchor ?? null,
+    authorRole: c.author_role ?? null,
   };
 }
 
@@ -133,11 +136,20 @@ export default function ProjectWorkspace({
       setImagesState(prev => prev.map(img => {
         const idx = img.pins.findIndex(p => p.id === localId);
         if (idx === -1) return img;
+        // A realtime echo may already have added the server row; keep one copy.
+        const alreadyHasReal = img.pins.some(p => p.id === comment.id);
         return {
           ...img,
-          pins: img.pins.map(p => p.id === localId ? realPin : p),
+          pins: alreadyHasReal
+            ? img.pins.filter(p => p.id !== localId)
+            : img.pins.map(p => p.id === localId ? realPin : p),
         };
       }));
+      // The pin keeps its identity across the swap from local to server id —
+      // otherwise an open modal loses its existingPin and turns into a blank
+      // "new comment" form, and edits/attachments target a stale local id.
+      setSelectedPin(prev => prev === localId ? comment.id : prev);
+      setHoveredPin(prev => prev === localId ? comment.id : prev);
       // Upload any attachments that were queued for this comment
       const files = pendingAttachments.current.get(localId);
       if (files && files.length > 0) {
@@ -288,6 +300,7 @@ export default function ProjectWorkspace({
               y: comment.y_position,
               status: comment.status === 'resolved' ? 'resolved' as const : 'active' as const,
               drawingData: comment.drawing_data ?? undefined,
+              authorRole: comment.author_role ?? p.authorRole ?? null,
             }
           : p),
       };
@@ -666,6 +679,13 @@ export default function ProjectWorkspace({
   }
 
   const handleAddAttachmentToComment = async (commentId: string, files: File[]) => {
+    // Not synced yet — hold the files and upload them once the comment has a
+    // server id (syncCallbacks.onSynced).
+    if (commentId.startsWith('local_')) {
+      const queued = pendingAttachments.current.get(commentId) ?? [];
+      pendingAttachments.current.set(commentId, [...queued, ...files]);
+      return;
+    }
     // Files came from the modal, which already compressed images.
     await uploadAttachmentsForComment(commentId, projectId, files, true);
     await refreshCommentAttachments(commentId);

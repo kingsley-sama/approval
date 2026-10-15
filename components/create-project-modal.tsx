@@ -315,7 +315,7 @@ export default function CreateProjectModal({ onProjectCreated, trigger }: Create
               ) : selectedFiles.length > 0 ? (
                 /* Thumbnail grid + add more */
                 <div>
-                  <div className="grid grid-cols-4 gap-2 w-full">
+                  <div className="grid grid-cols-4 gap-2 w-full max-h-[40vh] overflow-y-auto p-1">
                     {previewUrls.map((url, i) => (
                       <div key={i} className="relative aspect-square">
                         <img

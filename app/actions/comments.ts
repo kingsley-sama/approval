@@ -14,6 +14,7 @@ import { revalidatePath } from 'next/cache';
 import { nanoid } from 'nanoid';
 import { parsePinAnchor, type PinAnchor } from '@/lib/website/anchor-schema';
 import { allocateCommentNumberForThread } from '@/lib/comment-numbering';
+import { isCustomerComment, CUSTOMER_COMMENT_EDIT_ERROR, CUSTOMER_COMMENT_DELETE_ERROR } from '@/lib/comment-permissions';
 import type { AttachmentRecord } from './storage';
 
 export interface DbComment {
@@ -37,6 +38,8 @@ export interface DbComment {
   anchor?: PinAnchor | null;
   attachments?: (AttachmentRecord & { signedUrl: string })[];
   reply_count?: number;
+  /** 'customer' when written through a share link (migration 024). */
+  author_role?: 'team' | 'customer' | string | null;
 }
 
 export interface CreateCommentResult {
@@ -462,12 +465,15 @@ export async function updateCommentDrawing(
 
   const { data: existing, error: fetchErr } = await supabase
     .from('markup_comments')
-    .select('id, drawing_id, type')
+    .select('*')
     .eq('id', commentId)
     .single();
 
   if (fetchErr || !existing) {
     return { success: false, error: 'Comment not found' };
+  }
+  if (isCustomerComment(existing as any)) {
+    return { success: false, error: nextShapes ? CUSTOMER_COMMENT_EDIT_ERROR : CUSTOMER_COMMENT_DELETE_ERROR };
   }
 
   const drawingId = (existing as any).drawing_id as string | null | undefined;
@@ -537,12 +543,15 @@ export async function updateComment(
 
   const { data: existing, error: fetchErr } = await supabase
     .from('markup_comments')
-    .select('user_name')
+    .select('*')
     .eq('id', parsed.data.commentId)
     .single();
 
   if (fetchErr || !existing) {
     return { success: false, error: 'Comment not found' };
+  }
+  if (isCustomerComment(existing as any)) {
+    return { success: false, error: CUSTOMER_COMMENT_EDIT_ERROR };
   }
 
   const authorName = existing.user_name?.trim().toLowerCase() ?? '';
@@ -584,12 +593,15 @@ export async function deleteComment(
 
   const { data: existing, error: fetchErr } = await supabase
     .from('markup_comments')
-    .select('user_name')
+    .select('*')
     .eq('id', parsed.data.commentId)
     .single();
 
   if (fetchErr || !existing) {
     return { success: false, error: 'Comment not found' };
+  }
+  if (isCustomerComment(existing as any)) {
+    return { success: false, error: CUSTOMER_COMMENT_DELETE_ERROR };
   }
 
   const authorName = existing.user_name?.trim().toLowerCase() ?? '';

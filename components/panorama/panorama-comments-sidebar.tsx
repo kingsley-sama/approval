@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Check, ChevronDown, ChevronRight, MessageSquare } from 'lucide-react';
 import PanoramaThreadDetail from './panorama-thread-detail';
+import CommentBody from '@/components/annotation/comment-body';
 
 export interface PanoramaSidebarPin {
   id: string;
@@ -12,6 +13,7 @@ export interface PanoramaSidebarPin {
   status: 'active' | 'resolved';
   timestamp: string;
   replyCount?: number;
+  authorRole?: string | null;
 }
 
 export interface PanoramaSidebarImage {
@@ -139,7 +141,7 @@ export default function PanoramaCommentsSidebar({
                 pin.status === 'resolved' ? 'line-through text-gray-500' : 'text-foreground'
               }`}
             >
-              {pin.content}
+              <CommentBody content={pin.content} />
             </p>
             <div className="mt-2 flex items-center justify-end gap-1.5">
               {(pin.replyCount ?? 0) > 0 && (

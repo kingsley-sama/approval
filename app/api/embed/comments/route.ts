@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { nanoid } from 'nanoid';
+import { markCustomerAuthored } from '@/lib/comment-permissions';
 import { supabaseAdmin as supabase } from '@/lib/supabase';
 import { validateShareToken } from '@/app/actions/share-links';
 import { checkRateLimit } from '@/lib/rate-limit';
@@ -285,6 +286,7 @@ export async function POST(request: NextRequest) {
   }
 
   const saved = data as any;
+  await markCustomerAuthored(supabase, 'markup_comments', saved.id);
 
   // The immutable record. Cropped from the snapshot's own full-page image, so
   // it is by definition what the commenter was looking at. Best-effort: a

@@ -30,6 +30,7 @@ export interface PanoramaPin {
   status: 'active' | 'resolved';
   replyCount?: number;
   isPending?: boolean;
+  authorRole?: string | null;
 }
 
 export interface PanoramaImageData {

@@ -5,6 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { X, Check, RotateCcw, Trash2, Pencil, CornerDownRight, Send } from 'lucide-react';
 import { getPanoramaReplies, type PanoramaComment } from '@/app/actions/panorama-comments';
+import CommentBody from '@/components/annotation/comment-body';
+import { isCustomerComment } from '@/lib/comment-permissions';
 
 export interface PanoramaModalPin {
   id: string;
@@ -14,6 +16,7 @@ export interface PanoramaModalPin {
   timestamp: string;
   status: 'active' | 'resolved';
   replyCount?: number;
+  authorRole?: string | null;
 }
 
 interface PanoramaCommentModalProps {
@@ -58,6 +61,7 @@ export default function PanoramaCommentModal({
 
   const canManage =
     !!existingPin &&
+    !isCustomerComment(existingPin) &&
     (userRole === 'admin' ||
       userRole === 'pm' ||
       existingPin.author.trim().toLowerCase() === currentUser.trim().toLowerCase());
@@ -165,7 +169,7 @@ export default function PanoramaCommentModal({
                 </div>
               </div>
             ) : (
-              <p className="text-sm text-foreground whitespace-pre-wrap break-words">{existingPin.content}</p>
+              <p className="text-sm text-foreground whitespace-pre-wrap break-words"><CommentBody content={existingPin.content} /></p>
             )}
 
             {existingPin.status === 'resolved' && (
@@ -210,7 +214,7 @@ export default function PanoramaCommentModal({
                         <div className="flex items-center justify-between">
                           <span className="text-[11px] font-medium text-foreground">{r.user_name}</span>
                         </div>
-                        <p className="text-xs text-muted-foreground whitespace-pre-wrap break-words">{r.content}</p>
+                        <p className="text-xs text-muted-foreground whitespace-pre-wrap break-words"><CommentBody content={r.content} /></p>
                       </div>
                     ))}
                     <div className="flex items-center gap-1.5">

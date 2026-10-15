@@ -5,6 +5,8 @@ import { ArrowLeft, Check, Trash2, Pencil, Smile, Send } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { IconTooltip } from '@/components/ui/icon-tooltip';
 import { getPanoramaReplies, createPanoramaReply, type PanoramaComment } from '@/app/actions/panorama-comments';
+import CommentBody from '@/components/annotation/comment-body';
+import { isCustomerComment } from '@/lib/comment-permissions';
 
 const EMOJI_OPTIONS = [
   '😀', '😂', '😍', '😎', '🤔', '😅', '😢', '😡',
@@ -21,6 +23,7 @@ export interface ThreadPin {
   author: string;
   timestamp: string;
   status: 'active' | 'resolved';
+  authorRole?: string | null;
 }
 
 interface PanoramaThreadDetailProps {
@@ -53,8 +56,9 @@ export default function PanoramaThreadDetail({
 
   const isMine = (name: string) => name.trim().toLowerCase() === currentUser.trim().toLowerCase();
   const elevated = ELEVATED_ROLES.includes(userRole);
-  const canEdit = elevated || isMine(pin.author);
-  const canDelete = elevated || isMine(pin.author);
+  const locked = isCustomerComment(pin);
+  const canEdit = !locked && (elevated || isMine(pin.author));
+  const canDelete = !locked && (elevated || isMine(pin.author));
 
   useEffect(() => {
     let cancelled = false;
@@ -168,7 +172,7 @@ export default function PanoramaThreadDetail({
               </div>
             ) : (
               <>
-                <p className="text-[13px] leading-relaxed text-foreground whitespace-pre-wrap break-words">{pin.content}</p>
+                <p className="text-[13px] leading-relaxed text-foreground whitespace-pre-wrap break-words"><CommentBody content={pin.content} /></p>
                 {canEdit && (
                   <IconTooltip label="Edit comment">
                     <button onClick={() => { setEditText(pin.content); setIsEditing(true); }} aria-label="Edit comment"
@@ -196,7 +200,7 @@ export default function PanoramaThreadDetail({
                   <div className={`text-[10px] mb-1 ${mine ? 'text-primary-foreground/80' : 'text-muted-foreground'}`}>
                     {mine ? 'You' : item.user_name}
                   </div>
-                  <p className="text-[13px] leading-relaxed break-words whitespace-pre-wrap">{item.content}</p>
+                  <p className="text-[13px] leading-relaxed break-words whitespace-pre-wrap"><CommentBody content={item.content} /></p>
                   <div className={`text-[10px] mt-1.5 ${mine ? 'text-primary-foreground/80' : 'text-muted-foreground'}`}>
                     {item.created_at ? new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
                   </div>

@@ -42,6 +42,8 @@ export interface ProjectPin {
 	replyCount?: number;
 	/** Website reviews: the element the pin is attached to. */
 	anchor?: PinAnchor | null;
+	/** 'customer' when written through a share link — locked against edit/delete. */
+	authorRole?: string | null;
 }
 
 export interface ProjectImageData {

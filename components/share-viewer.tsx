@@ -38,6 +38,7 @@ import {
   deleteShareCommentAttachment,
 } from '@/lib/share-comment-attachments';
 import { ArrowLeft, CheckCircle2, CheckCheck } from 'lucide-react';
+import { isCustomerComment } from '@/lib/comment-permissions';
 
 type GuestAttachment = AttachmentRecord & { signedUrl: string };
 
@@ -54,6 +55,8 @@ interface Pin {
   attachments?: (AttachmentRecord & { signedUrl: string })[];
   /** Website reviews: the element the pin is attached to. */
   anchor?: PinAnchor | null;
+  /** 'customer' when written through a share link — locked against edit/delete. */
+  authorRole?: string | null;
 }
 
 interface ThreadData {
@@ -99,6 +102,7 @@ function dbCommentToPin(
     drawingData: c.drawing_data ?? undefined,
     attachments: attachmentsByComment?.[c.id] ?? [],
     anchor: c.anchor ?? null,
+    authorRole: c.author_role ?? null,
   };
 }
 
@@ -272,6 +276,7 @@ export default function ShareViewer({ shareLink, resourceData, token, website }:
   const isOwnSavedDrawing = useCallback(
     (pin: Pin) =>
       !pin.id.startsWith('local_') &&
+      !isCustomerComment(pin) &&
       (pin.author ?? '').trim().toLowerCase() === guestKey &&
       guestKey.length > 0 &&
       toShapeArray(pin.drawingData).length > 0,

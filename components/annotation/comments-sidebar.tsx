@@ -6,6 +6,7 @@ import type { AttachmentRecord } from '@/app/actions/storage';
 import CommentBody from './comment-body';
 import { createReply, getRepliesForComment, updateReply, deleteReply, type CommentReply } from '@/app/actions/replies';
 import { canDeleteAttachment as isAttachmentDeletable } from '@/lib/attachment-permissions';
+import { isCustomerComment } from '@/lib/comment-permissions';
 import { ATTACHMENT_ACCEPT, isVideoAttachment } from '@/lib/attachment-types';
 import { getCurrentUser } from '@/app/actions/comments';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -31,6 +32,8 @@ interface Pin {
   status: 'active' | 'resolved';
   attachments?: (AttachmentRecord & { signedUrl: string })[];
   replyCount?: number;
+  /** 'customer' when written through a share link — locked against edit/delete. */
+  authorRole?: string | null;
 }
 
 interface ImageData {
@@ -242,6 +245,7 @@ function ThreadDetail({ pin, onBack, onResolve, readOnly, canResolve, onEditComm
 
   const canEdit =
     !!onEditComment &&
+    !isCustomerComment(pin) &&
     (
       (userRole && ELEVATED_ROLES.includes(userRole)) ||
       (pin.author?.trim().toLowerCase() === (currentUser ?? currentUserName).trim().toLowerCase())
@@ -250,6 +254,7 @@ function ThreadDetail({ pin, onBack, onResolve, readOnly, canResolve, onEditComm
   const canDelete =
     !readOnly &&
     !!onDeleteComment &&
+    !isCustomerComment(pin) &&
     (
       (userRole && ELEVATED_ROLES.includes(userRole)) ||
       (pin.author?.trim().toLowerCase() === (currentUser ?? currentUserName).trim().toLowerCase())
@@ -679,7 +684,7 @@ function ThreadDetail({ pin, onBack, onResolve, readOnly, canResolve, onEditComm
                     </span>
                     {/* Optimistic replies have no server id yet, so they can't be
                         edited or deleted until the create round-trip lands. */}
-                    {canManageReplies && mine && !item.id.startsWith('opt_') && editingReplyId !== item.id && (
+                    {canManageReplies && mine && !isCustomerComment(item) && !item.id.startsWith('opt_') && editingReplyId !== item.id && (
                       <span className="flex items-center gap-0.5 opacity-0 group-hover/reply:opacity-100 focus-within:opacity-100 transition-opacity">
                         <button
                           type="button"
@@ -747,7 +752,7 @@ function ThreadDetail({ pin, onBack, onResolve, readOnly, canResolve, onEditComm
                       </div>
                     </div>
                   ) : (
-                    <p className="text-[15px] leading-relaxed wrap-break-word">{item.content}</p>
+                    <p className="text-[15px] leading-relaxed wrap-break-word"><CommentBody content={item.content} /></p>
                   )}
                   {(imageAttachments.length > 0 || pdfAttachments.length > 0 || videoAttachments.length > 0) && (
                     <div className="mt-2 space-y-1.5">
@@ -1055,6 +1060,7 @@ export default function CommentsSidebar({
 
   const canEditPin = (pin: Pin) =>
     !!onEditComment &&
+    !isCustomerComment(pin) &&
     ((userRole && ELEVATED_ROLES.includes(userRole)) || isMineInline(pin.author));
 
   const beginInlineEdit = (pin: Pin) => {

@@ -11,6 +11,7 @@ import { IconTooltip } from '@/components/ui/icon-tooltip';
 import { compressImageWithStats } from '@/lib/image-compression';
 import { CompressionInfo } from '@/components/compression-info';
 import { canDeleteAttachment as isAttachmentDeletable } from '@/lib/attachment-permissions';
+import { isCustomerComment } from '@/lib/comment-permissions';
 import { ATTACHMENT_ACCEPT, isVideoAttachment } from '@/lib/attachment-types';
 
 interface Pin {
@@ -23,6 +24,8 @@ interface Pin {
   timestamp: string;
   status: 'active' | 'resolved';
   attachments?: (AttachmentRecord & { signedUrl: string })[];
+  /** 'customer' when written through a share link — locked against edit/delete. */
+  authorRole?: string | null;
 }
 
 interface ProjectOption {
@@ -160,12 +163,14 @@ export default function CommentModal({
 
   const canEditExisting =
     !!existingPin &&
+    !isCustomerComment(existingPin) &&
     !!onEditComment &&
     (ELEVATED_ROLES.includes(userRole) ||
       (existingPin.author?.trim().toLowerCase() === currentUser.trim().toLowerCase()));
 
   const canDeleteExisting =
     !!existingPin &&
+    !isCustomerComment(existingPin) &&
     !isNewPin &&
     !!onDeleteComment &&
     (ELEVATED_ROLES.includes(userRole) ||
@@ -773,7 +778,7 @@ export default function CommentModal({
                           </span>
                         </div>
                         <p className={`text-[13px] text-gray-700 leading-relaxed wrap-break-word ${reply.id.startsWith('opt_') ? 'opacity-60' : ''}`}>
-                          {reply.content}
+                          <CommentBody content={reply.content} />
                         </p>
                       </div>
                     </div>
