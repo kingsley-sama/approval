@@ -10,6 +10,7 @@ import { shareCoversThread } from '@/lib/share-access';
 import { supabaseAdmin as supabase } from '@/lib/supabase';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { z } from 'zod';
+import { COMMENT_MAX_LENGTH } from '@/lib/validation/schemas';
 import { nanoid } from 'nanoid';
 import { markCustomerAuthored } from '@/lib/comment-permissions';
 import { allocateProjectCommentNumber } from '@/lib/comment-numbering';
@@ -45,7 +46,7 @@ const CommentSchema = z.object({
   token: z.string().min(1),
   threadId: z.string().uuid(),
   userName: z.string().min(1).max(150),
-  content: z.string().min(1).max(5000),
+  content: z.string().min(1).max(COMMENT_MAX_LENGTH),
   xPosition: z.coerce.number().optional().default(50).transform(clampPercent),
   yPosition: z.coerce.number().optional().default(50).transform(clampPercent),
   drawingData: z.any().optional().transform(normalizeDrawingPayload),

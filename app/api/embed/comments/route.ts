@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
+import { COMMENT_MAX_LENGTH } from '@/lib/validation/schemas';
 import { nanoid } from 'nanoid';
 import { markCustomerAuthored } from '@/lib/comment-permissions';
 import { supabaseAdmin as supabase } from '@/lib/supabase';
@@ -203,7 +204,7 @@ const RectSchema = z.object({
 const BodySchema = z.object({
   key: z.string().min(1),
   url: z.string().min(1).max(2000),
-  content: z.string().trim().min(1).max(5000),
+  content: z.string().trim().min(1).max(COMMENT_MAX_LENGTH),
   userName: z.string().trim().min(1).max(150),
   // Document-percentage fallback, so the comment still renders if the anchor
   // element is later removed.

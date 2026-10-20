@@ -3,6 +3,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { requireUser } from '@/lib/auth/require-user';
 import { nanoid } from 'nanoid';
+import { COMMENT_MAX_LENGTH } from '@/lib/validation/schemas';
 import { getAttachmentsForComments, type AttachmentRecord } from './storage';
 import { isCustomerComment, CUSTOMER_COMMENT_EDIT_ERROR, CUSTOMER_COMMENT_DELETE_ERROR } from '@/lib/comment-permissions';
 
@@ -124,7 +125,7 @@ export async function updateReply(
 
   const trimmed = content.trim();
   if (!trimmed) return { success: false, error: 'Reply cannot be empty' };
-  if (trimmed.length > 5000) return { success: false, error: 'Reply is too long' };
+  if (trimmed.length > COMMENT_MAX_LENGTH) return { success: false, error: 'Reply is too long' };
 
   const supabase = await createClient();
   const existing = await findReply(supabase, replyId);

@@ -11,13 +11,14 @@ import { shareCoversThread } from '@/lib/share-access';
 import { supabaseAdmin as supabase } from '@/lib/supabase';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { z } from 'zod';
+import { COMMENT_MAX_LENGTH } from '@/lib/validation/schemas';
 import { isCustomerComment, CUSTOMER_COMMENT_EDIT_ERROR } from '@/lib/comment-permissions';
 
 const UpdateSchema = z.object({
   token: z.string().min(1),
   commentId: z.string().min(1),
   userName: z.string().min(1).max(150),
-  content: z.string().min(1).max(5000),
+  content: z.string().min(1).max(COMMENT_MAX_LENGTH),
 });
 
 export async function POST(request: NextRequest) {

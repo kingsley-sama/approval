@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { hasBlockStructure, parseBlocks, parseInline } from '@/lib/comment-format';
 
 interface CommentBodyProps {
   content: string;
@@ -50,18 +51,18 @@ function linkify(text: string, keyPrefix: string): React.ReactNode[] {
   return out;
 }
 
-export default function CommentBody({ content, className }: CommentBodyProps) {
+function renderMentionsAndLinks(content: string, keyPrefix: string): React.ReactNode[] {
   const parts: React.ReactNode[] = [];
   let last = 0;
   let m: RegExpExecArray | null;
   MENTION_RE.lastIndex = 0;
 
   while ((m = MENTION_RE.exec(content)) !== null) {
-    if (m.index > last) parts.push(...linkify(content.slice(last, m.index), `t${last}`));
+    if (m.index > last) parts.push(...linkify(content.slice(last, m.index), `${keyPrefix}t${last}`));
     const [, name, id] = m;
     parts.push(
       <a
-        key={m.index}
+        key={`${keyPrefix}m${m.index}`}
         href={`/projects/${id}`}
         target="_blank"
         rel="noopener noreferrer"
@@ -74,7 +75,45 @@ export default function CommentBody({ content, className }: CommentBodyProps) {
     last = m.index + m[0].length;
   }
 
-  if (last < content.length) parts.push(...linkify(content.slice(last), `t${last}`));
+  if (last < content.length) parts.push(...linkify(content.slice(last), `${keyPrefix}t${last}`));
+  return parts;
+}
 
-  return <span className={className}>{parts}</span>;
+function renderInline(text: string, keyPrefix: string): React.ReactNode[] {
+  return parseInline(text).map((segment, i) => {
+    const key = `${keyPrefix}s${i}`;
+    let node: React.ReactNode = renderMentionsAndLinks(segment.text, key);
+    if (segment.marks.includes('italic')) node = <em>{node}</em>;
+    if (segment.marks.includes('strike')) node = <s>{node}</s>;
+    if (segment.marks.includes('underline')) node = <u>{node}</u>;
+    if (segment.marks.includes('bold')) node = <strong className="font-semibold">{node}</strong>;
+    return <React.Fragment key={key}>{node}</React.Fragment>;
+  });
+}
+
+export default function CommentBody({ content, className }: CommentBodyProps) {
+  // Single-line comments (almost all of them) keep their original inline
+  // layout; only multi-line or list content switches to block rendering.
+  if (!hasBlockStructure(content)) {
+    return <span className={className}>{renderInline(content, 'l0')}</span>;
+  }
+
+  // Spans styled as blocks rather than <div>/<ul>, because callers render this
+  // inside <p>, where block elements are invalid.
+  return (
+    <span className={`block whitespace-pre-wrap wrap-break-word ${className ?? ''}`}>
+      {parseBlocks(content).map((block, i) => {
+        const key = `b${i}`;
+        if (block.kind === 'blank') return <span key={key} className="block">{'\u00a0'}</span>;
+        if (block.kind === 'line') return <span key={key} className="block">{renderInline(block.text, key)}</span>;
+        const marker = block.kind === 'bullet' ? '•' : `${block.number}.`;
+        return (
+          <span key={key} className="flex" style={{ paddingLeft: `${block.indent * 1.25}em` }}>
+            <span className="shrink-0 w-[1.5em] select-none">{marker}</span>
+            <span className="min-w-0 flex-1">{renderInline(block.text, key)}</span>
+          </span>
+        );
+      })}
+    </span>
+  );
 }

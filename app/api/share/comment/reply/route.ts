@@ -16,6 +16,7 @@ import { checkRateLimit } from '@/lib/rate-limit';
 import { nanoid } from 'nanoid';
 import { markCustomerAuthored } from '@/lib/comment-permissions';
 import { z } from 'zod';
+import { COMMENT_MAX_LENGTH } from '@/lib/validation/schemas';
 
 function isMissingColumnError(error: any, expectedColumns: string[]): boolean {
   const message = `${error?.message ?? ''} ${error?.details ?? ''} ${error?.hint ?? ''}`.toLowerCase();
@@ -32,7 +33,7 @@ const ReplySchema = z.object({
   token: z.string().min(1),
   commentId: z.string().min(1),
   userName: z.string().min(1).max(150),
-  content: z.string().min(1).max(5000),
+  content: z.string().min(1).max(COMMENT_MAX_LENGTH),
 });
 
 export async function POST(request: NextRequest) {

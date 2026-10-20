@@ -9,6 +9,7 @@
 
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
 import type { AnnotatedImage } from '@/lib/report/annotate-image';
+import { stripCommentFormatting } from '@/lib/comment-format';
 
 const A4 = { width: 595.28, height: 841.89 };
 const MARGIN = 48;
@@ -255,10 +256,10 @@ export async function buildFeedbackPdf(input: FeedbackReportInput): Promise<Uint
     }
 
     for (const comment of item.comments) {
-      const bodyLines = wrap(comment.content, regular, 10, CONTENT_WIDTH - 34);
+      const bodyLines = wrap(stripCommentFormatting(comment.content), regular, 10, CONTENT_WIDTH - 34);
       const replyLines = comment.replies.map((r) => ({
         head: `${sanitize(r.author)}${formatDate(r.createdAt) ? ` · ${formatDate(r.createdAt)}` : ''}`,
-        lines: wrap(r.content, regular, 9.5, CONTENT_WIDTH - 48),
+        lines: wrap(stripCommentFormatting(r.content), regular, 9.5, CONTENT_WIDTH - 48),
       }));
       const height =
         18 + bodyLines.length * 12.5 +

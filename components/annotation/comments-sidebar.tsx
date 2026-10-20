@@ -7,7 +7,8 @@ import CommentBody from './comment-body';
 import { createReply, getRepliesForComment, updateReply, deleteReply, type CommentReply } from '@/app/actions/replies';
 import { canDeleteAttachment as isAttachmentDeletable } from '@/lib/attachment-permissions';
 import { isCustomerComment } from '@/lib/comment-permissions';
-import { ATTACHMENT_ACCEPT, isVideoAttachment } from '@/lib/attachment-types';
+import { ATTACHMENT_ACCEPT, isFileAttachment, isVideoAttachment } from '@/lib/attachment-types';
+import CommentEditor from './comment-editor';
 import { getCurrentUser } from '@/app/actions/comments';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { uploadCommentAttachments, validateAttachments } from '@/lib/comment-attachments';
@@ -500,23 +501,14 @@ function ThreadDetail({ pin, onBack, onResolve, readOnly, canResolve, onEditComm
 
             {isEditing ? (
               <div>
-                <textarea
+                <CommentEditor
                   value={editText}
-                  onChange={e => setEditText(e.target.value)}
-                  onKeyDown={e => {
-                    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-                      e.preventDefault();
-                      handleSaveEdit();
-                    }
-                    if (e.key === 'Escape') {
-                      e.preventDefault();
-                      handleCancelEdit();
-                    }
-                  }}
+                  onChange={setEditText}
+                  onSubmit={handleSaveEdit}
+                  onCancel={handleCancelEdit}
                   autoFocus
                   disabled={isSavingEdit}
-                  className="w-full px-2 py-1.5 border border-border rounded text-[13px] focus:outline-none focus:ring-1 focus:ring-primary/40 bg-white resize-none leading-relaxed"
-                  rows={3}
+                  minRows={8}
                 />
                 {editError && (
                   <p className="text-[10px] text-red-500 mt-1">{editError}</p>
@@ -626,7 +618,7 @@ function ThreadDetail({ pin, onBack, onResolve, readOnly, canResolve, onEditComm
                   ))}
 
                 {pin.attachments
-                  .filter(a => a.mime_type === 'application/pdf')
+                  .filter(a => isFileAttachment(a.mime_type))
                   .map(a => (
                     <div key={a.id} className="group flex items-center gap-1.5 text-xs">
                       <a
@@ -667,7 +659,7 @@ function ThreadDetail({ pin, onBack, onResolve, readOnly, canResolve, onEditComm
           replies.map(item => {
             const mine = isMine(item.user_name);
             const imageAttachments = item.attachments?.filter(a => a.mime_type.startsWith('image/')) ?? [];
-            const pdfAttachments = item.attachments?.filter(a => a.mime_type === 'application/pdf') ?? [];
+            const pdfAttachments = item.attachments?.filter(a => isFileAttachment(a.mime_type)) ?? [];
             const videoAttachments = item.attachments?.filter(a => isVideoAttachment(a.mime_type)) ?? [];
             return (
               <div key={item.id} className={`group/reply flex ${mine ? 'justify-end' : 'justify-start'}`}>
@@ -713,24 +705,14 @@ function ThreadDetail({ pin, onBack, onResolve, readOnly, canResolve, onEditComm
                   </div>
                   {editingReplyId === item.id ? (
                     <div>
-                      <textarea
+                      <CommentEditor
                         value={editingReplyText}
-                        onChange={e => setEditingReplyText(e.target.value)}
-                        onKeyDown={e => {
-                          // Enter saves; Shift+Enter keeps multi-line replies possible.
-                          if (e.key === 'Enter' && !e.shiftKey) {
-                            e.preventDefault();
-                            saveEditReply();
-                          }
-                          if (e.key === 'Escape') {
-                            e.preventDefault();
-                            cancelEditReply();
-                          }
-                        }}
+                        onChange={setEditingReplyText}
+                        onSubmit={saveEditReply}
+                        onCancel={cancelEditReply}
                         autoFocus
                         disabled={isSavingReply}
-                        rows={3}
-                        className="w-full px-2 py-1.5 rounded text-[15px] leading-relaxed bg-white text-foreground border border-border focus:outline-none focus:ring-1 focus:ring-primary/40 resize-none"
+                        minRows={4}
                       />
                       <div className="flex items-center justify-end gap-1 mt-1.5">
                         <button
@@ -978,7 +960,7 @@ function ThreadDetail({ pin, onBack, onResolve, readOnly, canResolve, onEditComm
               </Popover>
               <IconTooltip
                 side="top"
-                label={canAttachToReply ? 'Attach file (images or PDF, max 20 MB)' : 'Attachments unavailable'}
+                label={canAttachToReply ? 'Attach file (images, PDF, video, TXT, DOC, DOCX)' : 'Attachments unavailable'}
               >
                 <button
                   type="button"
@@ -1198,24 +1180,19 @@ export default function CommentsSidebar({
           <p className="text-xs text-muted-foreground mb-1.5">{pin.timestamp}</p>
           {editingPinId === pin.id ? (
             <div onClick={e => e.stopPropagation()}>
-              <textarea
+              <CommentEditor
                 autoFocus
                 value={inlineEditText}
-                onChange={e => {
-                  setInlineEditText(e.target.value);
+                onChange={text => {
+                  setInlineEditText(text);
                   if (inlineEditError) setInlineEditError(null);
                 }}
-                onKeyDown={e => {
-                  if (e.key === 'Escape') cancelInlineEdit();
-                  // Enter saves; Shift+Enter keeps the newline.
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    if (!isSavingInlineEdit) saveInlineEdit(pin);
-                  }
+                onSubmit={() => {
+                  if (!isSavingInlineEdit) saveInlineEdit(pin);
                 }}
-                rows={3}
+                onCancel={cancelInlineEdit}
+                minRows={8}
                 disabled={isSavingInlineEdit}
-                className="w-full text-sm leading-relaxed rounded border border-border bg-background px-2 py-1.5 resize-y focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-60"
               />
               {inlineEditError && (
                 <p className="mt-1 text-[11px] text-destructive">{inlineEditError}</p>
@@ -1282,7 +1259,7 @@ export default function CommentsSidebar({
                   ))}
               </div>
               {pin.attachments
-                .filter(a => a.mime_type === 'application/pdf')
+                .filter(a => isFileAttachment(a.mime_type))
                 .map(a => (
                   <div key={a.id} className="group/attachment flex items-center gap-1 text-xs">
                     <a href={a.signedUrl} target="_blank" rel="noopener noreferrer"

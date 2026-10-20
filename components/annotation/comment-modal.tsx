@@ -12,7 +12,9 @@ import { compressImageWithStats } from '@/lib/image-compression';
 import { CompressionInfo } from '@/components/compression-info';
 import { canDeleteAttachment as isAttachmentDeletable } from '@/lib/attachment-permissions';
 import { isCustomerComment } from '@/lib/comment-permissions';
-import { ATTACHMENT_ACCEPT, isVideoAttachment } from '@/lib/attachment-types';
+import { ATTACHMENT_ACCEPT, isFileAttachment, isVideoAttachment } from '@/lib/attachment-types';
+import { validateAttachments } from '@/lib/comment-attachments';
+import CommentEditor from './comment-editor';
 
 interface Pin {
   id: string;
@@ -64,10 +66,6 @@ interface CommentModalProps {
   createReplyFn?: (commentId: string, content: string, userName: string) => Promise<{ success: boolean; reply?: CommentReply; error?: string }>;
 }
 
-const ALLOWED_TYPES = new Set([
-  'image/jpeg', 'image/png', 'image/webp', 'image/gif', 'application/pdf',
-]);
-const MAX_BYTES = 20 * 1024 * 1024;
 const ELEVATED_ROLES = ['admin', 'pm'];
 const EMOJI_OPTIONS = [
   '😀', '😁', '😂', '😊', '😍', '😎', '🤔', '🙌',
@@ -258,8 +256,9 @@ export default function CommentModal({
       let top = containerRect.top + pinPixelY + gap;
       let left = containerRect.left + pinPixelX;
 
-      const modalWidth = 280;
-      const modalHeight = 240;
+      // The modal widens while composing/editing, so measure it.
+      const modalWidth = modalRef.current.offsetWidth || 280;
+      const modalHeight = modalRef.current.offsetHeight || 240;
       const padding = 15;
 
       if (left - modalWidth / 2 < padding) left = modalWidth / 2 + padding;
@@ -284,7 +283,7 @@ export default function CommentModal({
       window.removeEventListener('scroll', updatePosition);
       window.removeEventListener('resize', updatePosition);
     };
-  }, [position, isFullscreen, attachments.length]);
+  }, [position, isFullscreen, attachments.length, isEditing, isNewPin]);
 
   // ── load projects when link picker opens ────────────────────────────────────
   useEffect(() => {
@@ -315,15 +314,6 @@ export default function CommentModal({
     } finally {
       setIsSubmitting(false);
     }
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    // Enter saves; Shift+Enter (or Ctrl/Cmd+Enter) inserts a newline.
-    if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
-      e.preventDefault();
-      handleSubmit();
-    }
-    if (e.key === 'Escape') onClose();
   };
 
   // ── project mention insertion ────────────────────────────────────────────────
@@ -370,22 +360,7 @@ export default function CommentModal({
   };
 
   // ── file selection ───────────────────────────────────────────────────────────
-  const validateFiles = (files: File[]): { valid: File[]; errors: string[] } => {
-    const errors: string[] = [];
-    const valid: File[] = [];
-    for (const file of files) {
-      if (!ALLOWED_TYPES.has(file.type)) {
-        errors.push(`${file.name}: unsupported type`);
-        continue;
-      }
-      if (file.size > MAX_BYTES) {
-        errors.push(`${file.name}: exceeds 20 MB`);
-        continue;
-      }
-      valid.push(file);
-    }
-    return { valid, errors };
-  };
+  const validateFiles = validateAttachments;
 
   const addPendingAttachments = async (files: File[]) => {
     setAttachmentError(null);
@@ -491,7 +466,10 @@ export default function CommentModal({
     <div className="z-50 pointer-events-none">
       <div
         ref={modalRef}
-        className={`relative bg-white rounded-md shadow-lg p-2 pointer-events-auto border w-72 transition-all duration-200 ease-out ${
+        className={`relative bg-white rounded-md shadow-lg p-2 pointer-events-auto border max-w-[calc(100vw-30px)] transition-all duration-200 ease-out ${
+          // Wide while writing so longer, formatted text is comfortable to edit.
+          isNewPin || isEditing ? 'w-[34rem]' : 'w-80'
+        } ${
           isDraggingFile
             ? 'border-blue-500 ring-2 ring-blue-300/60'
             : 'border-border'
@@ -574,23 +552,14 @@ export default function CommentModal({
           <>
             {isEditing ? (
               <div className="mb-1.5">
-                <textarea
+                <CommentEditor
                   value={editText}
-                  onChange={e => setEditText(e.target.value)}
-                  onKeyDown={e => {
-                    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-                      e.preventDefault();
-                      handleSaveEdit();
-                    }
-                    if (e.key === 'Escape') {
-                      e.preventDefault();
-                      handleCancelEdit();
-                    }
-                  }}
+                  onChange={setEditText}
+                  onSubmit={handleSaveEdit}
+                  onCancel={handleCancelEdit}
                   autoFocus
                   disabled={isSavingEdit}
-                  className="w-full px-2 py-1.5 border border-border rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white resize-none"
-                  rows={3}
+                  minRows={8}
                 />
                 {editError && (
                   <p className="text-[10px] text-red-500 mt-1 px-1">{editError}</p>
@@ -613,7 +582,7 @@ export default function CommentModal({
                 </div>
               </div>
             ) : (
-              <div className="group relative text-sm text-gray-700 px-1 py-1 bg-gray-50 rounded border border-gray-200 mb-1.5">
+              <div className="group relative text-sm text-gray-700 px-1.5 py-1 bg-gray-50 rounded border border-gray-200 mb-1.5 max-h-[50vh] overflow-y-auto">
                 <CommentBody content={existingPin.content} />
                 {canEditExisting && (
                   <IconTooltip label="Edit comment">
@@ -702,7 +671,7 @@ export default function CommentModal({
                     </div>
                   ))}
                 {existingPin.attachments
-                  .filter(a => a.mime_type === 'application/pdf')
+                  .filter(a => isFileAttachment(a.mime_type))
                   .map(a => (
                     <div key={a.id} className="group flex items-center gap-1.5 px-2 py-1 bg-gray-50 border border-border rounded text-xs">
                       <a
@@ -816,15 +785,15 @@ export default function CommentModal({
           </>
         ) : (
           <div className="mb-1.5">
-            <textarea
-              ref={textareaRef}
+            <CommentEditor
+              textareaRef={textareaRef}
               placeholder="Add comment..."
               value={comment}
-              onChange={e => setComment(e.target.value)}
-              onKeyDown={handleKeyDown}
+              onChange={setComment}
+              onSubmit={handleSubmit}
+              onCancel={onClose}
               autoFocus
-              className="w-full px-2 py-1.5 border border-border rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white resize-none transition-shadow duration-200"
-              rows={2}
+              minRows={6}
             />
           </div>
         )}
@@ -992,7 +961,7 @@ export default function CommentModal({
                   className="hidden"
                   onChange={handleFileSelect}
                 />
-                <IconTooltip label="Attach file (images or PDF, max 20 MB)">
+                <IconTooltip label="Attach file (images, PDF, video, TXT, DOC, DOCX)">
                   <button
                     onClick={() => fileInputRef.current?.click()}
                     aria-label="Attach file"

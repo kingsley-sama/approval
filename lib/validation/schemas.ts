@@ -1,8 +1,15 @@
 import { z } from 'zod';
 
+/**
+ * Longest comment or reply accepted. Brochure revisions paste whole sections
+ * of copy plus formatting markup; the column is TEXT, so this is only a sanity
+ * bound against runaway payloads.
+ */
+export const COMMENT_MAX_LENGTH = 20000;
+
 export const CreateCommentSchema = z.object({
   threadId: z.string().min(1),
-  content: z.string().min(1).max(5000),
+  content: z.string().min(1).max(COMMENT_MAX_LENGTH),
   userName: z.string().min(1).max(200),
   x: z.number().min(0).max(100),
   y: z.number().min(0).max(100),
@@ -25,7 +32,7 @@ export const UpdateCommentPositionSchema = z.object({
 
 export const UpdateCommentContentSchema = z.object({
   commentId: z.string().min(1),
-  content: z.string().min(1).max(5000),
+  content: z.string().min(1).max(COMMENT_MAX_LENGTH),
 });
 
 export const CreateThreadSchema = z.object({
@@ -64,7 +71,7 @@ export const RegisterUploadSchema = z.object({
 
 export const CreatePanoramaCommentSchema = z.object({
   imageId: z.string().uuid(),
-  content: z.string().min(1).max(5000),
+  content: z.string().min(1).max(COMMENT_MAX_LENGTH),
   userName: z.string().min(1).max(200),
   pitch: z.number().min(-90).max(90),
   yaw: z.number().min(-180).max(180),
@@ -78,7 +85,7 @@ export const UpdatePanoramaCommentPositionSchema = z.object({
 
 export const CreatePanoramaReplySchema = z.object({
   parentCommentId: z.string().min(1),
-  content: z.string().min(1).max(5000),
+  content: z.string().min(1).max(COMMENT_MAX_LENGTH),
   userName: z.string().min(1).max(200),
 });
 

@@ -30,21 +30,64 @@ export const ATTACHMENT_VIDEO_TYPES = [
   'video/ogg',
 ] as const;
 
+/** Brochure copy sent as text: plain text and Word documents. */
+export const ATTACHMENT_DOCUMENT_TYPES = [
+  'text/plain',
+  'application/msword', // .doc
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .docx
+] as const;
+
 export const ATTACHMENT_ALLOWED_TYPES: ReadonlySet<string> = new Set<string>([
   ...ATTACHMENT_IMAGE_TYPES,
   ATTACHMENT_PDF_TYPE,
   ...ATTACHMENT_VIDEO_TYPES,
+  ...ATTACHMENT_DOCUMENT_TYPES,
 ]);
 
-/** Value for an <input type="file"> accept attribute. */
-export const ATTACHMENT_ACCEPT = [...ATTACHMENT_ALLOWED_TYPES].join(',');
+/**
+ * Browsers fill File.type from the OS, which often has no entry for Word
+ * formats (Windows without Office, most Linux desktops) and reports '' or
+ * 'application/octet-stream'. The extension is the fallback.
+ */
+const MIME_BY_EXTENSION: Record<string, string> = {
+  txt: 'text/plain',
+  doc: 'application/msword',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+};
 
-export type AttachmentCategory = 'image' | 'pdf' | 'video';
+/**
+ * Value for an <input type="file"> accept attribute. Extensions are listed too
+ * so the picker still offers Word files the OS has no MIME type for.
+ */
+export const ATTACHMENT_ACCEPT = [
+  ...ATTACHMENT_ALLOWED_TYPES,
+  ...Object.keys(MIME_BY_EXTENSION).map(ext => `.${ext}`),
+].join(',');
+
+/** The MIME type to validate and store a file under. */
+export function resolveAttachmentMimeType(fileName: string, reportedType: string): string {
+  if (ATTACHMENT_ALLOWED_TYPES.has(reportedType)) return reportedType;
+  const ext = /\.([a-z0-9]+)$/i.exec(fileName)?.[1]?.toLowerCase();
+  return (ext && MIME_BY_EXTENSION[ext]) || reportedType;
+}
+
+/**
+ * Returns the file re-typed with its resolved MIME type, so every later step
+ * (validation, the upload's Content-Type, the stored mime_type) agrees.
+ */
+export function normalizeAttachmentFile(file: File): File {
+  const type = resolveAttachmentMimeType(file.name, file.type);
+  if (type === file.type) return file;
+  return new File([file], file.name, { type, lastModified: file.lastModified });
+}
+
+export type AttachmentCategory = 'image' | 'pdf' | 'video' | 'document';
 
 export function attachmentCategory(mimeType: string): AttachmentCategory | null {
   if ((ATTACHMENT_IMAGE_TYPES as readonly string[]).includes(mimeType)) return 'image';
   if (mimeType === ATTACHMENT_PDF_TYPE) return 'pdf';
   if ((ATTACHMENT_VIDEO_TYPES as readonly string[]).includes(mimeType)) return 'video';
+  if ((ATTACHMENT_DOCUMENT_TYPES as readonly string[]).includes(mimeType)) return 'document';
   return null;
 }
 
@@ -53,6 +96,7 @@ export const ATTACHMENT_MAX_BYTES_BY_CATEGORY: Record<AttachmentCategory, number
   image: 20 * MB,
   pdf: 50 * MB,
   video: 200 * MB,
+  document: 50 * MB,
 };
 
 /** Largest permitted size for a given MIME type; unknown types get the image cap. */
@@ -69,4 +113,13 @@ export function formatMaxSize(mimeType: string): string {
 
 export function isVideoAttachment(mimeType: string): boolean {
   return attachmentCategory(mimeType) === 'video';
+}
+
+/**
+ * Attachments shown as a named file link rather than a preview: PDFs and
+ * text/Word documents.
+ */
+export function isFileAttachment(mimeType: string): boolean {
+  const category = attachmentCategory(mimeType);
+  return category === 'pdf' || category === 'document';
 }

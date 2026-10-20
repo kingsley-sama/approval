@@ -7,6 +7,7 @@ import {
   ATTACHMENT_ALLOWED_TYPES,
   maxBytesForAttachment,
   formatMaxSize,
+  normalizeAttachmentFile,
 } from '@/lib/attachment-types';
 
 export {
@@ -23,7 +24,8 @@ export interface AttachmentValidationResult {
 export function validateAttachments(files: File[]): AttachmentValidationResult {
   const errors: string[] = [];
   const valid: File[] = [];
-  for (const file of files) {
+  for (const rawFile of files) {
+    const file = normalizeAttachmentFile(rawFile);
     if (!ATTACHMENT_ALLOWED_TYPES.has(file.type)) {
       errors.push(`${file.name}: unsupported type`);
       continue;
