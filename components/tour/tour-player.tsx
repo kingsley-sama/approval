@@ -10,7 +10,9 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   AlertTriangle, Loader2, Maximize2, Minimize2, Minus, Plus, RotateCw,
 } from 'lucide-react';
-import { panoramaSrc, buildTourHotspotMarker } from './pannellum-utils';
+import {
+  panoramaSrc, panoramaRetrySrc, plainPannellumError, buildTourHotspotMarker, MAX_AUTO_RETRIES,
+} from './pannellum-utils';
 import { getOptimizedImageUrl, IMAGE_SIZES } from '@/lib/image-url';
 
 declare global {
@@ -51,7 +53,22 @@ interface TourPlayerProps {
   allowFullscreen?: boolean;
 }
 
-const SCENE_FADE_MS = 900;
+/** Crossfade between scenes. */
+const SCENE_FADE_MS = 650;
+/** Camera glide toward the clicked hotspot before the crossfade. */
+const STEP_IN_MS = 450;
+/** Settle from the zoomed-in entry view to the scene's normal field of view. */
+const STEP_OUT_MS = 750;
+/** Entry hfov as a fraction of the target's — the "walking in" effect. */
+const STEP_ZOOM = 0.7;
+/** How long a transition waits for a not-yet-downloaded scene before letting
+ *  Pannellum fetch it itself (it then shows its own loading state). */
+const MAX_PREFETCH_WAIT_MS = 4000;
+/** Parallel background downloads while warming the rest of the tour. */
+const BACKGROUND_PRELOAD_CONCURRENCY = 2;
+/** Stop warming non-adjacent rooms past this much downloaded data — protects
+ *  memory/bandwidth on tours whose scenes have no web-optimized copy yet. */
+const BACKGROUND_PRELOAD_BUDGET_BYTES = 150 * 1024 * 1024;
 
 export default function TourPlayer({
   tourName,
@@ -64,6 +81,7 @@ export default function TourPlayer({
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const viewerRef = useRef<any>(null);
+  const sceneConfigsRef = useRef<Record<string, any>>({});
   const scenesRef = useRef<TourPlayerScene[]>(scenes);
   scenesRef.current = scenes;
 
@@ -76,43 +94,168 @@ export default function TourPlayer({
   const [isLoaded, setIsLoaded] = useState(false);
   const [loadProgress, setLoadProgress] = useState(0);
   const [loadError, setLoadError] = useState<string | null>(null);
+  /** A hotspot was clicked but the next scene is still downloading. */
+  const [awaitingScene, setAwaitingScene] = useState(false);
   // Native fullscreen when available; CSS overlay fallback when blocked (iframes).
   const [nativeFullscreen, setNativeFullscreen] = useState(false);
   const [cssFullscreen, setCssFullscreen] = useState(false);
   const isFullscreen = nativeFullscreen || cssFullscreen;
   const [currentHfov, setCurrentHfov] = useState(scenes[0]?.initialHfov ?? 105);
+  // Reload attempt after a scene fails: rebuilds the viewer at that scene with a
+  // cache-busted URL. Scoped to the current `scenes` so new tour data starts fresh.
+  const [reload, setReload] = useState<{ scenes: TourPlayerScene[]; sceneId: string; attempt: number } | null>(null);
+  const activeReload = reload && reload.scenes === scenes && scenes.some(s => s.id === reload.sceneId) ? reload : null;
+  const startId = activeReload?.sceneId ?? firstSceneId;
+  const attempt = activeReload?.attempt ?? 0;
 
-  /** Warm the browser cache for every scene reachable from the given scene. */
-  const preloadNeighbors = useCallback((sceneId: string) => {
-    const scene = scenesRef.current.find(s => s.id === sceneId);
-    if (!scene) return;
-    for (const h of scene.hotspots) {
-      const target = scenesRef.current.find(s => s.id === h.targetSceneId);
-      if (target) {
-        const img = new window.Image();
-        img.src = panoramaSrc(target.url);
-      }
+  // ── preloading ────────────────────────────────────────────────────────────
+  // Scenes are downloaded ahead of time into in-memory blob URLs and swapped
+  // into Pannellum's (live-read) scene configs, so walking into a room never
+  // waits on the network — independent of the storage CDN's cache headers.
+  const blobUrlsRef = useRef(new Map<string, string>());
+  const inflightRef = useRef(new Map<string, Promise<string | null>>());
+  const preloadedBytesRef = useRef(0);
+
+  const applyBlobUrl = useCallback((url: string, blobUrl: string) => {
+    for (const scene of scenesRef.current) {
+      const cfg = sceneConfigsRef.current[scene.id];
+      if (scene.url === url && cfg && !cfg.__retry) cfg.panorama = blobUrl;
     }
   }, []);
 
-  const goToScene = useCallback((targetSceneId: string, pitch?: number | null, yaw?: number | null) => {
+  const prefetchScene = useCallback((url: string): Promise<string | null> => {
+    const ready = blobUrlsRef.current.get(url);
+    if (ready) return Promise.resolve(ready);
+    const pending = inflightRef.current.get(url);
+    if (pending) return pending;
+    const p = fetch(panoramaSrc(url), { mode: 'cors' })
+      .then(res => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.blob();
+      })
+      .then(blob => {
+        preloadedBytesRef.current += blob.size;
+        const blobUrl = URL.createObjectURL(blob);
+        blobUrlsRef.current.set(url, blobUrl);
+        applyBlobUrl(url, blobUrl);
+        return blobUrl;
+      })
+      .catch(err => {
+        // Not fatal: Pannellum will request the URL itself when the scene opens.
+        console.warn('Tour scene preload failed', url, err);
+        return null;
+      })
+      .finally(() => inflightRef.current.delete(url));
+    inflightRef.current.set(url, p);
+    return p;
+  }, [applyBlobUrl]);
+
+  // Free the downloaded scenes when the player goes away.
+  useEffect(() => {
+    const blobUrls = blobUrlsRef.current;
+    return () => {
+      for (const blobUrl of blobUrls.values()) URL.revokeObjectURL(blobUrl);
+      blobUrls.clear();
+    };
+  }, []);
+
+  /** Rooms reachable from `sceneId` first (in parallel), then the rest of the
+   *  tour quietly in the background, so every click is instant. */
+  const preloadFrom = useCallback((sceneId: string) => {
+    const all = scenesRef.current;
+    const scene = all.find(s => s.id === sceneId);
+    if (!scene) return;
+    const neighborIds = new Set(scene.hotspots.map(h => h.targetSceneId));
+    const neighbors = all.filter(s => neighborIds.has(s.id));
+    // Everything else, with the current room last (it's already on screen).
+    const rest = [
+      ...all.filter(s => s.id !== sceneId && !neighborIds.has(s.id)),
+      scene,
+    ];
+
+    void Promise.all(neighbors.map(s => prefetchScene(s.url))).then(async () => {
+      const queue = [...rest];
+      const worker = async () => {
+        for (let next = queue.shift(); next; next = queue.shift()) {
+          if (scenesRef.current !== all) return; // tour data changed — stop
+          if (preloadedBytesRef.current > BACKGROUND_PRELOAD_BUDGET_BYTES) return;
+          await prefetchScene(next.url);
+        }
+      };
+      await Promise.all(Array.from({ length: BACKGROUND_PRELOAD_CONCURRENCY }, worker));
+    });
+  }, [prefetchScene]);
+
+  // ── navigation ────────────────────────────────────────────────────────────
+  const transitioningRef = useRef(false);
+  /** hfov to settle to once the scene being entered has loaded. */
+  const settleHfovRef = useRef<number | null>(null);
+
+  /**
+   * Move to another scene. From a hotspot (`from` set) this is a Biganto-style
+   * step: glide the camera toward the marker while zooming in, crossfade, and
+   * settle out of a zoomed-in view of the next room — reads as walking forward.
+   * From the scene strip it is a plain crossfade.
+   */
+  const goToScene = useCallback(async (
+    targetSceneId: string,
+    pitch?: number | null,
+    yaw?: number | null,
+    from?: { pitch: number; yaw: number },
+  ) => {
     const viewer = viewerRef.current;
-    if (!viewer || viewer.getScene?.() === targetSceneId) return;
+    if (!viewer || transitioningRef.current || viewer.getScene?.() === targetSceneId) return;
+    const target = scenesRef.current.find(s => s.id === targetSceneId);
+    if (!target) return;
+    transitioningRef.current = true;
+
     try {
-      viewer.loadScene(targetSceneId, pitch ?? undefined, yaw ?? undefined);
+      const ready = prefetchScene(target.url);
+      const glide = from
+        ? new Promise<void>((resolve) => {
+            try {
+              const hfov = viewer.getHfov();
+              // Keep the glide near eye level even for floor markers.
+              viewer.lookAt(from.pitch * 0.4, from.yaw, Math.max(40, hfov * STEP_ZOOM), STEP_IN_MS, resolve);
+            } catch { resolve(); }
+          })
+        : Promise.resolve();
+
+      await glide;
+      let waited = false;
+      const timeout = new Promise<null>(r => window.setTimeout(() => r(null), MAX_PREFETCH_WAIT_MS));
+      const pendingTimer = window.setTimeout(() => { waited = true; setAwaitingScene(true); }, 150);
+      await Promise.race([ready, timeout]);
+      window.clearTimeout(pendingTimer);
+      if (waited) setAwaitingScene(false);
+      if (viewerRef.current !== viewer) return; // viewer was rebuilt meanwhile
+
+      const settle = target.initialHfov;
+      settleHfovRef.current = from ? settle : null;
+      viewer.loadScene(
+        targetSceneId,
+        pitch ?? target.initialPitch,
+        yaw ?? target.initialYaw,
+        from ? settle * STEP_ZOOM : settle,
+      );
     } catch (err) {
       console.warn('Failed to load tour scene', targetSceneId, err);
+    } finally {
+      transitioningRef.current = false;
     }
-  }, []);
+  }, [prefetchScene]);
 
   // (Re)create the multi-scene viewer whenever the tour data changes.
   useEffect(() => {
-    if (!containerRef.current || scenes.length === 0 || typeof window === 'undefined' || !window.pannellum || !firstSceneId) return;
+    if (!containerRef.current || scenes.length === 0 || typeof window === 'undefined' || !window.pannellum || !startId) return;
 
     setLoadError(null);
     setIsLoaded(false);
     setLoadProgress(0);
-    setCurrentSceneId(firstSceneId);
+    setAwaitingScene(false);
+    setCurrentSceneId(startId);
+    settleHfovRef.current = null;
+    let retryTimer: number | undefined;
 
     const progressTimer = window.setInterval(() => {
       setLoadProgress((prev) => (prev < 90 ? prev + Math.max(4, Math.floor(Math.random() * 8)) : prev));
@@ -120,9 +263,15 @@ export default function TourPlayer({
 
     const sceneConfigs: Record<string, any> = {};
     for (const scene of scenes) {
+      const isRetry = scene.id === startId && attempt > 0;
       sceneConfigs[scene.id] = {
         type: 'equirectangular',
-        panorama: panoramaSrc(scene.url),
+        // A retry goes back to the network with a fresh URL; otherwise use the
+        // preloaded copy when we already have it.
+        panorama: isRetry
+          ? panoramaRetrySrc(panoramaSrc(scene.url), attempt)
+          : blobUrlsRef.current.get(scene.url) ?? panoramaSrc(scene.url),
+        __retry: isRetry || undefined,
         pitch: scene.initialPitch,
         yaw: scene.initialYaw,
         hfov: scene.initialHfov,
@@ -134,15 +283,16 @@ export default function TourPlayer({
           createTooltipFunc: buildTourHotspotMarker,
           createTooltipArgs: {
             label: h.label,
-            onClick: () => goToScene(h.targetSceneId, h.targetPitch, h.targetYaw),
+            onClick: () => goToScene(h.targetSceneId, h.targetPitch, h.targetYaw, { pitch: h.pitch, yaw: h.yaw }),
           },
         })),
       };
     }
+    sceneConfigsRef.current = sceneConfigs;
 
     const viewer = window.pannellum.viewer(containerRef.current, {
       default: {
-        firstScene: firstSceneId,
+        firstScene: startId,
         sceneFadeDuration: SCENE_FADE_MS,
         autoLoad: true,
         showControls: false, // we render our own controls
@@ -160,27 +310,52 @@ export default function TourPlayer({
         window.clearInterval(progressTimer);
         setLoadProgress(100);
         setIsLoaded(true);
-        try { setCurrentHfov(viewer.getHfov()); } catch { /* noop */ }
+        const settle = settleHfovRef.current;
+        settleHfovRef.current = null;
+        if (settle != null) {
+          // Step out of the zoomed entry view while the crossfade finishes.
+          try { viewer.setHfov(settle, STEP_OUT_MS); } catch { /* noop */ }
+          setCurrentHfov(settle);
+        } else {
+          try { setCurrentHfov(viewer.getHfov()); } catch { /* noop */ }
+        }
         const sceneId = viewer.getScene?.();
-        if (sceneId) preloadNeighbors(sceneId);
+        if (sceneId) preloadFrom(sceneId);
       });
       viewer.on('scenechange', (sceneId: string) => {
         setCurrentSceneId(sceneId);
-        preloadNeighbors(sceneId);
       });
       viewer.on('error', (msg: string) => {
         window.clearInterval(progressTimer);
-        console.error('Pannellum tour load error:', msg);
-        setLoadError(msg || 'This tour could not be loaded.');
+        settleHfovRef.current = null;
+        const failedId: string = viewer.getScene?.() ?? startId;
+        const nextAttempt = failedId === startId ? attempt + 1 : 1;
+        console.error('Pannellum tour load error:', msg, 'scene', failedId, 'attempt', nextAttempt - 1);
+        if (nextAttempt <= MAX_AUTO_RETRIES) {
+          // Transient failures (cold CDN load, stale non-CORS cache entry) usually
+          // clear on a fresh request — retry quietly before showing the error.
+          retryTimer = window.setTimeout(
+            () => setReload({ scenes, sceneId: failedId, attempt: nextAttempt }),
+            700 * nextAttempt,
+          );
+          return;
+        }
+        setLoadError(plainPannellumError(msg || '') || 'This tour could not be loaded.');
       });
     } catch { /* older builds may not expose .on */ }
 
     return () => {
       window.clearInterval(progressTimer);
+      window.clearTimeout(retryTimer);
       try { viewer.destroy(); } catch { /* noop */ }
       viewerRef.current = null;
     };
-  }, [scenes, firstSceneId, goToScene, preloadNeighbors]);
+  }, [scenes, startId, attempt, goToScene, preloadFrom]);
+
+  const retryFailedScene = () => {
+    if (!startId) return;
+    setReload({ scenes, sceneId: currentSceneId ?? startId, attempt: attempt + 1 });
+  };
 
   // Track native fullscreen exits (Esc key) so the button state stays in sync.
   useEffect(() => {
@@ -240,6 +415,15 @@ export default function TourPlayer({
     >
       <div ref={containerRef} className="absolute inset-0" />
 
+      {/* Next room still downloading after a hotspot click */}
+      {awaitingScene && isLoaded && !loadError && (
+        <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
+          <div className="rounded-full bg-black/45 p-3 backdrop-blur-sm">
+            <Loader2 className="h-6 w-6 text-white animate-spin" />
+          </div>
+        </div>
+      )}
+
       {/* Loading overlay until the first scene's texture is ready */}
       {!isLoaded && !loadError && (
         <div className="absolute inset-0 z-10 flex items-center justify-center bg-gray-900/70 pointer-events-none">
@@ -269,6 +453,13 @@ export default function TourPlayer({
               equirectangular (2:1 ratio) photo.
             </p>
             <p className="mt-2 text-xs text-white/40 break-words">{loadError}</p>
+            <button
+              onClick={retryFailedScene}
+              className="mt-4 inline-flex items-center gap-1.5 rounded-md bg-white/10 px-3 py-1.5 text-xs font-medium text-white hover:bg-white/20 transition-colors"
+            >
+              <RotateCw className="h-3.5 w-3.5" />
+              Try again
+            </button>
           </div>
         </div>
       )}

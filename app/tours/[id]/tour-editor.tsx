@@ -1,12 +1,12 @@
 'use client';
 
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { useDocumentTitle } from '@/hooks/use-document-title';
 import { TruncatedName } from '@/components/ui/truncated-name';
-import { ArrowLeft, Eye, Pencil, Upload } from 'lucide-react';
+import { ArrowLeft, Eye, Loader2, Pencil, Upload } from 'lucide-react';
 import ShareLinkManager from '@/components/share-link-manager';
 import TourScenesSidebar, { type TourSidebarScene } from '@/components/tour/tour-scenes-sidebar';
 import TourLinkModal, { type LinkCandidateScene } from '@/components/tour/tour-link-modal';
@@ -15,6 +15,7 @@ import { IconTooltip } from '@/components/ui/icon-tooltip';
 import { useToast } from '@/hooks/use-toast';
 import { useConfirm } from '@/components/confirm-dialog';
 import { mapScenesToPlayer, tourSceneName } from '@/lib/tours';
+import { backfillSceneWebVariant } from '@/lib/tour-web-variant-client';
 import {
   getTourWorkspaceData,
   type TourHotspotRecord,
@@ -76,7 +77,16 @@ export default function TourEditor({ projectId, initialData, fallbackName }: Tou
 
   const canEdit = (initialData.currentUser.role || 'member') !== 'guest';
 
-  const currentScene = scenes.find(s => s.id === currentSceneId) ?? scenes[0] ?? null;
+  // Variants made this session, layered over `scenes` (which mirrors the server).
+  const [webOverrides, setWebOverrides] = useState<Record<string, string>>({});
+  const webOverridesRef = useRef(webOverrides);
+  webOverridesRef.current = webOverrides;
+  const viewScenes = useMemo(
+    () => scenes.map(s => (!s.web_url && webOverrides[s.id] ? { ...s, web_url: webOverrides[s.id] } : s)),
+    [scenes, webOverrides],
+  );
+
+  const currentScene = viewScenes.find(s => s.id === currentSceneId) ?? viewScenes[0] ?? null;
   const sceneNameById = useMemo(
     () => new Map(scenes.map(s => [s.id, tourSceneName(s)])),
     [scenes],
@@ -95,26 +105,26 @@ export default function TourEditor({ projectId, initialData, fallbackName }: Tou
   }, [currentScene, hotspotsByScene, sceneNameById]);
 
   const playerScenes = useMemo(
-    () => mapScenesToPlayer(scenes, hotspotsByScene),
-    [scenes, hotspotsByScene],
+    () => mapScenesToPlayer(viewScenes, hotspotsByScene),
+    [viewScenes, hotspotsByScene],
   );
 
   const sidebarScenes = useMemo<TourSidebarScene[]>(
-    () => scenes.map(s => ({
+    () => viewScenes.map(s => ({
       id: s.id,
       name: tourSceneName(s),
-      url: s.image_path,
+      url: s.web_url || s.image_path,
       hotspotCount: (hotspotsByScene[s.id] ?? []).length,
       isStart: s.id === startSceneId,
     })),
-    [scenes, hotspotsByScene, startSceneId],
+    [viewScenes, hotspotsByScene, startSceneId],
   );
 
   const candidateScenes = useMemo<LinkCandidateScene[]>(
-    () => scenes
+    () => viewScenes
       .filter(s => s.id !== currentScene?.id)
-      .map(s => ({ id: s.id, name: tourSceneName(s), url: s.image_path })),
-    [scenes, currentScene],
+      .map(s => ({ id: s.id, name: tourSceneName(s), url: s.web_url || s.image_path })),
+    [viewScenes, currentScene],
   );
 
   const refreshWorkspace = useCallback(async () => {
@@ -133,6 +143,41 @@ export default function TourEditor({ projectId, initialData, fallbackName }: Tou
       console.error('Failed to refresh tour workspace', error);
     }
   }, [projectId]);
+
+  // ── fast-loading copies ───────────────────────────────────────────────────
+  // Scenes uploaded before web variants existed (or whose variant failed) get
+  // one generated here, one at a time in the background, so the tour loads fast
+  // for every visitor from then on. Each scene is attempted once per session.
+  const backfillTriedRef = useRef(new Set<string>());
+  const [optimizing, setOptimizing] = useState<{ done: number; total: number } | null>(null);
+  useEffect(() => {
+    if (!canEdit) return;
+    const pending = scenes.filter(s => !s.web_url && !backfillTriedRef.current.has(s.id));
+    if (pending.length === 0) return;
+    for (const s of pending) backfillTriedRef.current.add(s.id);
+
+    let cancelled = false;
+    (async () => {
+      setOptimizing({ done: 0, total: pending.length });
+      for (let i = 0; i < pending.length; i++) {
+        if (cancelled) return;
+        const scene = pending[i];
+        const webUrl = await backfillSceneWebVariant(scene.id, scene.image_path);
+        if (cancelled) return;
+        if (webUrl) setWebOverrides(prev => ({ ...prev, [scene.id]: webUrl }));
+        setOptimizing({ done: i + 1, total: pending.length });
+      }
+      setOptimizing(null);
+    })();
+    return () => {
+      cancelled = true;
+      // Let an interrupted run (e.g. a refresh replaced `scenes`) pick these up again.
+      for (const s of pending) {
+        if (!webOverridesRef.current[s.id]) backfillTriedRef.current.delete(s.id);
+      }
+      setOptimizing(null);
+    };
+  }, [scenes, canEdit]);
 
   // ── scenes ────────────────────────────────────────────────────────────────
 
@@ -369,6 +414,15 @@ export default function TourEditor({ projectId, initialData, fallbackName }: Tou
         </div>
 
         <div className="flex items-center gap-2">
+          {optimizing && (
+            <span
+              className="hidden sm:flex items-center gap-1.5 text-xs text-muted-foreground"
+              title="Creating fast-loading copies of older scenes. Originals are kept."
+            >
+              <Loader2 size={12} className="animate-spin" />
+              Optimizing scenes {optimizing.done}/{optimizing.total}
+            </span>
+          )}
           <ShareLinkManager
             resourceType="tour_project"
             resourceId={projectId}
@@ -406,7 +460,7 @@ export default function TourEditor({ projectId, initialData, fallbackName }: Tou
             scene={{
               id: currentScene.id,
               name: tourSceneName(currentScene),
-              url: currentScene.image_path,
+              url: currentScene.web_url || currentScene.image_path,
               initialPitch: currentScene.initial_pitch ?? 0,
               initialYaw: currentScene.initial_yaw ?? 0,
               initialHfov: currentScene.initial_hfov ?? 110,

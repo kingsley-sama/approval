@@ -6,6 +6,7 @@ import {
   ArrowDown, ArrowUp, Link2, Loader2, MoreVertical, Orbit, Pencil, Play, Trash2, Upload,
 } from 'lucide-react';
 import { getTourSceneUploadUrl, registerTourScene } from '@/app/actions/tour-scenes';
+import { uploadSceneWebVariant } from '@/lib/tour-web-variant-client';
 import { xhrUpload } from '@/lib/upload';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -87,7 +88,9 @@ export default function TourScenesSidebar({
         } catch {
           continue;
         }
-        await registerTourScene(projectId, file.name, urlResult.storagePath);
+        const reg = await registerTourScene(projectId, file.name, urlResult.storagePath);
+        // Fast-loading copy for the viewer (best-effort; backfilled later if it fails).
+        if (reg.success && reg.scene) await uploadSceneWebVariant(reg.scene.id, file);
       }
       await onScenesChanged();
     } finally {

@@ -1,6 +1,7 @@
 'use server';
 
 import { supabaseAdmin } from '@/lib/supabase';
+import { withWebVariants } from '@/lib/tour-variants-server';
 import { getUser } from '@/lib/db/queries';
 import { requireAdmin, requireUser } from '@/lib/auth/require-user';
 import { CreateProjectSchema, RenameProjectSchema } from '@/lib/validation/schemas';
@@ -340,6 +341,8 @@ export interface TourSceneRecord {
   initial_pitch: number | null;
   initial_yaw: number | null;
   initial_hfov: number | null;
+  /** Web-optimized JPEG copy (lib/tour-variants.ts); null until generated. */
+  web_url?: string | null;
 }
 
 export interface TourHotspotRecord {
@@ -384,7 +387,7 @@ export async function getTourWorkspaceData(projectId: string): Promise<TourWorks
   if (scenesRes.error) {
     console.error('Error fetching tour scenes:', scenesRes.error);
   }
-  const scenes = scenesRes.data ?? [];
+  const scenes = await withWebVariants(scenesRes.data ?? []);
 
   let hotspotsByScene: Record<string, TourHotspotRecord[]> = {};
   if (scenes.length > 0) {

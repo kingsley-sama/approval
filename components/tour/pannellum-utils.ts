@@ -17,6 +17,25 @@ export function panoramaSrc(url: string): string {
   return url;
 }
 
+/** Automatic reload attempts after a scene fails, before showing the error. */
+export const MAX_AUTO_RETRIES = 2;
+
+/**
+ * Cache-busted variant of a panorama URL for reload attempt `attempt` (0 = the
+ * plain URL). The first cold load of a large original can transiently fail, and
+ * the browser may also hold a response cached by a non-CORS <img> request (e.g.
+ * a thumbnail) that Pannellum's CORS XHR can't reuse — a fresh URL avoids both.
+ */
+export function panoramaRetrySrc(url: string, attempt: number): string {
+  if (attempt <= 0 || url.startsWith('blob:') || url.startsWith('data:')) return url;
+  return `${url}${url.includes('?') ? '&' : '?'}_retry=${attempt}`;
+}
+
+/** Pannellum error strings embed HTML (`<a href=…>`); reduce them to plain text. */
+export function plainPannellumError(msg: string): string {
+  return msg.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+}
+
 export interface TourMarkerArgs {
   label: string;
   /** Editor-only: highlight the currently selected hotspot. */

@@ -8,9 +8,11 @@ import 'pannellum';
 
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  AlertTriangle, Camera, Link2, Loader2, Minus, MousePointer2, Plus,
+  AlertTriangle, Camera, Link2, Loader2, Minus, MousePointer2, Plus, RotateCw,
 } from 'lucide-react';
-import { panoramaSrc, buildTourHotspotMarker } from './pannellum-utils';
+import {
+  panoramaSrc, panoramaRetrySrc, plainPannellumError, buildTourHotspotMarker, MAX_AUTO_RETRIES,
+} from './pannellum-utils';
 
 declare global {
   interface Window {
@@ -68,6 +70,10 @@ export default function TourEditorViewer({
   const [isLoaded, setIsLoaded] = useState(false);
   const [loadProgress, setLoadProgress] = useState(0);
   const [currentHfov, setCurrentHfov] = useState(scene.initialHfov || 110);
+  // Reload attempt for the current image; scoped by key so a new scene starts at 0.
+  const sceneKey = `${scene.id}|${scene.url}`;
+  const [reload, setReload] = useState({ key: sceneKey, attempt: 0 });
+  const attempt = reload.key === sceneKey ? reload.attempt : 0;
   // Keep latest values reachable from persistent DOM listeners without re-init.
   const linkModeRef = useRef(linkMode);
   const onPlaceRef = useRef(onPlaceHotspot);
@@ -99,9 +105,11 @@ export default function TourEditorViewer({
       setLoadProgress((prev) => (prev < 90 ? prev + Math.max(4, Math.floor(Math.random() * 8)) : prev));
     }, 120);
 
+    let retryTimer: number | undefined;
+
     const viewer = window.pannellum.viewer(containerRef.current, {
       type: 'equirectangular',
-      panorama: panoramaSrc(scene.url),
+      panorama: panoramaRetrySrc(panoramaSrc(scene.url), attempt),
       autoLoad: true,
       showControls: false, // we render our own controls
       showZoomCtrl: false,
@@ -123,8 +131,17 @@ export default function TourEditorViewer({
       });
       viewer.on('error', (msg: string) => {
         window.clearInterval(progressTimer);
-        console.error('Pannellum load error:', msg, 'for', scene.url);
-        setLoadError(msg || 'This scene could not be loaded.');
+        console.error('Pannellum load error:', msg, 'for', scene.url, 'attempt', attempt);
+        if (attempt < MAX_AUTO_RETRIES) {
+          // Transient failures (cold CDN load, stale non-CORS cache entry) usually
+          // clear on a fresh request — retry quietly before showing the error.
+          retryTimer = window.setTimeout(
+            () => setReload({ key: sceneKey, attempt: attempt + 1 }),
+            700 * (attempt + 1),
+          );
+          return;
+        }
+        setLoadError(plainPannellumError(msg || '') || 'This scene could not be loaded.');
       });
     } catch { /* older builds may not expose .on */ }
 
@@ -147,6 +164,7 @@ export default function TourEditorViewer({
 
     return () => {
       window.clearInterval(progressTimer);
+      window.clearTimeout(retryTimer);
       el.removeEventListener('mousedown', onMouseDown);
       el.removeEventListener('click', onClick);
       try { viewer.destroy(); } catch { /* noop */ }
@@ -155,7 +173,7 @@ export default function TourEditorViewer({
     // Recreate only when the image itself changes; initial view edits are saved
     // from the live camera, so re-initialising for them would be disruptive.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scene.id, scene.url]);
+  }, [scene.id, scene.url, attempt]);
 
   // Sync hotspot markers whenever links or the selection change, or after load.
   useEffect(() => {
@@ -244,6 +262,13 @@ export default function TourEditorViewer({
               (2:1 ratio) photo and that the storage URL is publicly accessible.
             </p>
             <p className="mt-2 text-xs text-white/40 break-words">{loadError}</p>
+            <button
+              onClick={() => setReload({ key: sceneKey, attempt: attempt + 1 })}
+              className="mt-4 inline-flex items-center gap-1.5 rounded-md bg-white/10 px-3 py-1.5 text-xs font-medium text-white hover:bg-white/20 transition-colors"
+            >
+              <RotateCw className="h-3.5 w-3.5" />
+              Try again
+            </button>
           </div>
         </div>
       )}

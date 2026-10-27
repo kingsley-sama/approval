@@ -9,6 +9,7 @@ import {
   UpdateTourSceneViewSchema,
 } from '@/lib/validation/schemas';
 import { revalidatePath } from 'next/cache';
+import { parsePublicStorageUrl, webVariantPath, webVariantUrl } from '@/lib/tour-variants';
 import type { TourSceneRecord } from './tour-projects';
 
 const BUCKET = process.env.NEXT_PUBLIC_SUPABASE_BUCKET_NAME || 'screenshots';
@@ -46,6 +47,42 @@ export async function getTourSceneUploadUrl(
       return { success: false, error: error?.message || 'Could not create signed URL' };
     }
     return { success: true, signedUrl: data.signedUrl, storagePath };
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Failed to generate upload URL' };
+  }
+}
+
+/**
+ * Presigned upload URL for a scene's web-optimized copy (lib/tour-variants.ts).
+ * The browser generates the JPEG — from the local file right after upload, or
+ * from the original when backfilling older scenes — and PUTs it here. The path
+ * is derived from the scene's image, so nothing else needs to be recorded.
+ */
+export async function getTourSceneWebUploadUrl(
+  sceneId: string,
+): Promise<{ success: boolean; signedUrl?: string; webUrl?: string; error?: string }> {
+  try {
+    await requireUser();
+
+    const { data: scene, error: sceneError } = await supabaseAdmin
+      .from('tour_scenes')
+      .select('image_path')
+      .eq('id', sceneId)
+      .maybeSingle();
+    if (sceneError || !scene) return { success: false, error: 'Scene not found' };
+
+    const parsed = parsePublicStorageUrl(scene.image_path);
+    const webUrl = webVariantUrl(scene.image_path);
+    if (!parsed || !webUrl) return { success: false, error: 'Scene image is not in storage' };
+
+    // upsert: a backfill may race a concurrent one (two editors open) — last wins.
+    const { data, error } = await supabaseAdmin.storage
+      .from(parsed.bucket)
+      .createSignedUploadUrl(webVariantPath(parsed.path), { upsert: true });
+    if (error || !data?.signedUrl) {
+      return { success: false, error: error?.message || 'Could not create signed URL' };
+    }
+    return { success: true, signedUrl: data.signedUrl, webUrl };
   } catch (err: any) {
     return { success: false, error: err.message || 'Failed to generate upload URL' };
   }

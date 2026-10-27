@@ -10,6 +10,7 @@ import ShareViewer from '@/components/share-viewer';
 import PanoramaShareViewer from '@/components/panorama/panorama-share-viewer';
 import TourShareViewer from '@/components/tour/tour-share-viewer';
 import { mapScenesToPlayer } from '@/lib/tours';
+import { withWebVariants } from '@/lib/tour-variants-server';
 import { getAttachmentsForComments } from '@/app/actions/storage';
 import { getUser } from '@/lib/db/queries';
 
@@ -52,7 +53,7 @@ export default async function SharePage({ params }: SharePageProps) {
       .order('scene_index', { ascending: true, nullsFirst: false })
       .order('created_at', { ascending: true });
 
-    const scenes = sceneRows || [];
+    const scenes = await withWebVariants(sceneRows || []);
     const { data: hotspotRows } = scenes.length
       ? await supabase
           .from('tour_hotspots')

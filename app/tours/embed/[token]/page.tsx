@@ -3,6 +3,7 @@ import { validateShareToken } from '@/app/actions/share-links';
 import { supabaseAdmin as supabase } from '@/lib/supabase';
 import TourShareViewer from '@/components/tour/tour-share-viewer';
 import { mapScenesToPlayer } from '@/lib/tours';
+import { withWebVariants } from '@/lib/tour-variants-server';
 
 interface TourEmbedPageProps {
   params: Promise<{ token: string }>;
@@ -31,7 +32,7 @@ export default async function TourEmbedPage({ params }: TourEmbedPageProps) {
     .order('scene_index', { ascending: true, nullsFirst: false })
     .order('created_at', { ascending: true });
 
-  const scenes = sceneRows || [];
+  const scenes = await withWebVariants(sceneRows || []);
   const { data: hotspotRows } = scenes.length
     ? await supabase
         .from('tour_hotspots')

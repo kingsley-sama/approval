@@ -13,6 +13,8 @@ export interface TourSceneRow {
   initial_pitch: number | null;
   initial_yaw: number | null;
   initial_hfov: number | null;
+  /** Web-optimized copy, when one exists — preferred for display. */
+  web_url?: string | null;
 }
 
 export interface TourHotspotRow {
@@ -38,7 +40,7 @@ export function mapScenesToPlayer(
   return scenes.map((scene) => ({
     id: scene.id,
     name: tourSceneName(scene),
-    url: scene.image_path,
+    url: scene.web_url || scene.image_path,
     initialPitch: scene.initial_pitch ?? 0,
     initialYaw: scene.initial_yaw ?? 0,
     initialHfov: scene.initial_hfov ?? 110,

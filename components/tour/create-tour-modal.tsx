@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { createTourProject } from '@/app/actions/tour-projects';
 import { getTourSceneUploadUrl, registerTourScene } from '@/app/actions/tour-scenes';
+import { uploadSceneWebVariant } from '@/lib/tour-web-variant-client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -159,6 +160,9 @@ export default function CreateTourModal({ onTourCreated, trigger }: CreateTourMo
           patch(state.id, { status: 'error', error: regResult.error || 'Failed to save scene' });
           return;
         }
+        // Fast-loading copy for the viewer, made from the file we already hold.
+        // Best-effort: the editor backfills it later if this fails.
+        if (regResult.scene) await uploadSceneWebVariant(regResult.scene.id, file);
         patch(state.id, { status: 'done', progress: 100 });
       };
 
